@@ -6,6 +6,24 @@
   var JERSEY_TYPES = ['Home','Away','Alternate','Indigenous','Heritage','Training'];
   var MANUFACTURERS = ['ISC','Classic','Kappa','Canterbury','BLK','Burley Sekem','Macron','Puma','Nike','Adidas','New Balance'];
 
+  // Reputation tiers by upload points — adjust thresholds/colors/labels here.
+  var TIERS = [
+    {min:0,    label:'Rookie',      color:'#8FAA98'},
+    {min:50,   label:'Contributor', color:'#4FB0E0'},
+    {min:100,  label:'Regular',     color:'#3FD1A8'},
+    {min:250,  label:'Veteran',     color:'#F5B324'},
+    {min:500,  label:'Elite',       color:'#E4645C'},
+    {min:1000, label:'Legend',      color:'#B084E8'}
+  ];
+  function tierFor(points){
+    for(var i=TIERS.length-1; i>=0; i--){ if(points >= TIERS[i].min) return TIERS[i]; }
+    return TIERS[0];
+  }
+  function pointsChip(points){
+    var t = tierFor(points);
+    return '<span style="color:'+t.color+';font-weight:700;" title="'+t.label+' tier">('+points+')</span>';
+  }
+
   var currentUser = null, currentProfile = null;
 
   /* ================= helpers ================= */
@@ -206,6 +224,14 @@
       if(!mine.error && mine.data) myRatingVal = mine.data.value;
     }
 
+    var uploaderHtml = '';
+    if(j.uploaded_by){
+      var uploaderRes = await supabaseClient.from('profiles').select('username,points').eq('id', j.uploaded_by).maybeSingle();
+      if(!uploaderRes.error && uploaderRes.data){
+        uploaderHtml = '<span>uploaded by '+esc(uploaderRes.data.username)+' '+pointsChip(uploaderRes.data.points)+'</span>';
+      }
+    }
+
     return '<div class="detail-grid">' +
       '<div><div class="gallery-main" id="gallery-main">'+mainHtml+'</div>' +
       (thumbs ? '<div class="gallery-thumbs" id="gallery-thumbs" data-images=\''+esc(JSON.stringify(images))+'\'>'+thumbs+'</div>' : '') +
@@ -223,7 +249,7 @@
           (j.format ? '<div class="spec-item"><span>Format</span><strong>'+esc(j.format)+'</strong></div>' : '') +
         '</div>' +
         (j.notes ? '<div class="notes-block">'+esc(j.notes)+'</div>' : '') +
-        '<div class="stat-row"><span>logged '+fmtDate(j.created_at)+'</span></div>' +
+        '<div class="stat-row"><span>logged '+fmtDate(j.created_at)+'</span>'+uploaderHtml+'</div>' +
         '<div class="rate-block"><span class="rate-label">Rate this jersey</span><div id="rating-widget" data-jersey-id="'+j.id+'">'+ratingWidgetHtml(rating, myRatingVal)+'</div></div>' +
       '</div>' +
     '</div>';
@@ -591,18 +617,57 @@
   function renderAuthArea(){
     var el = document.getElementById('auth-area');
     if(currentUser){
+      var username = currentProfile ? currentProfile.username : currentUser.email.split('@')[0];
+      var points = currentProfile ? currentProfile.points : 0;
       el.innerHTML =
-        '<div class="auth-status"><span class="auth-points">'+(currentProfile ? currentProfile.points : 0)+' pts</span>' +
-        '<span>'+esc(currentUser.email)+'</span><button id="sign-out-btn" type="button">Sign out</button></div>';
+        '<div class="auth-status"><span>'+esc(username)+' '+pointsChip(points)+'</span>' +
+        '<button id="edit-username-btn" type="button">Edit</button>' +
+        '<button id="sign-out-btn" type="button">Sign out</button></div>';
       document.getElementById('sign-out-btn').addEventListener('click', async function(){
         await supabaseClient.auth.signOut();
         await refreshAuthUI();
         render();
       });
+      document.getElementById('edit-username-btn').addEventListener('click', function(e){ e.stopPropagation(); toggleUsernamePanel(username); });
     } else {
       el.innerHTML = '<button class="auth-btn" id="sign-in-btn" type="button">Sign in</button>';
       document.getElementById('sign-in-btn').addEventListener('click', function(e){ e.stopPropagation(); toggleAuthPanel(); });
     }
+  }
+
+  function toggleUsernamePanel(current){
+    if(document.getElementById('auth-panel')){ closeAuthPanel(); return; }
+    var el = document.getElementById('auth-area');
+    var panel = document.createElement('div');
+    panel.className = 'auth-panel';
+    panel.id = 'auth-panel';
+    panel.innerHTML =
+      '<p>Pick a username &mdash; this is what shows publicly on jerseys you upload, never your email.</p>' +
+      '<input type="text" id="username-input" value="'+esc(current)+'" maxlength="24">' +
+      '<button class="btn" id="username-save-btn" type="button" style="width:100%;">Save</button>' +
+      '<p class="auth-msg" id="username-msg" hidden></p>';
+    el.appendChild(panel);
+    panel.addEventListener('click', function(e){ e.stopPropagation(); });
+    document.getElementById('username-save-btn').addEventListener('click', async function(){
+      var val = document.getElementById('username-input').value.trim();
+      var msg = document.getElementById('username-msg');
+      if(!val) return;
+      this.disabled = true; this.textContent = 'Saving…';
+      var res = await supabaseClient.from('profiles').update({username: val}).eq('id', currentUser.id);
+      this.disabled = false; this.textContent = 'Save';
+      msg.hidden = false;
+      if(res.error){
+        msg.textContent = res.error.code === '23505' ? 'That username is taken — try another.' : ('Error: '+res.error.message);
+      } else {
+        msg.textContent = 'Saved.';
+        await refreshAuthUI();
+      }
+    });
+    setTimeout(function(){
+      document.addEventListener('click', function outsideClick(e){
+        if(!el.contains(e.target)){ closeAuthPanel(); document.removeEventListener('click', outsideClick); }
+      });
+    }, 0);
   }
 
   async function refreshAuthUI(){

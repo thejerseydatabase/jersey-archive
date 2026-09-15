@@ -33,12 +33,24 @@ create policy "profiles are publicly readable"
 create policy "users can update their own profile"
   on profiles for update using (auth.uid() = id);
 
--- auto-create a profile row whenever someone signs up
+-- auto-create a profile row whenever someone signs up, with a guaranteed-
+-- unique starting username (the email prefix alone can collide across two
+-- different email providers, e.g. john@gmail.com and john@yahoo.com — that
+-- would otherwise break the second person's signup outright).
 create function handle_new_user()
 returns trigger as $$
+declare
+  base_username text := regexp_replace(split_part(new.email, '@', 1), '[^a-zA-Z0-9_]', '', 'g');
+  candidate text;
+  suffix int := 0;
 begin
-  insert into public.profiles (id, username)
-  values (new.id, split_part(new.email, '@', 1));
+  if base_username = '' then base_username := 'fan'; end if;
+  candidate := base_username;
+  while exists (select 1 from public.profiles where username = candidate) loop
+    suffix := suffix + 1;
+    candidate := base_username || suffix::text;
+  end loop;
+  insert into public.profiles (id, username) values (new.id, candidate);
   return new;
 end;
 $$ language plpgsql security definer;
