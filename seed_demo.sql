@@ -1,5 +1,5 @@
 -- Demo/test data only — safe to delete these rows once real uploads exist.
--- Run in Supabase SQL Editor after schema.sql.
+-- Run in Supabase SQL Editor after schema.sql (v2).
 
 insert into teams (slug, competition_slug, name, primary_color, secondary_color) values
   ('brisbane-broncos','nrl','Brisbane Broncos','#7A1927','#F5B324'),
@@ -11,8 +11,8 @@ insert into teams (slug, competition_slug, name, primary_color, secondary_color)
   ('canterbury-bulldogs','nrl','Canterbury Bulldogs','#0D3B8C','#FFFFFF'),
   ('north-queensland-cowboys','nrl','North Queensland Cowboys','#002B5C','#F5C518');
 
-insert into jerseys (team_slug, season, type, manufacturer)
-select t.slug, s.season, ty.type, 'ISC'
+insert into jerseys (team_id, season, type, manufacturer)
+select t.id, s.season, ty.type, 'ISC'
 from teams t
 cross join (values (2022),(2023),(2024)) as s(season)
 cross join (values ('Home'),('Away')) as ty(type)

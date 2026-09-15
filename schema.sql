@@ -1,5 +1,20 @@
--- Jersey Archive database schema
--- Run this once in Supabase: Project → SQL Editor → New query → paste → Run
+-- Jersey Archive database schema (v2 — safe to re-run)
+-- Run this in Supabase: Project → SQL Editor → New snippet → paste → Run
+--
+-- v2 change: teams are now identified by (competition_slug, slug) instead of
+-- a single globally-unique slug. A globally-unique team slug would let two
+-- unrelated clubs in different sports/competitions that happen to share a
+-- name (e.g. a lower-league "Tigers" or "United" in two different countries)
+-- silently collide into one row. This version drops and recreates the
+-- affected tables — safe right now because only demo/seed data exists.
+
+drop view if exists jersey_ratings;
+drop trigger if exists on_jersey_uploaded on jerseys;
+drop trigger if exists on_auth_user_created on auth.users;
+drop table if exists ratings, jersey_images, jerseys, teams, competitions, sports, profiles cascade;
+drop function if exists award_upload_point() cascade;
+drop function if exists handle_new_user() cascade;
+
 
 -- ============ profiles ============
 -- One row per signed-up user. Created automatically on signup (trigger below).
@@ -61,15 +76,20 @@ create policy "authenticated users can add competitions"
 
 
 -- ============ teams ============
+-- id is the real identity; slug is only unique WITHIN a competition, so the
+-- same short name can exist in different sports/competitions without colliding.
 create table teams (
-  slug text primary key,
+  id uuid primary key default gen_random_uuid(),
+  slug text not null,
   competition_slug text not null references competitions(slug) on delete cascade,
   name text not null,
   primary_color text not null default '#3FA88C',
   secondary_color text not null default '#F2F6EF',
   created_by uuid references auth.users(id),
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  unique (competition_slug, slug)
 );
+create index teams_slug_idx on teams(slug);
 
 alter table teams enable row level security;
 create policy "teams are publicly readable" on teams for select using (true);
@@ -80,7 +100,7 @@ create policy "authenticated users can add teams"
 -- ============ jerseys ============
 create table jerseys (
   id uuid primary key default gen_random_uuid(),
-  team_slug text not null references teams(slug) on delete cascade,
+  team_id uuid not null references teams(id) on delete cascade,
   season integer not null check (season between 1850 and 2100),
   type text not null,               -- Home / Away / Alternate / Indigenous / Heritage / Training / user-typed
   manufacturer text,
@@ -91,7 +111,7 @@ create table jerseys (
   created_at timestamptz not null default now()
 );
 
-create index jerseys_team_idx on jerseys(team_slug);
+create index jerseys_team_idx on jerseys(team_id);
 create index jerseys_season_idx on jerseys(season);
 create index jerseys_manufacturer_idx on jerseys(manufacturer);
 create index jerseys_type_idx on jerseys(type);
