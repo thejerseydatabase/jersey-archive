@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>document.documentElement.setAttribute("data-theme", localStorage.getItem("jersey-archive-theme") || "dark");</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="The Jersey Archive - a fan-uploaded jersey photo archive across every sport, part of The Jersey Database.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233FD1A8' stroke-width='2'%3E%3Cpath d='M4 5l4-2 4 2 4-2 4 2v3l-3 1v11H7V9L4 8z'/%3E%3C/svg%3E">
+<title>Jersey Archive</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F4F1E9; --surface:#FFFFFF; --surface-2:#ECE6D8; --line:#D9D0BC;
+    --text:#1C2B21; --text-dim:#5C6F60; --text-dim2:#8B9A8E;
+    --accent:#1F7A63; --accent-ink:#FFFFFF; --danger:#B3261E;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0B1F17; --surface:#12271D; --surface-2:#1B3A2A; --line:#264536;
+      --text:#F2F6EF; --text-dim:#8FAA98; --text-dim2:#5E7B69;
+      --accent:#3FD1A8; --accent-ink:#0B1F17; --danger:#FF6B5B;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0B1F17; --surface:#12271D; --surface-2:#1B3A2A; --line:#264536;
+    --text:#F2F6EF; --text-dim:#8FAA98; --text-dim2:#5E7B69;
+    --accent:#3FD1A8; --accent-ink:#0B1F17; --danger:#FF6B5B;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;}
+  a{color:inherit;}
+  .wrap{max-width:720px;margin:0 auto;padding:0 20px 80px;}
+  .hero{padding:80px 20px 40px;text-align:center;}
+  .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.2em;color:var(--accent);text-transform:uppercase;margin:0 0 14px;}
+  h1{font-family:'Anton',sans-serif;font-weight:400;font-size:clamp(32px,6vw,52px);letter-spacing:.01em;text-transform:uppercase;line-height:1.1;margin:0 0 16px;}
+  .sub{font-size:15px;color:var(--text-dim);max-width:480px;margin:0 auto;line-height:1.6;}
+  .status{
+    font-family:'IBM Plex Mono',monospace;font-size:11.5px;text-align:center;
+    border:1px dashed var(--line);border-radius:10px;padding:12px 16px;margin-bottom:24px;color:var(--text-dim2);
+  }
+  .status.is-ok{border-color:var(--accent);color:var(--accent);}
+  .status.is-error{border-color:var(--danger);color:var(--danger);}
+  .sport-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;}
+  .sport-card{
+    display:flex;flex-direction:column;gap:12px;background:var(--surface);border:1px solid var(--line);
+    border-radius:14px;padding:20px;color:var(--text);
+  }
+  .sport-card h2{font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.02em;margin:0;}
+  .sport-meta{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--text-dim2);text-transform:uppercase;letter-spacing:.05em;}
+  footer{margin-top:48px;padding-top:20px;border-top:1px solid var(--line);text-align:center;}
+  footer p{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim2);line-height:1.8;}
+  footer a{color:var(--accent);text-decoration:none;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <p class="eyebrow">The Jersey Database &mdash; Archive</p>
+    <h1>Jersey Archive</h1>
+    <p class="sub">The live database is now connected. This page reads the sports list straight from Supabase &mdash; the full browsing, upload, and login flow is being built next.</p>
+  </header>
+
+  <div id="status" class="status">Connecting to the database&hellip;</div>
+  <div id="sports" class="sport-grid"></div>
+
+  <footer>
+    <p>
+      A separate project from the match trackers at <a href="https://thejerseydatabase.com" target="_blank" rel="noopener">thejerseydatabase.com</a>.<br>
+      Fan-built. Not affiliated with any league, club, federation, or governing body.
+    </p>
+  </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script>
+(async function(){
+  var statusEl = document.getElementById('status');
+  var grid = document.getElementById('sports');
+  try {
+    var result = await supabaseClient.from('sports').select('slug,name,sort_order').order('sort_order');
+    if (result.error) throw result.error;
+    var sports = result.data || [];
+    if (sports.length === 0) {
+      statusEl.textContent = 'Connected, but the sports table is empty — check schema.sql ran successfully.';
+      statusEl.className = 'status is-error';
+      return;
+    }
+    statusEl.textContent = '✓ Connected — ' + sports.length + ' sports loaded live from Supabase';
+    statusEl.className = 'status is-ok';
+    grid.innerHTML = sports.map(function(s){
+      return '<div class="sport-card"><h2>' + s.name.replace(/</g,'&lt;') + '</h2><span class="sport-meta">' + s.slug + '</span></div>';
+    }).join('');
+  } catch (err) {
+    statusEl.textContent = 'Could not reach the database: ' + (err.message || err);
+    statusEl.className = 'status is-error';
+  }
+})();
+</script>
+</body>
+</html>
