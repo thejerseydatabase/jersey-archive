@@ -151,6 +151,8 @@ create table jerseys (
   uploaded_by uuid references auth.users(id),
   views integer not null default 0,
   status text not null default 'pending' check (status in ('pending','approved','rejected')),
+  -- shown back to the uploader on a rejected submission's own page
+  rejection_reason text,
   created_at timestamptz not null default now()
 );
 

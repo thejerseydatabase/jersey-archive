@@ -6,8 +6,10 @@
   var ICON_PENCIL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>';
   var ICON_FLAG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22V3"/></svg>';
   var FORMATS_BY_SPORT = { cricket: ['Test','T20','T20I','ODI','One Day','First Class'] };
-  var JERSEY_TYPES = ['Home','Away','Alternate','Indigenous','Heritage','Training'];
-  var MANUFACTURERS = ['ISC','Classic','Kappa','Canterbury','BLK','Burley Sekem','Macron','Puma','Nike','Adidas','New Balance'];
+  var CURATED_TYPES = ['Home','Away','Third','Alternate','Indigenous','Heritage','Training'];
+  // Fixed lead-in, most-used-globally kits — after these, the upload form
+  // fills in with whatever's actually used most in the selected sport.
+  var PRIORITY_MANUFACTURERS = ['Adidas','Nike','Puma','Umbro','Macron','Dynasty Sport','Asics','Classic Sportswear'];
 
   // Reputation tiers by upload points — adjust thresholds/colors/labels here.
   var TIERS = [
@@ -116,7 +118,8 @@
     var yearType = jersey.season + ' · ' + jersey.type + (jersey.format ? ' · ' + jersey.format : '');
     var primary = opts.showTeam ? team.name : yearType;
     var secondary = opts.showTeam ? yearType : (jersey.manufacturer || 'Unlisted');
-    var pendingBadge = jersey.status && jersey.status !== 'approved' ? '<span class="pending-badge">Pending</span>' : '';
+    var pendingBadge = jersey.status === 'rejected' ? '<span class="pending-badge is-rejected">Rejected</span>'
+      : (jersey.status && jersey.status !== 'approved' ? '<span class="pending-badge">Pending</span>' : '');
     return '<a class="jersey-card" href="#/jersey/'+jersey.id+'">' + pendingBadge +
       '<div class="jersey-thumb">'+jerseyThumb(jersey, team)+'</div>' +
       '<div class="jersey-label"><strong>'+esc(primary)+'</strong><span>'+esc(secondary)+'</span></div>' +
@@ -560,8 +563,10 @@
       }
     }
 
-    var pendingBanner = j.status && j.status !== 'approved'
-      ? '<div class="pending-banner">This jersey is '+esc(j.status)+' &mdash; only you and moderators can see it until it’s approved.</div>' : '';
+    var pendingBanner = j.status === 'rejected'
+      ? '<div class="pending-banner">This submission was rejected &mdash; only you and moderators can see it.' + (j.rejection_reason ? '<br><strong>Reason:</strong> '+esc(j.rejection_reason) : ' No reason was given.') + '</div>'
+      : (j.status && j.status !== 'approved'
+        ? '<div class="pending-banner">This jersey is '+esc(j.status)+' &mdash; only you and moderators can see it until it’s approved.</div>' : '');
 
     var isAdmin = currentProfile && currentProfile.is_admin;
     function specItem(label, valueHtml, editData){
@@ -743,11 +748,14 @@
     var sportsRes = await supabaseClient.from('sports').select('*').order('sort_order');
     if(sportsRes.error) throw sportsRes.error;
     var sportOptions = (sportsRes.data||[]).map(function(s){ return '<option value="'+s.slug+'">'+esc(s.name)+'</option>'; }).join('');
+    // Placeholder lists for the very first render — wireUploadForm's
+    // refreshMfrTypeOptions() immediately upgrades these to the
+    // sport-scoped, usage-ordered versions once the page mounts.
     var typeOptions = '<option value="">Select a type</option>' +
-      JERSEY_TYPES.map(function(t){ return '<option value="'+t+'">'+t+'</option>'; }).join('') +
+      CURATED_TYPES.map(function(t){ return '<option value="'+t+'">'+t+'</option>'; }).join('') +
       '<option value="__new__">+ Add a new one…</option>';
     var mfrOptions = '<option value="">&mdash; Unlisted &mdash;</option>' +
-      MANUFACTURERS.map(function(m){ return '<option value="'+esc(m)+'">'+esc(m)+'</option>'; }).join('') +
+      PRIORITY_MANUFACTURERS.map(function(m){ return '<option value="'+esc(m)+'">'+esc(m)+'</option>'; }).join('') +
       '<option value="__new__">+ Add a new one…</option>';
     var thisYear = new Date().getFullYear();
 
@@ -791,6 +799,7 @@
             '</div>' +
             '<div class="photo-previews" id="photo-previews"></div>' +
             '<p class="field-error" id="photo-error" hidden>Add at least one photo before submitting.</p>' +
+            '<p class="field-hint">If you leave this page before submitting, your typed-in details are kept for next time &mdash; but photos aren&rsquo;t, so you&rsquo;ll need to re-add them.</p>' +
           '</div>' +
           '<div class="field field-full"><label for="f-notes">Additional info <small>optional</small></label><textarea id="f-notes" placeholder="Sponsor changes, special edition, match it was worn in..."></textarea></div>' +
         '</div>' +
@@ -969,6 +978,8 @@
           }).join('') + '</div>'
         : '';
       var moveId = 'mod-jersey-'+j.id;
+      var editId = 'mod-edit-'+j.id;
+      var rejectId = 'mod-reject-'+j.id;
       return '<div class="mod-card">' +
         '<div class="jersey-thumb">'+thumb+'</div>' +
         '<div class="mod-info">' +
@@ -980,10 +991,28 @@
           allPhotosHtml +
           '<button class="chip comp-move-toggle" data-target="'+moveId+'" type="button">Wrong competition?</button>' +
           '<div class="comp-move-panel" id="'+moveId+'" hidden>'+renderCompetitionMoveControl(moveId, team.id, comp.sport_slug, comp.slug)+'</div>' +
+          '<button class="chip mod-edit-toggle" data-target="'+editId+'" type="button">Edit details</button>' +
+          '<div class="comp-move-panel" id="'+editId+'" hidden style="max-width:420px;">' +
+            '<div class="comp-move-row">' +
+              '<input type="text" class="comp-move-new-input" id="edit-season-'+j.id+'" placeholder="Season" value="'+esc(j.season)+'">' +
+              '<input type="text" class="comp-move-new-input" id="edit-type-'+j.id+'" placeholder="Jersey type" value="'+esc(j.type)+'">' +
+            '</div>' +
+            '<div class="comp-move-row" style="margin-top:10px;">' +
+              '<input type="text" class="comp-move-new-input" id="edit-mfr-'+j.id+'" placeholder="Manufacturer" value="'+esc(j.manufacturer || '')+'">' +
+            '</div>' +
+            '<textarea class="report-textarea" id="edit-notes-'+j.id+'" placeholder="Additional info" style="margin-top:10px;">'+esc(j.notes || '')+'</textarea>' +
+            '<button class="btn btn-secondary" data-save-edit="'+j.id+'" type="button">Save changes</button>' +
+            '<p class="field-hint" id="edit-msg-'+j.id+'" hidden></p>' +
+          '</div>' +
         '</div>' +
         '<div class="mod-actions">' +
           '<button class="btn" data-type="jersey" data-action="approve" data-id="'+j.id+'" type="button">Approve</button>' +
-          '<button class="btn btn-reject" data-type="jersey" data-action="reject" data-id="'+j.id+'" type="button">Reject</button>' +
+          '<button class="btn btn-reject mod-reject-toggle" data-target="'+rejectId+'" type="button">Reject</button>' +
+        '</div>' +
+        '<div class="comp-move-panel" id="'+rejectId+'" hidden style="flex-basis:100%;max-width:none;">' +
+          '<textarea class="report-textarea" id="reject-reason-'+j.id+'" placeholder="Why is this being rejected? Shown to the uploader on their submission."></textarea>' +
+          '<button class="btn btn-reject" data-confirm-reject="'+j.id+'" type="button">Confirm reject</button>' +
+          '<p class="field-hint" id="reject-msg-'+j.id+'" hidden></p>' +
         '</div>' +
       '</div>';
     }).join('');
@@ -1532,6 +1561,55 @@
         panel.hidden = !panel.hidden;
       });
     });
+    document.querySelectorAll('.mod-edit-toggle, .mod-reject-toggle').forEach(function(toggle){
+      toggle.addEventListener('click', function(){
+        var panel = document.getElementById(toggle.dataset.target);
+        panel.hidden = !panel.hidden;
+      });
+    });
+    document.querySelectorAll('[data-save-edit]').forEach(function(btn){
+      btn.addEventListener('click', async function(){
+        var id = btn.dataset.saveEdit;
+        var msg = document.getElementById('edit-msg-'+id);
+        var season = document.getElementById('edit-season-'+id).value.trim();
+        var type = document.getElementById('edit-type-'+id).value.trim();
+        var manufacturer = document.getElementById('edit-mfr-'+id).value.trim();
+        var notes = document.getElementById('edit-notes-'+id).value.trim();
+        if(!season || !type){
+          msg.hidden = false; msg.className = 'field-error'; msg.textContent = 'Season and jersey type can\'t be blank.';
+          return;
+        }
+        btn.disabled = true; btn.textContent = 'Saving…';
+        var upd = await supabaseClient.from('jerseys').update({
+          season: season, type: type, manufacturer: manufacturer || null, notes: notes || null
+        }).eq('id', id);
+        btn.disabled = false; btn.textContent = 'Save changes';
+        if(upd.error){
+          msg.hidden = false; msg.className = 'field-error'; msg.textContent = 'Error: ' + upd.error.message;
+          return;
+        }
+        render();
+      });
+    });
+    document.querySelectorAll('[data-confirm-reject]').forEach(function(btn){
+      btn.addEventListener('click', async function(){
+        var id = btn.dataset.confirmReject;
+        var msg = document.getElementById('reject-msg-'+id);
+        var reason = document.getElementById('reject-reason-'+id).value.trim() || null;
+        btn.disabled = true; btn.textContent = 'Rejecting…';
+        // kept, not deleted — status flips to 'rejected' with an optional
+        // reason so the uploader can see why and fix it, rather than the
+        // submission just vanishing with no explanation.
+        var upd = await supabaseClient.from('jerseys').update({status:'rejected', rejection_reason: reason}).eq('id', id);
+        btn.disabled = false; btn.textContent = 'Confirm reject';
+        if(upd.error){
+          msg.hidden = false; msg.className = 'field-error'; msg.textContent = 'Error: ' + upd.error.message;
+          return;
+        }
+        await refreshAuthUI();
+        render();
+      });
+    });
     document.querySelectorAll('.mod-card [data-action]').forEach(function(btn){
       btn.addEventListener('click', async function(){
         var id = btn.dataset.id;
@@ -1588,18 +1666,12 @@
               var pdel = await supabaseClient.from('jersey_images').delete().eq('id', id);
               if(pdel.error) throw pdel.error;
             }
-          } else if(btn.dataset.action === 'approve'){
+          } else {
+            // the only other data-action button on a jersey card is approve —
+            // reject is handled separately above via the reason panel, since
+            // it needs a reason typed in first rather than firing immediately
             var r = await supabaseClient.from('jerseys').update({status:'approved'}).eq('id', id);
             if(r.error) throw r.error;
-          } else {
-            var imgRes = await supabaseClient.from('jersey_images').select('storage_path').eq('jersey_id', id);
-            var paths = (imgRes.data || []).map(function(row){ return row.storage_path; });
-            if(paths.length){
-              var rmRes = await supabaseClient.storage.from('jersey-photos').remove(paths);
-              if(rmRes.error) throw rmRes.error;
-            }
-            var delRes = await supabaseClient.from('jerseys').delete().eq('id', id);
-            if(delRes.error) throw delRes.error;
           }
           if(card) card.remove();
           await refreshAuthUI();
@@ -1793,7 +1865,44 @@
       formatSel.innerHTML = formats ? formats.map(function(f){ return '<option>'+f+'</option>'; }).join('') : '';
     }
 
-    sportSel.addEventListener('change', function(){ refreshComps(); refreshFormat(); saveDraft(); });
+    // Counts how often each value of `field` (manufacturer/type) shows up
+    // among approved jerseys in the given sport, so the dropdown can put
+    // what's actually common in that sport ahead of the long tail — the
+    // whole reason "iAthletic" (a basketball brand) shouldn't lead the
+    // list on a rugby league upload.
+    async function usageCounts(field, sportSlug){
+      var comps = await competitionsForSport(sportSlug);
+      var compSlugs = comps.map(function(c){ return c.slug; });
+      if(!compSlugs.length) return {};
+      var res = await supabaseClient.from('jerseys').select(field+', teams!inner(*)').eq('status', 'approved').in('teams.competition_slug', compSlugs);
+      var counts = {};
+      (res.data || []).forEach(function(r){
+        var v = (r[field] || '').toString().trim();
+        if(v) counts[v] = (counts[v] || 0) + 1;
+      });
+      return counts;
+    }
+    async function refreshMfrTypeOptions(){
+      var sportSlug = sportSel.value;
+      var typeCounts = await usageCounts('type', sportSlug);
+      var mfrCounts = await usageCounts('manufacturer', sportSlug);
+
+      var typeExtra = Object.keys(typeCounts).filter(function(t){ return CURATED_TYPES.indexOf(t) === -1; })
+        .sort(function(a,b){ return typeCounts[b] - typeCounts[a]; });
+      typeSelect.innerHTML = '<option value="">Select a type</option>' +
+        CURATED_TYPES.concat(typeExtra).map(function(t){ return '<option value="'+esc(t)+'">'+esc(t)+'</option>'; }).join('') +
+        '<option value="__new__">+ Add a new one…</option>';
+      typeSelect.hidden = false; typeNewRow.hidden = true; typeNew.value = ''; typeNew.required = false;
+
+      var mfrExtra = Object.keys(mfrCounts).filter(function(m){ return PRIORITY_MANUFACTURERS.indexOf(m) === -1; })
+        .sort(function(a,b){ return mfrCounts[b] - mfrCounts[a]; });
+      mfrSelect.innerHTML = '<option value="">&mdash; Unlisted &mdash;</option>' +
+        PRIORITY_MANUFACTURERS.concat(mfrExtra).map(function(m){ return '<option value="'+esc(m)+'">'+esc(m)+'</option>'; }).join('') +
+        '<option value="__new__">+ Add a new one…</option>';
+      mfrSelect.hidden = false; mfrNewRow.hidden = true; mfrNew.value = ''; mfrNew.required = false;
+    }
+
+    sportSel.addEventListener('change', function(){ refreshComps(); refreshFormat(); refreshMfrTypeOptions(); saveDraft(); });
     compSelect.addEventListener('change', function(){ syncNewVisibility(compSelect, compNewRow, compNew, true); refreshTeams(); saveDraft(); });
     teamSelect.addEventListener('change', function(){ syncNewVisibility(teamSelect, teamNewRow, teamNew, true); saveDraft(); });
     typeSelect.addEventListener('change', function(){ syncNewVisibility(typeSelect, typeNewRow, typeNew, true); saveDraft(); });
@@ -1811,6 +1920,7 @@
       if(restoredDraft && restoredDraft.sport) sportSel.value = restoredDraft.sport;
       await refreshComps();
       refreshFormat();
+      await refreshMfrTypeOptions();
       if(restoredDraft){
         if(restoredDraft.comp){
           compSelect.value = restoredDraft.comp.v || '';
