@@ -43,7 +43,14 @@
     return supabaseClient.storage.from('jersey-photos').getPublicUrl(path).data.publicUrl;
   }
 
+  function publicLogoUrl(path){
+    return supabaseClient.storage.from('team-logos').getPublicUrl(path).data.publicUrl;
+  }
+
   function teamSwatch(team){
+    if(team.logo_path){
+      return '<div class="team-swatch team-swatch-logo"><img src="'+esc(publicLogoUrl(team.logo_path))+'" alt=""></div>';
+    }
     return '<div class="team-swatch"><div class="a" style="background:'+esc(team.primary_color)+'"></div><div class="b" style="background:'+esc(team.secondary_color)+'"></div></div>';
   }
 
@@ -218,7 +225,12 @@
       return '<div class="season-group"><h3><a class="spec-link" href="#/sport/'+sportSlug+'/'+compSlug+'/season/'+y+'">'+y+'</a></h3><div class="jersey-grid">'+cards+'</div></div>';
     }).join('');
 
+    var logoBlock = currentUser
+      ? '<div class="add-photos-block"><button class="btn btn-secondary" id="propose-logo-toggle" data-team-id="'+team.id+'" type="button">'+(team.logo_path ? 'Propose a different logo' : '+ Propose a logo')+'</button><div id="propose-logo-panel" hidden></div></div>'
+      : '';
+
     return '<div class="section-head">'+teamSwatch(team)+'<h2 style="margin-left:2px;">'+esc(team.name)+'</h2></div>' +
+      logoBlock +
       (groups || '<div class="empty-note">No jerseys logged yet.</div>') +
       renderReportButton('team', team.id, team.name);
   }
@@ -442,9 +454,14 @@
     var reportRes = await supabaseClient.from('reports').select('*').eq('status', 'open').order('created_at');
     if(!reportRes.error) openReports = reportRes.data || [];
 
+    var pendingLogos = [];
+    var logoRes = await supabaseClient.from('team_logo_proposals').select('*, teams(name)').eq('status', 'pending').order('created_at');
+    if(!logoRes.error) pendingLogos = logoRes.data || [];
+
     var uploaderIds = pendingJerseys.map(function(j){ return j.uploaded_by; })
       .concat(pendingPhotos.map(function(img){ return img.uploaded_by; }))
       .concat(openReports.map(function(r){ return r.reported_by; }))
+      .concat(pendingLogos.map(function(l){ return l.proposed_by; }))
       .filter(Boolean);
     var uploaderNames = {};
     if(uploaderIds.length){
@@ -452,7 +469,7 @@
       (profRes.data || []).forEach(function(p){ uploaderNames[p.id] = p.username; });
     }
 
-    if(!pendingJerseys.length && !pendingPhotos.length && !openReports.length){
+    if(!pendingJerseys.length && !pendingPhotos.length && !openReports.length && !pendingLogos.length){
       return '<div class="section-head"><h2>Moderation queue</h2></div><div class="empty-note">Nothing waiting for review.</div>';
     }
 
@@ -515,12 +532,30 @@
       '</div>';
     }).join('');
 
+    var logoCards = pendingLogos.map(function(l){
+      var proposer = uploaderNames[l.proposed_by] || 'unknown';
+      return '<div class="mod-card">' +
+        '<div class="jersey-thumb"><img src="'+esc(publicLogoUrl(l.storage_path))+'" alt=""></div>' +
+        '<div class="mod-info">' +
+          '<strong>Logo for '+(l.teams ? esc(l.teams.name) : 'a team')+'</strong>' +
+          '<span>proposed by '+esc(proposer)+'</span>' +
+        '</div>' +
+        '<div class="mod-actions">' +
+          '<button class="btn" data-type="logo" data-action="approve" data-id="'+l.id+'" data-team-id="'+l.team_id+'" data-path="'+esc(l.storage_path)+'" type="button">Approve</button>' +
+          '<button class="btn btn-reject" data-type="logo" data-action="reject" data-id="'+l.id+'" data-path="'+esc(l.storage_path)+'" type="button">Reject</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
     return '<div class="section-head"><h2>Moderation queue</h2></div>' +
       '<section class="block"><div class="section-head"><h2>New jerseys</h2><span class="count">'+pendingJerseys.length+' pending</span></div>' +
         (jerseyCards ? '<div class="mod-list">'+jerseyCards+'</div>' : '<div class="empty-note">None waiting.</div>') +
       '</section>' +
       '<section class="block"><div class="section-head"><h2>Proposed photos</h2><span class="count">'+pendingPhotos.length+' pending</span></div>' +
         (photoCards ? '<div class="mod-list">'+photoCards+'</div>' : '<div class="empty-note">None waiting.</div>') +
+      '</section>' +
+      '<section class="block"><div class="section-head"><h2>Logo proposals</h2><span class="count">'+pendingLogos.length+' pending</span></div>' +
+        (logoCards ? '<div class="mod-list">'+logoCards+'</div>' : '<div class="empty-note">None waiting.</div>') +
       '</section>' +
       '<section class="block"><div class="section-head"><h2>Reports</h2><span class="count">'+openReports.length+' open</span></div>' +
         (reportCards ? '<div class="mod-list">'+reportCards+'</div>' : '<div class="empty-note">None open.</div>') +
@@ -630,6 +665,19 @@
           panel.dataset.wired = '1';
           panel.innerHTML = renderAddPhotosPanel();
           wireAddPhotosPanel(addPhotosToggle.dataset.jerseyId);
+        }
+        panel.hidden = !panel.hidden;
+      });
+    }
+
+    var proposeLogoToggle = document.getElementById('propose-logo-toggle');
+    if(proposeLogoToggle){
+      proposeLogoToggle.addEventListener('click', function(){
+        var panel = document.getElementById('propose-logo-panel');
+        if(!panel.dataset.wired){
+          panel.dataset.wired = '1';
+          panel.innerHTML = renderProposeLogoPanel();
+          wireProposeLogoPanel(proposeLogoToggle.dataset.teamId);
         }
         panel.hidden = !panel.hidden;
       });
@@ -755,6 +803,73 @@
     });
   }
 
+  function renderProposeLogoPanel(){
+    return '<div class="dropzone" id="pl-dropzone" tabindex="0" role="button" aria-label="Add a logo">' +
+        ICON_PHOTO +
+        '<p>Drop a logo image here, or click to choose</p>' +
+        '<input type="file" id="pl-logo-input" accept="image/*" style="display:none;">' +
+      '</div>' +
+      '<div class="photo-previews" id="pl-logo-preview"></div>' +
+      '<p class="field-error" id="pl-logo-error" hidden>Choose an image before submitting.</p>' +
+      '<div style="margin-top:14px;"><button class="btn" id="pl-submit-btn" type="button" disabled>Submit for review</button></div>' +
+      '<div id="pl-result"></div>';
+  }
+
+  function wireProposeLogoPanel(teamId){
+    var picked = null;
+    var dropzone = document.getElementById('pl-dropzone');
+    var input = document.getElementById('pl-logo-input');
+    var previewEl = document.getElementById('pl-logo-preview');
+    var submitBtn = document.getElementById('pl-submit-btn');
+
+    function setFile(file){
+      if(!file || !/^image\//.test(file.type)) return;
+      if(picked) URL.revokeObjectURL(picked.url);
+      picked = {file: file, url: URL.createObjectURL(file)};
+      previewEl.innerHTML = '<div class="photo-preview-item"><div class="photo-preview-thumb"><img src="'+picked.url+'" alt=""></div>' +
+        '<button type="button" class="photo-remove-btn" id="pl-remove-btn" aria-label="Remove">✕</button></div>';
+      document.getElementById('pl-remove-btn').addEventListener('click', function(){
+        URL.revokeObjectURL(picked.url); picked = null; previewEl.innerHTML = ''; submitBtn.disabled = true;
+      });
+      submitBtn.disabled = false;
+    }
+    dropzone.addEventListener('click', function(){ input.click(); });
+    dropzone.addEventListener('keydown', function(e){ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); input.click(); } });
+    input.addEventListener('change', function(){ setFile(input.files[0]); input.value = ''; });
+    dropzone.addEventListener('dragover', function(e){ e.preventDefault(); dropzone.classList.add('is-dragover'); });
+    dropzone.addEventListener('dragleave', function(){ dropzone.classList.remove('is-dragover'); });
+    dropzone.addEventListener('drop', function(e){
+      e.preventDefault();
+      dropzone.classList.remove('is-dragover');
+      if(e.dataTransfer && e.dataTransfer.files) setFile(e.dataTransfer.files[0]);
+    });
+
+    submitBtn.addEventListener('click', async function(){
+      var errorEl = document.getElementById('pl-logo-error');
+      if(!picked){ errorEl.hidden = false; return; }
+      errorEl.hidden = true;
+      submitBtn.disabled = true; submitBtn.textContent = 'Submitting…';
+      try {
+        var ext = (picked.file.name.split('.').pop() || 'png').toLowerCase();
+        var path = teamId + '/logo-' + Date.now() + '.' + ext;
+        var up = await supabaseClient.storage.from('team-logos').upload(path, picked.file);
+        if(up.error) throw up.error;
+        var ins = await supabaseClient.from('team_logo_proposals').insert({
+          team_id: teamId, storage_path: path, proposed_by: currentUser.id
+        });
+        if(ins.error) throw ins.error;
+        document.getElementById('pl-result').innerHTML = '<p class="field-hint is-match" style="margin-top:10px;">Submitted for review — thanks!</p>';
+        URL.revokeObjectURL(picked.url);
+        picked = null;
+        previewEl.innerHTML = '';
+      } catch(err) {
+        document.getElementById('pl-result').innerHTML = errorBox(err);
+      } finally {
+        submitBtn.disabled = false; submitBtn.textContent = 'Submit for review';
+      }
+    });
+  }
+
   function wireModerationActions(){
     document.querySelectorAll('.mod-card [data-action]').forEach(function(btn){
       btn.addEventListener('click', async function(){
@@ -767,6 +882,20 @@
           if(type === 'report'){
             var repRes = await supabaseClient.from('reports').update({status:'resolved'}).eq('id', id);
             if(repRes.error) throw repRes.error;
+          } else if(type === 'logo'){
+            if(btn.dataset.action === 'approve'){
+              var teamUpd = await supabaseClient.from('teams').update({logo_path: btn.dataset.path}).eq('id', btn.dataset.teamId);
+              if(teamUpd.error) throw teamUpd.error;
+              var logoApprove = await supabaseClient.from('team_logo_proposals').delete().eq('id', id);
+              if(logoApprove.error) throw logoApprove.error;
+            } else {
+              if(btn.dataset.path){
+                var logoRm = await supabaseClient.storage.from('team-logos').remove([btn.dataset.path]);
+                if(logoRm.error) throw logoRm.error;
+              }
+              var logoDel = await supabaseClient.from('team_logo_proposals').delete().eq('id', id);
+              if(logoDel.error) throw logoDel.error;
+            }
           } else if(type === 'photo'){
             if(btn.dataset.action === 'approve'){
               var pr = await supabaseClient.from('jersey_images').update({status:'approved'}).eq('id', id);
@@ -1143,6 +1272,10 @@
           var reportCountRes = await supabaseClient.from('reports').select('id', {count:'exact', head:true}).eq('status', 'open');
           if(!reportCountRes.error) pendingCount += (reportCountRes.count || 0);
         } catch(e){} // reports table may not exist yet if edit_and_report.sql hasn't been run
+        try {
+          var logoCountRes = await supabaseClient.from('team_logo_proposals').select('id', {count:'exact', head:true}).eq('status', 'pending');
+          if(!logoCountRes.error) pendingCount += (logoCountRes.count || 0);
+        } catch(e){} // team_logo_proposals may not exist yet if team_logos.sql hasn't been run
       }
     } else {
       currentProfile = null;

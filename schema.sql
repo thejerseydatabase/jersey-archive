@@ -103,6 +103,7 @@ create table teams (
   name text not null,
   primary_color text not null default '#3FA88C',
   secondary_color text not null default '#F2F6EF',
+  logo_path text,
   created_by uuid references auth.users(id),
   created_at timestamptz not null default now(),
   unique (competition_slug, slug)
@@ -288,6 +289,43 @@ create policy "authenticated users can upload jersey photos"
 create policy "admins can delete jersey photos"
   on storage.objects for delete to authenticated
   using (bucket_id = 'jersey-photos' and exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+
+
+-- ============ team logos ============
+-- Proposable by any signed-in user, only live once approved — same
+-- pattern as extra jersey photos. Needs a "team-logos" Storage bucket
+-- (Public bucket ON), created separately in the dashboard.
+create table team_logo_proposals (
+  id uuid primary key default gen_random_uuid(),
+  team_id uuid not null references teams(id) on delete cascade,
+  storage_path text not null,
+  proposed_by uuid references auth.users(id),
+  status text not null default 'pending' check (status in ('pending','approved','rejected')),
+  created_at timestamptz not null default now()
+);
+
+alter table team_logo_proposals enable row level security;
+create policy "logo proposals are readable by proposer and admins"
+  on team_logo_proposals for select using (
+    proposed_by = auth.uid() or exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin)
+  );
+create policy "authenticated users can propose a team logo"
+  on team_logo_proposals for insert to authenticated with check (proposed_by = auth.uid());
+create policy "admins can moderate logo proposals"
+  on team_logo_proposals for update
+  using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin))
+  with check (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+create policy "admins can delete logo proposals"
+  on team_logo_proposals for delete
+  using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+
+create policy "anyone can view team logos"
+  on storage.objects for select using (bucket_id = 'team-logos');
+create policy "authenticated users can upload team logos"
+  on storage.objects for insert to authenticated with check (bucket_id = 'team-logos');
+create policy "admins can delete team logo files"
+  on storage.objects for delete to authenticated
+  using (bucket_id = 'team-logos' and exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
 
 
 -- ============ seed data ============
