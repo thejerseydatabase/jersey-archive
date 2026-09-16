@@ -113,6 +113,16 @@
     '</a>';
   }
 
+  // Shares the jersey-card markup/CSS so a logo slots into the same
+  // "Recently added" grid as jerseys instead of needing its own layout.
+  function logoCard(logo, team){
+    var sportSlug = team.competitions.sport_slug;
+    return '<a class="jersey-card" href="#/sport/'+sportSlug+'/'+team.competition_slug+'/team/'+team.slug+'">' +
+      '<div class="jersey-thumb"><img src="'+esc(publicLogoUrl(logo.storage_path))+'" alt=""></div>' +
+      '<div class="jersey-label"><strong>'+esc(team.name)+'</strong><span>New logo</span></div>' +
+    '</a>';
+  }
+
   async function fetchRating(jerseyId){
     var r = await supabaseClient.from('jersey_ratings').select('*').eq('jersey_id', jerseyId).maybeSingle();
     if(r.error) throw r.error;
@@ -219,13 +229,20 @@
 
   /* ================= views ================= */
   // Used on both the homepage (site-wide) and each sport page (scoped to
-  // that sport's competitions) to show a small "just uploaded" gallery.
+  // that sport's competitions) to show a small "just uploaded" gallery —
+  // mixes in newly-approved team logos alongside jerseys, most recent first.
   async function recentJerseysHtml(compSlugs){
-    var q = supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*)').order('created_at', {ascending:false}).limit(6);
-    if(compSlugs) q = q.in('teams.competition_slug', compSlugs);
-    var res = await q;
-    if(res.error || !res.data || !res.data.length) return '';
-    var cards = res.data.map(function(j){ return jerseyCard(j, j.teams, {showTeam:true}); }).join('');
+    var jq = supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*)').order('created_at', {ascending:false}).limit(6);
+    var lq = supabaseClient.from('team_logos').select('*, teams!inner(*, competitions!inner(sport_slug))').eq('is_current', true).order('approved_at', {ascending:false}).limit(6);
+    if(compSlugs){ jq = jq.in('teams.competition_slug', compSlugs); lq = lq.in('teams.competition_slug', compSlugs); }
+    var results = await Promise.all([jq, lq]);
+    var jRes = results[0], lRes = results[1];
+    var items = (jRes.data || []).map(function(j){ return {ts: j.created_at, html: jerseyCard(j, j.teams, {showTeam:true})}; })
+      .concat((lRes.data || []).map(function(l){ return {ts: l.approved_at, html: logoCard(l, l.teams)}; }));
+    items.sort(function(a,b){ return new Date(b.ts) - new Date(a.ts); });
+    items = items.slice(0, 6);
+    if(!items.length) return '';
+    var cards = items.map(function(i){ return i.html; }).join('');
     return '<div class="section-head" style="margin-top:34px;"><h2>Recently added</h2></div><div class="jersey-grid">'+cards+'</div>';
   }
 
