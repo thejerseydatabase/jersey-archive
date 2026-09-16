@@ -583,7 +583,7 @@
           '<div class="field"><label for="f-team">Team * <small>any level &mdash; local clubs welcome</small></label><input type="text" id="f-team" list="team-list" required><datalist id="team-list"></datalist><p class="field-hint" id="hint-team"></p></div>' +
           '<div class="field"><label for="f-season">Season *</label><input type="text" inputmode="numeric" id="f-season" list="season-list" placeholder="e.g. 2022" required><datalist id="season-list">'+seasonOptions+'</datalist></div>' +
           '<div class="field"><label for="f-type">Jersey type *</label><input type="text" id="f-type" list="type-list" placeholder="e.g. Home" required><datalist id="type-list">'+typeOptions+'</datalist></div>' +
-          '<div class="field"><label for="f-mfr">Manufacturer <small>optional</small></label><input type="text" id="f-mfr" list="mfr-list" placeholder="e.g. ISC"><datalist id="mfr-list">'+mfrOptions+'</datalist></div>' +
+          '<div class="field"><label for="f-mfr">Manufacturer <small>optional</small></label><input type="text" id="f-mfr" list="mfr-list" placeholder="e.g. ISC"><datalist id="mfr-list">'+mfrOptions+'</datalist><p class="field-hint" id="hint-mfr"></p></div>' +
           '<div class="field field-full" id="field-photos"><label>Photos * <small>drag in several at once, or click to choose</small></label>' +
             '<div class="dropzone" id="photo-dropzone" tabindex="0" role="button" aria-label="Add photos">' +
               ICON_PHOTO +
@@ -742,16 +742,28 @@
     var jerseyCards = pendingJerseys.map(function(j){
       var team = j.teams, comp = team.competitions, sport = comp.sports;
       var uploader = uploaderNames[j.uploaded_by] || 'unknown';
-      var thumb = j.jersey_images && j.jersey_images.length
-        ? '<img class="lightbox-trigger" src="'+esc(publicImageUrl(j.jersey_images[0].storage_path))+'" alt="">'
+      var images = j.jersey_images || [];
+      var thumb = images.length
+        ? '<img class="lightbox-trigger" src="'+esc(publicImageUrl(images[0].storage_path))+'" alt="">'
         : '<div class="thumb-placeholder" style="background:var(--surface-2)"><span>No photo</span></div>';
+      // All submitted photos, not just the first — admin needs to check
+      // every one for wrong/bad images before approving, not just the
+      // thumbnail.
+      var allPhotosHtml = images.length > 1
+        ? '<div class="logo-history-grid lightbox-group" style="margin-top:8px;">' + images.map(function(img){
+            return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicImageUrl(img.storage_path))+'" alt=""><span>'+esc(img.label)+'</span></div>';
+          }).join('') + '</div>'
+        : '';
       var moveId = 'mod-jersey-'+j.id;
       return '<div class="mod-card">' +
         '<div class="jersey-thumb">'+thumb+'</div>' +
         '<div class="mod-info">' +
           '<strong>'+j.season+' '+esc(team.name)+' '+esc(j.type)+'</strong>' +
           '<span>'+esc(comp.name)+' · '+esc(sport.name)+' · by '+esc(uploader)+'</span>' +
-          (j.notes ? '<span>'+esc(j.notes)+'</span>' : '') +
+          '<span>Manufacturer: '+esc(j.manufacturer || 'Unlisted')+'</span>' +
+          (j.format ? '<span>Format: '+esc(j.format)+'</span>' : '') +
+          (j.notes ? '<span>Notes: '+esc(j.notes)+'</span>' : '') +
+          allPhotosHtml +
           '<button class="chip comp-move-toggle" data-target="'+moveId+'" type="button">Wrong competition?</button>' +
           '<div class="comp-move-panel" id="'+moveId+'" hidden>'+renderCompetitionMoveControl(moveId, team.id, comp.sport_slug, comp.slug)+'</div>' +
         '</div>' +
@@ -1020,7 +1032,7 @@
     var rows = res.data || [];
     var isAdmin = currentProfile && currentProfile.is_admin;
     panel.innerHTML = rows.length
-      ? '<div class="logo-history-grid">' + rows.map(function(r){
+      ? '<div class="logo-history-grid lightbox-group">' + rows.map(function(r){
           var caption = r.years_used ? esc(r.years_used) : (r.is_current ? 'Current' : 'Added '+fmtDate(r.approved_at));
           var editBtn = isAdmin ? ' <button class="edit-pencil-btn" type="button" data-logo-id="'+r.id+'" data-current="'+esc(r.years_used || '')+'">'+ICON_PENCIL+'</button>' : '';
           return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(r.storage_path))+'" alt="">' +
@@ -1441,6 +1453,8 @@
     compInput.addEventListener('change', refreshTeams);
     wireComboFeedback(compInput, document.getElementById('hint-comp'),
       function(){ return competitionsForSport(sportSel.value).then(function(cs){ return cs.map(function(c){return c.name;}); }); }, 'competition');
+    wireComboFeedback(document.getElementById('f-mfr'), document.getElementById('hint-mfr'),
+      function(){ return Promise.resolve(MANUFACTURERS); }, 'manufacturer');
     wireComboFeedback(teamInput, document.getElementById('hint-team'),
       function(){ return currentCompetitionRow().then(function(comp){
         if(!comp) return [];
@@ -1722,7 +1736,7 @@
         return { urls: urls, index: urls.indexOf(trigger.src) };
       }
     }
-    var grid = trigger.closest('.logo-history-grid');
+    var grid = trigger.closest('.lightbox-group');
     if(grid){
       var imgs = Array.from(grid.querySelectorAll('.lightbox-trigger'));
       return { urls: imgs.map(function(im){ return im.src; }), index: imgs.indexOf(trigger) };
