@@ -566,15 +566,21 @@
         if(jerseyIns.error) throw jerseyIns.error;
         var jersey = jerseyIns.data;
 
-        var labelMap = {front:'Front', back:'Back', other:'Other'};
-        for(var slot in files){
-          var file = files[slot];
-          var ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-          var path = jersey.id + '/' + slot + '-' + Date.now() + '.' + ext;
-          var up = await supabaseClient.storage.from('jersey-photos').upload(path, file);
-          if(up.error) throw up.error;
-          var imgIns = await supabaseClient.from('jersey_images').insert({jersey_id: jersey.id, storage_path: path, label: labelMap[slot]});
-          if(imgIns.error) throw imgIns.error;
+        try {
+          var labelMap = {front:'Front', back:'Back', other:'Other'};
+          for(var slot in files){
+            var file = files[slot];
+            var ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+            var path = jersey.id + '/' + slot + '-' + Date.now() + '.' + ext;
+            var up = await supabaseClient.storage.from('jersey-photos').upload(path, file);
+            if(up.error) throw up.error;
+            var imgIns = await supabaseClient.from('jersey_images').insert({jersey_id: jersey.id, storage_path: path, label: labelMap[slot]});
+            if(imgIns.error) throw imgIns.error;
+          }
+        } catch(photoErr) {
+          // don't leave an orphaned, photo-less jersey behind if the upload half fails
+          await supabaseClient.from('jerseys').delete().eq('id', jersey.id);
+          throw photoErr;
         }
 
         await refreshAuthUI();
