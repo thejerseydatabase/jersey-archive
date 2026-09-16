@@ -407,7 +407,7 @@ $$ language plpgsql security definer;
 
 create trigger rate_limit_jerseys
   before insert on jerseys
-  for each row execute function enforce_upload_rate_limit('uploaded_by', 8, 60);
+  for each row execute function enforce_upload_rate_limit('uploaded_by', 100, 60);
 
 create trigger rate_limit_jersey_images
   before insert on jersey_images
