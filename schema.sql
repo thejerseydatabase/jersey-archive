@@ -344,7 +344,8 @@ create table team_logos (
   team_id uuid not null references teams(id) on delete cascade,
   storage_path text not null,
   is_current boolean not null default false,
-  approved_at timestamptz not null default now()
+  approved_at timestamptz not null default now(),
+  years_used text
 );
 alter table team_logos enable row level security;
 create policy "team logo history is publicly readable" on team_logos for select using (true);

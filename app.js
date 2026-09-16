@@ -747,21 +747,13 @@
 
     var logoHistoryToggle = document.getElementById('logo-history-toggle');
     if(logoHistoryToggle){
+      var logoHistoryTeamId = logoHistoryToggle.dataset.teamId;
       logoHistoryToggle.addEventListener('click', async function(){
         var panel = document.getElementById('logo-history-panel');
         if(!panel.dataset.wired){
           panel.dataset.wired = '1';
           panel.hidden = false;
-          panel.innerHTML = '<p class="loading">Loading…</p>';
-          var res = await supabaseClient.from('team_logos').select('*').eq('team_id', logoHistoryToggle.dataset.teamId).order('approved_at', {ascending:false});
-          if(res.error){ panel.innerHTML = errorBox(res.error); return; }
-          var rows = res.data || [];
-          panel.innerHTML = rows.length
-            ? '<div class="logo-history-grid">' + rows.map(function(r){
-                return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(r.storage_path))+'" alt="">' +
-                  '<span>'+(r.is_current ? 'Current' : fmtDate(r.approved_at))+'</span></div>';
-              }).join('') + '</div>'
-            : '<div class="empty-note">No logo history yet.</div>';
+          await refreshLogoHistoryPanel(logoHistoryTeamId);
           return;
         }
         panel.hidden = !panel.hidden;
@@ -772,6 +764,42 @@
     if(parts[0]==='moderate'){ wireModerationActions(); }
     wireReportButtons();
     wireInlineEdits();
+  }
+
+  async function refreshLogoHistoryPanel(teamId){
+    var panel = document.getElementById('logo-history-panel');
+    if(!panel) return;
+    panel.innerHTML = '<p class="loading">Loading…</p>';
+    var res = await supabaseClient.from('team_logos').select('*').eq('team_id', teamId).order('approved_at', {ascending:false});
+    if(res.error){ panel.innerHTML = errorBox(res.error); return; }
+    var rows = res.data || [];
+    var isAdmin = currentProfile && currentProfile.is_admin;
+    panel.innerHTML = rows.length
+      ? '<div class="logo-history-grid">' + rows.map(function(r){
+          var caption = r.years_used ? esc(r.years_used) : (r.is_current ? 'Current' : 'Added '+fmtDate(r.approved_at));
+          var editBtn = isAdmin ? ' <button class="edit-pencil-btn" type="button" data-logo-id="'+r.id+'" data-current="'+esc(r.years_used || '')+'">'+ICON_PENCIL+'</button>' : '';
+          return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(r.storage_path))+'" alt="">' +
+            '<div class="spec-value-row"><span>'+caption+'</span>'+editBtn+'</div></div>';
+        }).join('') + '</div>'
+      : '<div class="empty-note">No logo history yet.</div>';
+    panel.querySelectorAll('.edit-pencil-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var row = btn.closest('.spec-value-row');
+        row.innerHTML = '<input type="text" class="inline-edit-input" value="'+esc(btn.dataset.current)+'" placeholder="e.g. 1990–1999">' +
+          '<button class="inline-save-btn" type="button">Save</button>' +
+          '<button class="inline-cancel-btn" type="button">Cancel</button>';
+        var input = row.querySelector('.inline-edit-input');
+        input.focus();
+        if(input.select) input.select();
+        row.querySelector('.inline-cancel-btn').addEventListener('click', function(){ refreshLogoHistoryPanel(teamId); });
+        row.querySelector('.inline-save-btn').addEventListener('click', async function(){
+          var newVal = input.value.trim();
+          var upd = await supabaseClient.from('team_logos').update({years_used: newVal || null}).eq('id', btn.dataset.logoId);
+          if(upd.error){ alert('Error: ' + upd.error.message); return; }
+          refreshLogoHistoryPanel(teamId);
+        });
+      });
+    });
   }
 
   function wireInlineEdits(){
