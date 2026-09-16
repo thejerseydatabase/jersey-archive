@@ -551,7 +551,9 @@
 
         await refreshAuthUI();
 
-        document.getElementById('upload-result').innerHTML =
+        var resultEl = document.getElementById('upload-result');
+        if(!resultEl) return; // page moved on while this was in flight — upload still succeeded
+        resultEl.innerHTML =
           '<div class="result-panel">' +
             '<h3>Filed automatically</h3>' +
             '<p>The '+season+' '+esc(team.name)+' '+esc(type)+' jersey now appears on four pages &mdash; no manual placement needed:</p>' +
@@ -565,9 +567,11 @@
           '</div>';
         form.reset();
       } catch(err) {
-        document.getElementById('upload-result').innerHTML = errorBox(err);
+        var resultElOnError = document.getElementById('upload-result');
+        if(resultElOnError) resultElOnError.innerHTML = errorBox(err);
+        else console.error('Upload failed after the page had moved on:', err);
       } finally {
-        submitBtn.disabled = false; submitBtn.textContent = 'Add jersey';
+        if(document.body.contains(submitBtn)){ submitBtn.disabled = false; submitBtn.textContent = 'Add jersey'; }
       }
     });
   }
