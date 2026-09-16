@@ -441,6 +441,27 @@
     var formatField = document.getElementById('field-format');
     var formatSel = document.getElementById('f-format');
 
+    // Text fields survive an unexpected reload (e.g. the browser discarding
+    // a backgrounded tab to save memory) — photos can't be restored this
+    // way (browsers block scripts from setting file input values), so this
+    // only saves the typing, not the attached images.
+    var DRAFT_KEY = 'jersey-archive-upload-draft';
+    var DRAFT_FIELDS = ['f-sport','f-comp','f-team','f-season','f-type','f-mfr','f-notes'];
+    function saveDraft(){
+      try {
+        var draft = {};
+        DRAFT_FIELDS.forEach(function(id){ draft[id] = document.getElementById(id).value; });
+        sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      } catch(e){}
+    }
+    function clearDraft(){ try{ sessionStorage.removeItem(DRAFT_KEY); }catch(e){} }
+    var restoredDraft = null;
+    try { restoredDraft = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || 'null'); } catch(e){}
+    if(restoredDraft){
+      DRAFT_FIELDS.forEach(function(id){ if(restoredDraft[id]) document.getElementById(id).value = restoredDraft[id]; });
+      form.insertAdjacentHTML('afterbegin', '<p class="field-hint is-match" style="margin-bottom:14px;">Restored what you’d typed before the page reloaded &mdash; you’ll need to re-attach any photos.</p>');
+    }
+
     async function competitionsForSport(sportSlug){
       var r = await supabaseClient.from('competitions').select('*').eq('sport_slug', sportSlug);
       if(r.error) throw r.error;
@@ -465,6 +486,7 @@
     function refreshFormat(){
       var formats = FORMATS_BY_SPORT[sportSel.value];
       formatField.hidden = !formats;
+      formatSel.required = !!formats;
       formatSel.innerHTML = formats ? formats.map(function(f){ return '<option>'+f+'</option>'; }).join('') : '';
     }
     function wireComboFeedback(input, hint, getNames, label){
@@ -490,6 +512,12 @@
         if(!comp) return [];
         return supabaseClient.from('teams').select('name').eq('competition_slug', comp.slug).then(function(r){ return (r.data||[]).map(function(t){return t.name;}); });
       }); }, 'team');
+    if(restoredDraft && restoredDraft['f-comp']) refreshTeams();
+    DRAFT_FIELDS.forEach(function(id){
+      var el = document.getElementById(id);
+      el.addEventListener('input', saveDraft);
+      el.addEventListener('change', saveDraft);
+    });
 
     form.addEventListener('submit', async function(e){
       e.preventDefault();
@@ -566,6 +594,7 @@
             '<p style="margin:16px 0 0;font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:var(--text-dim2);">+1 upload point &mdash; check the top right.</p>' +
           '</div>';
         form.reset();
+        clearDraft();
       } catch(err) {
         var resultElOnError = document.getElementById('upload-result');
         if(resultElOnError) resultElOnError.innerHTML = errorBox(err);
