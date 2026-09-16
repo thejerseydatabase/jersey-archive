@@ -40,6 +40,21 @@
     return { primary: 'hsl('+hue+',48%,28%)', secondary: 'hsl('+hue2+',70%,58%)' };
   }
 
+  // A per-browser random id (not tied to identity) so anonymous report
+  // submissions can still be rate-limited server-side without requiring
+  // sign-in. Clearing site data resets it — that's an accepted gap for
+  // "basic" spam protection, not a security boundary.
+  function getClientToken(){
+    try {
+      var t = localStorage.getItem('jd_client_token');
+      if(!t){
+        t = (crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).slice(2)));
+        localStorage.setItem('jd_client_token', t);
+      }
+      return t;
+    } catch(e){ return null; }
+  }
+
   function publicImageUrl(path){
     return supabaseClient.storage.from('jersey-photos').getPublicUrl(path).data.publicUrl;
   }
@@ -120,10 +135,12 @@
               '<input type="checkbox" id="report-attach-toggle-'+esc(uid)+'" style="vertical-align:middle;margin-right:6px;">Attach an image (optional — e.g. the correct logo)' +
             '</label>' +
             '<div id="report-attach-area-'+esc(uid)+'" hidden></div>' +
+            '<div class="hp-field" aria-hidden="true"><label>Leave this field blank<input type="text" tabindex="-1" autocomplete="off" id="report-hp-'+esc(uid)+'"></label></div>' +
             '<button class="btn" type="button" data-submit>Submit report</button>' +
             '<p class="field-hint" id="report-msg-'+esc(uid)+'" hidden></p>';
           var textarea = panel.querySelector('textarea');
           var submitBtn = panel.querySelector('[data-submit]');
+          var honeypot = document.getElementById('report-hp-'+uid);
           var msg = document.getElementById('report-msg-'+uid);
           var attachToggle = document.getElementById('report-attach-toggle-'+uid);
           var attachArea = document.getElementById('report-attach-area-'+uid);
@@ -141,6 +158,7 @@
           submitBtn.addEventListener('click', async function(){
             var message = textarea.value.trim();
             if(!message) return;
+            if(honeypot.value){ msg.hidden = false; msg.className = 'field-hint is-match'; msg.textContent = 'Thanks — reported.'; textarea.value = ''; return; }
             submitBtn.disabled = true; submitBtn.textContent = 'Submitting…';
             var attachmentPath = null;
             try {
@@ -152,7 +170,8 @@
               }
               var res = await supabaseClient.from('reports').insert({
                 page_type: btn.dataset.pageType, page_ref: btn.dataset.pageRef, page_label: btn.dataset.pageLabel,
-                message: message, attachment_path: attachmentPath, reported_by: currentUser ? currentUser.id : null
+                message: message, attachment_path: attachmentPath, reported_by: currentUser ? currentUser.id : null,
+                client_token: getClientToken()
               });
               if(res.error) throw res.error;
               msg.hidden = false;

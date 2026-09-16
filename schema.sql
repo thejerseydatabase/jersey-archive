@@ -195,7 +195,8 @@ create table jersey_images (
   -- jersey default to 'approved' since the parent jersey's own pending
   -- status already hides them until the jersey itself is approved.
   status text not null default 'approved' check (status in ('pending','approved','rejected')),
-  uploaded_by uuid references auth.users(id)
+  uploaded_by uuid references auth.users(id),
+  created_at timestamptz not null default now()
 );
 
 alter table jersey_images enable row level security;
@@ -261,6 +262,7 @@ create table reports (
   message text not null,
   attachment_path text,
   reported_by uuid references auth.users(id),
+  client_token text,
   status text not null default 'open' check (status in ('open','resolved')),
   created_at timestamptz not null default now()
 );
@@ -356,6 +358,71 @@ create policy "admins can update team logo history"
   on team_logos for update
   using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin))
   with check (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+
+
+-- ============ basic spam protection ============
+-- Per-user hourly caps on signed-in submissions (uploads/photos/logo
+-- proposals), plus a lighter per-browser-token cap on anonymous reports.
+create function enforce_upload_rate_limit()
+returns trigger as $$
+declare
+  user_col text := TG_ARGV[0];
+  max_count int := TG_ARGV[1]::int;
+  window_minutes int := TG_ARGV[2]::int;
+  uid uuid;
+  recent_count int;
+begin
+  uid := (to_jsonb(new)->>user_col)::uuid;
+  if uid is null then
+    return new;
+  end if;
+  execute format(
+    'select count(*) from %I where %I = $1 and created_at > now() - interval ''%s minutes''',
+    TG_TABLE_NAME, user_col, window_minutes
+  ) into recent_count using uid;
+  if recent_count >= max_count then
+    raise exception 'You are submitting too quickly — max % per % minutes. Please wait a bit and try again.', max_count, window_minutes;
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+create trigger rate_limit_jerseys
+  before insert on jerseys
+  for each row execute function enforce_upload_rate_limit('uploaded_by', 8, 60);
+
+create trigger rate_limit_jersey_images
+  before insert on jersey_images
+  for each row execute function enforce_upload_rate_limit('uploaded_by', 20, 60);
+
+create trigger rate_limit_logo_proposals
+  before insert on team_logo_proposals
+  for each row execute function enforce_upload_rate_limit('proposed_by', 5, 60);
+
+create function enforce_report_rate_limit()
+returns trigger as $$
+declare
+  recent_count int;
+begin
+  if new.reported_by is not null then
+    select count(*) into recent_count from reports
+      where reported_by = new.reported_by and created_at > now() - interval '60 minutes';
+  elsif new.client_token is not null then
+    select count(*) into recent_count from reports
+      where client_token = new.client_token and created_at > now() - interval '60 minutes';
+  else
+    recent_count := 0;
+  end if;
+  if recent_count >= 5 then
+    raise exception 'Too many reports submitted recently. Please wait a while and try again.';
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+create trigger rate_limit_reports
+  before insert on reports
+  for each row execute function enforce_report_rate_limit();
 
 
 -- ============ seed data ============
