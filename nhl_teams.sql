@@ -1,9 +1,13 @@
--- Adds the NHL and its 32 teams. Arizona Coyotes are marked
--- is_active = false since the franchise relocated to Utah in 2024 — its
--- jersey history stays right where it is under "Former teams" on the NHL
--- page. I haven't added the Utah franchise itself since it rebranded
--- (Utah Hockey Club -> Utah Mammoth) and I didn't want to guess which
--- name/colours you'd want without checking first. Safe to re-run.
+-- Adds the NHL and its 33 teams (32 + Utah Mammoth). Arizona Coyotes are
+-- marked is_active = false since the franchise relocated to Utah in 2024
+-- — its jersey history stays right where it is under "Former teams" on
+-- the NHL page. Utah Mammoth gets a history_note (shown on its team page,
+-- same admin-editable field used for merged/relegated clubs elsewhere)
+-- explaining it played its first season as "Utah Hockey Club" before the
+-- rebrand. Safe to re-run.
+--
+-- Utah Mammoth's colours are a lower-confidence placeholder — it's a very
+-- recent rebrand and I'm not fully certain of the exact palette.
 
 insert into competitions (slug, sport_slug, name, tier) values
   ('nhl','ice-hockey','NHL','top')
@@ -44,3 +48,8 @@ insert into teams (slug, competition_slug, name, primary_color, secondary_color,
   ('winnipeg-jets','nhl','Winnipeg Jets','#041E42','#004C97', true)
 on conflict (competition_slug, slug) do update
   set primary_color = excluded.primary_color, secondary_color = excluded.secondary_color, is_active = excluded.is_active;
+
+insert into teams (slug, competition_slug, name, primary_color, secondary_color, history_note) values
+  ('utah-mammoth','nhl','Utah Mammoth','#010101','#EFE9E0','Utah Hockey Club (2024-2025)')
+on conflict (competition_slug, slug) do update
+  set primary_color = excluded.primary_color, secondary_color = excluded.secondary_color, history_note = excluded.history_note;
