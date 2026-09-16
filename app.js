@@ -369,7 +369,7 @@
       : '';
 
     return pendingBanner + '<div class="detail-grid">' +
-      '<div><div class="gallery-main" id="gallery-main">'+mainHtml+'</div>' +
+      '<div class="jersey-gallery"><div class="gallery-main" id="gallery-main">'+mainHtml+'</div>' +
       (thumbs ? '<div class="gallery-thumbs" id="gallery-thumbs" data-images=\''+esc(JSON.stringify(images))+'\'>'+thumbs+'</div>' : '') +
       '</div>' +
       '<div>' +
@@ -1507,15 +1507,73 @@
   /* ================= lightbox ================= */
   var lightbox = document.getElementById('lightbox');
   var lightboxImg = document.getElementById('lightbox-img');
-  function openLightbox(url){ lightboxImg.src = url; lightbox.hidden = false; }
+  var lightboxPrevBtn = document.getElementById('lightbox-prev-btn');
+  var lightboxNextBtn = document.getElementById('lightbox-next-btn');
+  var lightboxCount = document.getElementById('lightbox-count');
+  var lightboxUrls = [];
+  var lightboxIndex = 0;
+
+  function renderLightbox(){
+    lightboxImg.src = lightboxUrls[lightboxIndex];
+    var multi = lightboxUrls.length > 1;
+    lightboxPrevBtn.hidden = !multi;
+    lightboxNextBtn.hidden = !multi;
+    lightboxCount.hidden = !multi;
+    if(multi) lightboxCount.textContent = (lightboxIndex+1) + ' / ' + lightboxUrls.length;
+  }
+  function openLightbox(url, urls, index){
+    lightboxUrls = (urls && urls.length) ? urls : [url];
+    lightboxIndex = (typeof index === 'number' && index >= 0) ? index : Math.max(0, lightboxUrls.indexOf(url));
+    lightbox.hidden = false;
+    renderLightbox();
+  }
   function closeLightbox(){ lightbox.hidden = true; lightboxImg.src = ''; }
+  function lightboxStep(delta){
+    if(lightboxUrls.length < 2) return;
+    lightboxIndex = (lightboxIndex + delta + lightboxUrls.length) % lightboxUrls.length;
+    renderLightbox();
+  }
+
+  // A "gallery" of images sharing one lightbox can come from two shapes on
+  // this site: the jersey detail page (main photo + thumbnails, backed by
+  // the images array already serialized onto #gallery-thumbs), or a plain
+  // grid where every thumbnail is itself a .lightbox-trigger (logo history).
+  function lightboxGroupFor(trigger){
+    var galleryWrap = trigger.closest('.jersey-gallery');
+    if(galleryWrap){
+      var thumbsWrap = galleryWrap.querySelector('#gallery-thumbs');
+      if(thumbsWrap){
+        var images = JSON.parse(thumbsWrap.dataset.images);
+        var urls = images.map(function(im){ return publicImageUrl(im.storage_path); });
+        return { urls: urls, index: urls.indexOf(trigger.src) };
+      }
+    }
+    var grid = trigger.closest('.logo-history-grid');
+    if(grid){
+      var imgs = Array.from(grid.querySelectorAll('.lightbox-trigger'));
+      return { urls: imgs.map(function(im){ return im.src; }), index: imgs.indexOf(trigger) };
+    }
+    return null;
+  }
+
   document.addEventListener('click', function(e){
     var trigger = e.target.closest('.lightbox-trigger');
-    if(trigger){ openLightbox(trigger.src); return; }
+    if(trigger){
+      var group = lightboxGroupFor(trigger);
+      openLightbox(trigger.src, group && group.urls, group && group.index);
+      return;
+    }
     if(e.target === lightbox) closeLightbox();
   });
   document.getElementById('lightbox-close-btn').addEventListener('click', closeLightbox);
-  document.addEventListener('keydown', function(e){ if(e.key === 'Escape') closeLightbox(); });
+  lightboxPrevBtn.addEventListener('click', function(e){ e.stopPropagation(); lightboxStep(-1); });
+  lightboxNextBtn.addEventListener('click', function(e){ e.stopPropagation(); lightboxStep(1); });
+  document.addEventListener('keydown', function(e){
+    if(lightbox.hidden) return;
+    if(e.key === 'Escape') closeLightbox();
+    else if(e.key === 'ArrowLeft') lightboxStep(-1);
+    else if(e.key === 'ArrowRight') lightboxStep(1);
+  });
 
   refreshAuthUI();
   window.addEventListener('hashchange', render);
