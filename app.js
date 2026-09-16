@@ -620,6 +620,44 @@
     return '<div class="section-head"><h2>'+esc(name)+'</h2><span class="count">'+jerseys.length+' jersey'+(jerseys.length===1?'':'s')+'</span></div>'+renderGroupedBySport(jerseys);
   }
 
+  function viewHelp(){
+    setCrumbs([{label:'Home', href:'#/'},{label:'Help', href:'#/help'}]);
+    return '<header class="hero" style="border:none;padding:0 0 8px;margin-bottom:0;">' +
+        '<h1>Help</h1>' +
+        '<p class="sub">How to browse the archive, upload a jersey, and everything else you might want to know.</p>' +
+      '</header>' +
+      '<div class="help-content">' +
+
+        '<div class="section-head"><h2>Finding a jersey</h2></div>' +
+        '<p>Start from <a class="spec-link" href="#/">the homepage</a> and pick a sport, then a competition, then a team &mdash; each page drills down further, and every team page groups its jerseys by season. If you already know what you&rsquo;re after, the search box at the top of every page matches team and season.</p>' +
+        '<p>You can also browse straight to a <a class="spec-link" href="#/manufacturers">manufacturer</a> or <a class="spec-link" href="#/types">jersey type</a> to see everything logged for it, across every sport.</p>' +
+
+        '<div class="section-head" style="margin-top:30px;"><h2>Uploading a jersey</h2></div>' +
+        '<ol>' +
+          '<li>Sign in with your email at the top right &mdash; it&rsquo;s a magic link, no password to remember.</li>' +
+          '<li>Go to <a class="spec-link" href="#/upload">Upload</a> and pick the sport, then the competition and team (or use &ldquo;+ Add a new one&hellip;&rdquo; if yours isn&rsquo;t listed yet).</li>' +
+          '<li>Fill in the season (a single year like 2024, or a split year like 2024-25 for competitions that span two calendar years), jersey type, and manufacturer if known.</li>' +
+          '<li>Attach at least one photo &mdash; front, back, and any other angle all help, and you can label each one.</li>' +
+          '<li>Submit. After it&rsquo;s approved, the sport/competition/team/season/manufacturer stay filled in so you can upload the next kit for the same team (say, the away or alternate jersey) without retyping everything &mdash; just swap the photo and jersey type.</li>' +
+        '</ol>' +
+
+        '<div class="section-head" style="margin-top:30px;"><h2>Why isn&rsquo;t my upload showing yet?</h2></div>' +
+        '<p>Every submission &mdash; a jersey, an extra photo on an existing jersey, or a team logo &mdash; goes into a moderation queue first, so the archive stays accurate. You can always see your own pending submissions (they&rsquo;re marked &ldquo;Pending&rdquo;); once approved, they go live for everyone and you earn points for the contribution.</p>' +
+
+        '<div class="section-head" style="margin-top:30px;"><h2>Points &amp; tiers</h2></div>' +
+        '<p>You earn +1 point for every jersey upload and every team logo that gets approved. Your points total sets your tier, shown next to your name: ' +
+          TIERS.map(function(t){ return '<span style="color:'+t.color+';font-weight:700;">'+t.label+'</span> ('+t.min+'+)'; }).join(', ') + '.' +
+        '</p>' +
+
+        '<div class="section-head" style="margin-top:30px;"><h2>Upload limits</h2></div>' +
+        '<p>To keep things sane for everyone, there are hourly caps per account: up to 100 jerseys, 20 extra photos added to existing jerseys, and 5 team logo proposals per hour. That&rsquo;s far more than a normal upload session needs &mdash; it only kicks in to stop runaway/accidental spam. If you hit it, just wait a bit and carry on.</p>' +
+
+        '<div class="section-head" style="margin-top:30px;"><h2>Spotted a mistake?</h2></div>' +
+        '<p>Every jersey, team, and competition page has a &ldquo;Report a problem&rdquo; button at the bottom &mdash; use it for anything wrong (wrong season, wrong team, bad photo) and it goes straight to moderation. You can also just <a class="spec-link" href="https://thejerseydatabase.com/contact.html" target="_blank" rel="noopener">get in touch</a> directly.</p>' +
+
+      '</div>';
+  }
+
   async function viewUpload(){
     setCrumbs([{label:'Home', href:'#/'},{label:'Upload', href:'#/upload'}]);
     if(!currentUser){
@@ -980,6 +1018,7 @@
       else if(parts[0]==='types' && parts.length===1){ html = await viewTypes(); }
       else if(parts[0]==='type' && parts[1]){ html = await viewType(parts[1]); }
       else if(parts[0]==='upload'){ html = await viewUpload(); }
+      else if(parts[0]==='help'){ html = viewHelp(); }
       else if(parts[0]==='moderate'){ html = await viewModerate(); }
       else if(parts[0]==='user' && parts[1]){ html = await viewUserProfile(parts[1]); }
       else { html = viewNotFound(); }
@@ -1368,7 +1407,9 @@
           } else if(type === 'logo'){
             if(btn.dataset.action === 'approve'){
               await setTeamLogo(btn.dataset.teamId, btn.dataset.path);
-              var logoApprove = await supabaseClient.from('team_logo_proposals').delete().eq('id', id);
+              // status update (not delete) so the award_logo_point trigger
+              // fires and the proposer gets their point, same as a jersey.
+              var logoApprove = await supabaseClient.from('team_logo_proposals').update({status:'approved'}).eq('id', id);
               if(logoApprove.error) throw logoApprove.error;
             } else {
               if(btn.dataset.path){

@@ -350,6 +350,21 @@ create policy "admins can delete logo proposals"
   on team_logo_proposals for delete
   using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
 
+-- award an upload point once a proposed logo is actually approved, same as jerseys
+create function award_logo_point()
+returns trigger as $$
+begin
+  if new.status = 'approved' and (old.status is distinct from 'approved') and new.proposed_by is not null then
+    update profiles set points = points + 1 where id = new.proposed_by;
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+create trigger on_logo_approved
+  after update of status on team_logo_proposals
+  for each row execute function award_logo_point();
+
 create policy "anyone can view team logos"
   on storage.objects for select using (bucket_id = 'team-logos');
 create policy "authenticated users can upload team logos"

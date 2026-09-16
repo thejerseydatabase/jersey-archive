@@ -241,6 +241,13 @@
   footer{margin-top:48px;padding-top:20px;border-top:1px solid var(--line);text-align:center;}
   footer p{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim2);line-height:1.8;}
   footer a{color:var(--accent);text-decoration:none;}
+  .page-nav{display:flex;gap:16px;justify-content:center;margin-bottom:12px;font-family:'IBM Plex Mono',monospace;font-size:11px;}
+  .page-nav a{color:var(--text-dim);text-decoration:none;}
+  .page-nav a:hover{color:var(--accent);}
+
+  .help-content p{font-size:14.5px;line-height:1.7;color:var(--text-dim);margin:0 0 14px;}
+  .help-content ol,.help-content ul{margin:0 0 14px;padding-left:20px;}
+  .help-content li{font-size:14.5px;line-height:1.8;color:var(--text-dim);margin-bottom:6px;}
 
   [hidden]{display:none !important;}
 
@@ -278,6 +285,12 @@
   <main id="app"><p class="loading">Loading&hellip;</p></main>
 
   <footer>
+    <div class="page-nav">
+      <a href="#/help">Help</a>
+      <a href="https://thejerseydatabase.com/contact.html" target="_blank" rel="noopener">Contact</a>
+      <a href="https://thejerseydatabase.com/sources.html" target="_blank" rel="noopener">Sources</a>
+      <a href="https://thejerseydatabase.com/updates.html" target="_blank" rel="noopener">Updates</a>
+    </div>
     <p>
       A separate project from the match trackers at <a href="https://thejerseydatabase.com" target="_blank" rel="noopener">thejerseydatabase.com</a>.<br>
       Fan-built. Not affiliated with any league, club, federation, or governing body.
@@ -316,7 +329,7 @@
 })();
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="config.js?v=33"></script>
-<script src="app.js?v=33"></script>
+<script src="config.js?v=34"></script>
+<script src="app.js?v=34"></script>
 </body>
 </html>
