@@ -264,7 +264,11 @@ create policy "users can change their own rating"
   on ratings for update using (auth.uid() = user_id);
 
 -- a view that does the average-rating math so the app never has to
-create view jersey_ratings as
+-- security_invoker: runs with the querying user's own RLS/permissions
+-- instead of the view owner's — the owner is typically the privileged
+-- role that ran this SQL, so without this a view can silently bypass RLS.
+-- Doesn't change what this view returns (ratings is fully public anyway).
+create view jersey_ratings with (security_invoker = true) as
   select jersey_id, round(avg(value)::numeric, 1) as avg_rating, count(*) as rating_count
   from ratings
   group by jersey_id;
