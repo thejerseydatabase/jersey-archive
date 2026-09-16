@@ -592,10 +592,15 @@
     var sportsRes = await supabaseClient.from('sports').select('*').order('sort_order');
     if(sportsRes.error) throw sportsRes.error;
     var sportOptions = (sportsRes.data||[]).map(function(s){ return '<option value="'+s.slug+'">'+esc(s.name)+'</option>'; }).join('');
-    var typeOptions = JERSEY_TYPES.map(function(t){ return '<option value="'+t+'">'; }).join('');
-    var mfrOptions = MANUFACTURERS.map(function(m){ return '<option value="'+esc(m)+'">'; }).join('');
+    var typeOptions = '<option value="">Select a type</option>' +
+      JERSEY_TYPES.map(function(t){ return '<option value="'+t+'">'+t+'</option>'; }).join('') +
+      '<option value="__new__">+ Add a new one…</option>';
+    var mfrOptions = '<option value="">&mdash; Unlisted &mdash;</option>' +
+      MANUFACTURERS.map(function(m){ return '<option value="'+esc(m)+'">'+esc(m)+'</option>'; }).join('') +
+      '<option value="__new__">+ Add a new one…</option>';
     var thisYear = new Date().getFullYear();
-    var seasonOptions = ''; for(var y=thisYear+1; y>=1900; y--){ seasonOptions += '<option value="'+y+'">'; }
+    var seasonOptions = '<option value="">Select a year</option>';
+    for(var y=thisYear+1; y>=1900; y--){ seasonOptions += '<option value="'+y+'">'+y+'</option>'; }
 
     return '<div class="section-head"><h2>Upload a jersey</h2></div>' +
       '<p style="font-family:\'IBM Plex Mono\',monospace;font-size:11.5px;color:var(--text-dim2);margin:-10px 0 22px;">* required &mdash; and at least one photo</p>' +
@@ -603,11 +608,19 @@
         '<div class="upload-grid">' +
           '<div class="field"><label for="f-sport">Sport *</label><select id="f-sport" required>'+sportOptions+'</select></div>' +
           '<div class="field" id="field-format" hidden><label for="f-format">Format * <small>cricket has several</small></label><select id="f-format" required></select></div>' +
-          '<div class="field"><label for="f-comp">Competition * <small>type to add a new one</small></label><input type="text" id="f-comp" list="comp-list" required><datalist id="comp-list"></datalist><p class="field-hint" id="hint-comp"></p></div>' +
-          '<div class="field"><label for="f-team">Team * <small>any level &mdash; local clubs welcome</small></label><input type="text" id="f-team" list="team-list" required><datalist id="team-list"></datalist><p class="field-hint" id="hint-team"></p></div>' +
-          '<div class="field"><label for="f-season">Season *</label><input type="text" inputmode="numeric" id="f-season" list="season-list" placeholder="e.g. 2022" required><datalist id="season-list">'+seasonOptions+'</datalist></div>' +
-          '<div class="field"><label for="f-type">Jersey type *</label><input type="text" id="f-type" list="type-list" placeholder="e.g. Home" required><datalist id="type-list">'+typeOptions+'</datalist></div>' +
-          '<div class="field"><label for="f-mfr">Manufacturer <small>optional</small></label><input type="text" id="f-mfr" list="mfr-list" placeholder="e.g. ISC"><datalist id="mfr-list">'+mfrOptions+'</datalist><p class="field-hint" id="hint-mfr"></p></div>' +
+          '<div class="field"><label for="f-comp-select">Competition * <small>pick or add a new one</small></label>' +
+            '<select id="f-comp-select" required><option value="">Select a competition</option></select>' +
+            '<input type="text" id="f-comp-new" placeholder="New competition name" hidden></div>' +
+          '<div class="field"><label for="f-team-select">Team * <small>any level &mdash; local clubs welcome</small></label>' +
+            '<select id="f-team-select" required><option value="">Select a competition first</option></select>' +
+            '<input type="text" id="f-team-new" placeholder="New team name" hidden></div>' +
+          '<div class="field"><label for="f-season-select">Season *</label><select id="f-season-select" required>'+seasonOptions+'</select></div>' +
+          '<div class="field"><label for="f-type-select">Jersey type *</label>' +
+            '<select id="f-type-select" required>'+typeOptions+'</select>' +
+            '<input type="text" id="f-type-new" placeholder="New jersey type" hidden></div>' +
+          '<div class="field"><label for="f-mfr-select">Manufacturer <small>optional</small></label>' +
+            '<select id="f-mfr-select">'+mfrOptions+'</select>' +
+            '<input type="text" id="f-mfr-new" placeholder="New manufacturer" hidden></div>' +
           '<div class="field field-full" id="field-photos"><label>Photos * <small>drag in several at once, or click to choose</small></label>' +
             '<div class="dropzone" id="photo-dropzone" tabindex="0" role="button" aria-label="Add photos">' +
               ICON_PHOTO +
@@ -1355,31 +1368,54 @@
     var form = document.getElementById('upload-form');
     if(!form) return;
     var sportSel = document.getElementById('f-sport');
-    var compInput = document.getElementById('f-comp');
-    var compList = document.getElementById('comp-list');
-    var teamInput = document.getElementById('f-team');
-    var teamList = document.getElementById('team-list');
+    var compSelect = document.getElementById('f-comp-select');
+    var compNew = document.getElementById('f-comp-new');
+    var teamSelect = document.getElementById('f-team-select');
+    var teamNew = document.getElementById('f-team-new');
+    var seasonSelect = document.getElementById('f-season-select');
+    var typeSelect = document.getElementById('f-type-select');
+    var typeNew = document.getElementById('f-type-new');
+    var mfrSelect = document.getElementById('f-mfr-select');
+    var mfrNew = document.getElementById('f-mfr-new');
     var formatField = document.getElementById('field-format');
     var formatSel = document.getElementById('f-format');
+
+    // Every "pick or add new" field is a <select> (so it looks and behaves
+    // like the Sport dropdown) plus a hidden text input that only appears
+    // when "+ Add a new one…" is chosen — same pattern already used for
+    // the admin "move team" competition picker.
+    function syncNewVisibility(selectEl, newInputEl, requiredWhenNew){
+      var isNew = selectEl.value === '__new__';
+      newInputEl.hidden = !isNew;
+      if(requiredWhenNew) newInputEl.required = isNew;
+      if(isNew) newInputEl.focus();
+    }
+    function fieldValue(selectEl, newInputEl){
+      return selectEl.value === '__new__' ? newInputEl.value.trim() : selectEl.value;
+    }
 
     // Text fields survive an unexpected reload (e.g. the browser discarding
     // a backgrounded tab to save memory) — photos can't be restored this
     // way (browsers block scripts from setting file input values), so this
     // only saves the typing, not the attached images.
     var DRAFT_KEY = 'jersey-archive-upload-draft';
-    var DRAFT_FIELDS = ['f-sport','f-comp','f-team','f-season','f-type','f-mfr','f-notes'];
     function saveDraft(){
       try {
-        var draft = {};
-        DRAFT_FIELDS.forEach(function(id){ draft[id] = document.getElementById(id).value; });
-        sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+        sessionStorage.setItem(DRAFT_KEY, JSON.stringify({
+          sport: sportSel.value,
+          comp: {v: compSelect.value, n: compNew.value},
+          team: {v: teamSelect.value, n: teamNew.value},
+          season: seasonSelect.value,
+          type: {v: typeSelect.value, n: typeNew.value},
+          mfr: {v: mfrSelect.value, n: mfrNew.value},
+          notes: document.getElementById('f-notes').value
+        }));
       } catch(e){}
     }
     function clearDraft(){ try{ sessionStorage.removeItem(DRAFT_KEY); }catch(e){} }
     var restoredDraft = null;
     try { restoredDraft = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || 'null'); } catch(e){}
     if(restoredDraft){
-      DRAFT_FIELDS.forEach(function(id){ if(restoredDraft[id]) document.getElementById(id).value = restoredDraft[id]; });
       form.insertAdjacentHTML('afterbegin', '<p class="field-hint is-match" style="margin-bottom:14px;">Restored what you’d typed before the page reloaded &mdash; you’ll need to re-attach any photos.</p>');
     }
 
@@ -1433,25 +1469,39 @@
     });
 
     async function competitionsForSport(sportSlug){
-      var r = await supabaseClient.from('competitions').select('*').eq('sport_slug', sportSlug);
+      var r = await supabaseClient.from('competitions').select('*').eq('sport_slug', sportSlug).order('name');
       if(r.error) throw r.error;
       return r.data || [];
     }
-    async function currentCompetitionRow(){
-      var name = compInput.value.trim();
-      if(!name) return null;
-      var comps = await competitionsForSport(sportSel.value);
-      return comps.filter(function(c){ return c.name.toLowerCase() === name.toLowerCase(); })[0] || null;
-    }
     async function refreshComps(){
       var comps = await competitionsForSport(sportSel.value);
-      compList.innerHTML = comps.map(function(c){ return '<option value="'+esc(c.name)+'">'; }).join('');
+      compSelect.innerHTML = '<option value="">Select a competition</option>' +
+        comps.map(function(c){ return '<option value="'+esc(c.name)+'">'+esc(c.name)+'</option>'; }).join('') +
+        '<option value="__new__">+ Add a new competition…</option>';
+      compNew.hidden = true; compNew.value = ''; compNew.required = false;
+      await refreshTeams();
     }
     async function refreshTeams(){
-      var comp = await currentCompetitionRow();
-      if(!comp){ teamList.innerHTML = ''; return; }
-      var r = await supabaseClient.from('teams').select('name').eq('competition_slug', comp.slug);
-      teamList.innerHTML = (r.data||[]).map(function(t){ return '<option value="'+esc(t.name)+'">'; }).join('');
+      var val = compSelect.value;
+      if(!val){
+        teamSelect.innerHTML = '<option value="">Select a competition first</option>';
+        teamNew.hidden = true; teamNew.required = false;
+        return;
+      }
+      if(val === '__new__'){
+        teamSelect.innerHTML = '<option value="__new__" selected>+ Add a new team…</option>';
+        teamNew.hidden = false; teamNew.required = true;
+        return;
+      }
+      var comps = await competitionsForSport(sportSel.value);
+      var comp = comps.filter(function(c){ return c.name.toLowerCase() === val.toLowerCase(); })[0];
+      if(!comp){ teamSelect.innerHTML = '<option value="">Select a competition first</option>'; return; }
+      var r = await supabaseClient.from('teams').select('name').eq('competition_slug', comp.slug).order('name');
+      var teams = r.data || [];
+      teamSelect.innerHTML = '<option value="">Select a team</option>' +
+        teams.map(function(t){ return '<option value="'+esc(t.name)+'">'+esc(t.name)+'</option>'; }).join('') +
+        '<option value="__new__">+ Add a new team…</option>';
+      teamNew.hidden = true; teamNew.value = ''; teamNew.required = false;
     }
     function refreshFormat(){
       var formats = FORMATS_BY_SPORT[sportSel.value];
@@ -1459,51 +1509,53 @@
       formatSel.required = !!formats;
       formatSel.innerHTML = formats ? formats.map(function(f){ return '<option>'+f+'</option>'; }).join('') : '';
     }
-    function wireComboFeedback(input, hint, getNames, label){
-      function update(){
-        var val = input.value.trim();
-        if(!val){ hint.textContent=''; hint.className='field-hint'; return; }
-        getNames().then(function(names){
-          var match = names.some(function(n){ return n.toLowerCase() === val.toLowerCase(); });
-          hint.textContent = match ? '✓ matches an existing '+label : '✖ no '+label+' found for “'+val+'” — this will create a new one';
-          hint.className = 'field-hint'+(match?' is-match':'');
-        });
-      }
-      input.addEventListener('input', update);
-    }
 
-    refreshComps(); refreshFormat();
-    sportSel.addEventListener('change', function(){ refreshComps(); refreshFormat(); compInput.value=''; teamList.innerHTML=''; });
-    compInput.addEventListener('change', refreshTeams);
-    wireComboFeedback(compInput, document.getElementById('hint-comp'),
-      function(){ return competitionsForSport(sportSel.value).then(function(cs){ return cs.map(function(c){return c.name;}); }); }, 'competition');
-    wireComboFeedback(document.getElementById('f-mfr'), document.getElementById('hint-mfr'),
-      function(){ return Promise.resolve(MANUFACTURERS); }, 'manufacturer');
-    wireComboFeedback(teamInput, document.getElementById('hint-team'),
-      function(){ return currentCompetitionRow().then(function(comp){
-        if(!comp) return [];
-        return supabaseClient.from('teams').select('name').eq('competition_slug', comp.slug).then(function(r){ return (r.data||[]).map(function(t){return t.name;}); });
-      }); }, 'team');
-    if(restoredDraft && restoredDraft['f-comp']) refreshTeams();
-    DRAFT_FIELDS.forEach(function(id){
-      var el = document.getElementById(id);
+    sportSel.addEventListener('change', function(){ refreshComps(); refreshFormat(); saveDraft(); });
+    compSelect.addEventListener('change', function(){ syncNewVisibility(compSelect, compNew, true); refreshTeams(); saveDraft(); });
+    teamSelect.addEventListener('change', function(){ syncNewVisibility(teamSelect, teamNew, true); saveDraft(); });
+    typeSelect.addEventListener('change', function(){ syncNewVisibility(typeSelect, typeNew, true); saveDraft(); });
+    mfrSelect.addEventListener('change', function(){ syncNewVisibility(mfrSelect, mfrNew, false); saveDraft(); });
+    [compNew, teamNew, seasonSelect, typeNew, mfrNew, document.getElementById('f-notes')].forEach(function(el){
       el.addEventListener('input', saveDraft);
       el.addEventListener('change', saveDraft);
     });
+
+    (async function init(){
+      if(restoredDraft && restoredDraft.sport) sportSel.value = restoredDraft.sport;
+      await refreshComps();
+      refreshFormat();
+      if(restoredDraft){
+        if(restoredDraft.comp){
+          compSelect.value = restoredDraft.comp.v || '';
+          syncNewVisibility(compSelect, compNew, true);
+          compNew.value = restoredDraft.comp.n || '';
+          await refreshTeams();
+        }
+        if(restoredDraft.team){
+          teamSelect.value = restoredDraft.team.v || '';
+          syncNewVisibility(teamSelect, teamNew, true);
+          teamNew.value = restoredDraft.team.n || '';
+        }
+        if(restoredDraft.season) seasonSelect.value = restoredDraft.season;
+        if(restoredDraft.type){
+          typeSelect.value = restoredDraft.type.v || '';
+          syncNewVisibility(typeSelect, typeNew, true);
+          typeNew.value = restoredDraft.type.n || '';
+        }
+        if(restoredDraft.mfr){
+          mfrSelect.value = restoredDraft.mfr.v || '';
+          syncNewVisibility(mfrSelect, mfrNew, false);
+          mfrNew.value = restoredDraft.mfr.n || '';
+        }
+        if(restoredDraft.notes) document.getElementById('f-notes').value = restoredDraft.notes;
+      }
+    })();
 
     form.addEventListener('submit', async function(e){
       e.preventDefault();
       if(!form.reportValidity()) return;
 
-      var seasonInput = document.getElementById('f-season');
-      var seasonVal = seasonInput.value.trim();
-      if(!/^\d{3,4}$/.test(seasonVal)){
-        seasonInput.setCustomValidity('Enter a year, e.g. 2022');
-        seasonInput.reportValidity();
-        seasonInput.addEventListener('input', function clear(){ seasonInput.setCustomValidity(''); seasonInput.removeEventListener('input', clear); });
-        return;
-      }
-      seasonInput.setCustomValidity('');
+      var seasonVal = seasonSelect.value;
 
       var photoError = document.getElementById('photo-error');
       if(selectedPhotos.length === 0){
@@ -1518,11 +1570,11 @@
 
       try {
         var sportSlug = sportSel.value;
-        var comp = await ensureCompetition(sportSlug, compInput.value.trim());
-        var team = await ensureTeam(comp.slug, teamInput.value.trim());
+        var comp = await ensureCompetition(sportSlug, fieldValue(compSelect, compNew));
+        var team = await ensureTeam(comp.slug, fieldValue(teamSelect, teamNew));
         var season = Number(seasonVal);
-        var type = document.getElementById('f-type').value.trim();
-        var manufacturer = document.getElementById('f-mfr').value.trim() || null;
+        var type = fieldValue(typeSelect, typeNew);
+        var manufacturer = fieldValue(mfrSelect, mfrNew) || null;
         var format = FORMATS_BY_SPORT[sportSlug] ? formatSel.value : null;
         var notes = document.getElementById('f-notes').value.trim() || null;
 
