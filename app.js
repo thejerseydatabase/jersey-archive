@@ -218,6 +218,17 @@
   }
 
   /* ================= views ================= */
+  // Used on both the homepage (site-wide) and each sport page (scoped to
+  // that sport's competitions) to show a small "just uploaded" gallery.
+  async function recentJerseysHtml(compSlugs){
+    var q = supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*)').order('created_at', {ascending:false}).limit(5);
+    if(compSlugs) q = q.in('teams.competition_slug', compSlugs);
+    var res = await q;
+    if(res.error || !res.data || !res.data.length) return '';
+    var cards = res.data.map(function(j){ return jerseyCard(j, j.teams, {showTeam:true}); }).join('');
+    return '<div class="section-head" style="margin-top:34px;"><h2>Recently added</h2></div><div class="jersey-grid">'+cards+'</div>';
+  }
+
   async function viewHome(){
     setCrumbs([{label:'Home', href:'#/'}]);
     var res = await supabaseClient.from('sports').select('*').order('sort_order');
@@ -229,13 +240,15 @@
         '<div><div class="sport-name">'+esc(s.name)+'</div></div>' +
       '</a>';
     }).join('');
+    var recentHtml = await recentJerseysHtml(null);
     return '<header class="hero">' +
         '<p class="eyebrow">The Jersey Database &mdash; Archive</p>' +
         '<h1>Every jersey.<br>Filed by hand, found in three clicks.</h1>' +
         '<p class="sub">Pick a sport, then drill into competition, team and season &mdash; or search straight to it.</p>' +
       '</header>' +
       '<div class="section-head"><h2>Browse by sport</h2></div>' +
-      '<div class="sport-grid">'+(cards || '<div class="empty-note">No sports found &mdash; has schema.sql been run?</div>')+'</div>';
+      '<div class="sport-grid">'+(cards || '<div class="empty-note">No sports found &mdash; has schema.sql been run?</div>')+'</div>' +
+      recentHtml;
   }
 
   async function viewSport(sportSlug){
@@ -265,10 +278,13 @@
           '<div class="comp-grid" id="more-comps" hidden style="margin-top:12px;">'+more.map(compCard).join('')+'</div>' : '');
     }
 
+    var recentHtml = comps.length ? await recentJerseysHtml(comps.map(function(c){ return c.slug; })) : '';
+
     return '<header class="hero" style="padding-bottom:26px;"><p class="eyebrow">Sport</p><h1>'+esc(sport.name)+'</h1></header>' +
       '<section class="block"><div class="section-head"><h2>Competitions</h2></div>' +
         (comps.length ? compsHtml : '<div class="empty-note">No competitions yet for '+esc(sport.name)+'.</div>') +
-      '</section>';
+      '</section>' +
+      recentHtml;
   }
 
   async function viewCompetition(sportSlug, compSlug){
