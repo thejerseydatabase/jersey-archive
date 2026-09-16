@@ -50,6 +50,43 @@
   // just subtract the values — pull the leading year out to compare.
   function seasonSortKey(s){ return parseInt(String(s), 10) || 0; }
 
+  // Canonical jersey-type ordering, per sport (and for the NBA, per era —
+  // Association/Icon/Statement/Classic/City only from 2017-18 on; earlier
+  // seasons still used Home/Away/Alternate/Heritage). Each entry is a
+  // priority slot; a jersey whose type isn't recognised for that sport
+  // just falls in after all named slots, in upload order.
+  var GENERIC_TYPE_ORDER = [
+    ['home','primary'], ['away'], ['third'], ['alternate'],
+    ['indigenous','first nations'], ['heritage']
+  ];
+  var SPORT_TYPE_ORDERS = {
+    football: [['home','primary'], ['away'], ['third'], ['fourth'], ['alternate'], ['gk','goalkeeper']],
+    'rugby-league': [['home','primary'], ['away'], ['indigenous','first nations'], ['alternate'], ['heritage']],
+    'rugby-union': [['home','primary'], ['away','alternate']],
+    afl: [['home','primary'], ['away'], ['clash']],
+    'american-football': [['home','primary'], ['away'], ['throwback','heritage'], ['alternate']],
+    baseball: [['home','primary'], ['away'], ['third'], ['fourth'], ['alternate'], ['city connect']]
+  };
+  var NBA_MODERN_TYPE_ORDER = [['association'], ['icon'], ['statement'], ['classic'], ['city']];
+  var NHL_TYPE_ORDER = [['home','primary'], ['away'], ['third'], ['alternate'], ['heritage classic'], ['reverse retro']];
+  function typeOrderGroupsFor(sportSlug, compSlug, seasonLabel){
+    if(sportSlug === 'basketball' && compSlug === 'nba' && seasonSortKey(seasonLabel) >= 2017) return NBA_MODERN_TYPE_ORDER;
+    if(compSlug === 'nhl') return NHL_TYPE_ORDER;
+    return SPORT_TYPE_ORDERS[sportSlug] || GENERIC_TYPE_ORDER;
+  }
+  function typeSortIndex(orderGroups, typeStr){
+    var t = String(typeStr || '').trim().toLowerCase();
+    for(var i=0; i<orderGroups.length; i++){ if(orderGroups[i].indexOf(t) > -1) return i; }
+    return orderGroups.length;
+  }
+  // Stable sort (guaranteed by the spec) — ties (unrecognised types, or two
+  // of the same recognised type) keep whatever order the query gave them,
+  // which is upload order since callers select with a created_at tiebreak.
+  function sortJerseysByType(jerseys, sportSlug, compSlug, seasonLabel){
+    var groups = typeOrderGroupsFor(sportSlug, compSlug, seasonLabel);
+    return jerseys.slice().sort(function(a, b){ return typeSortIndex(groups, a.type) - typeSortIndex(groups, b.type); });
+  }
+
   function normalizeTeamName(name){
     return String(name).trim()
       .replace(/\s*\((women|men)\)\s*$/i, '')
@@ -434,7 +471,7 @@
     var team = teamRes.data, comp = team.competitions, sport = comp.sports;
     setCrumbs([{label:'Home', href:'#/'},{label:sport.name, href:'#/sport/'+sportSlug},{label:comp.name, href:'#/sport/'+sportSlug+'/'+compSlug},{label:team.name, href:'#'}]);
 
-    var jRes = await supabaseClient.from('jerseys').select('*, jersey_images(*)').eq('team_id', team.id).order('season', {ascending:false});
+    var jRes = await supabaseClient.from('jerseys').select('*, jersey_images(*)').eq('team_id', team.id).order('season', {ascending:false}).order('created_at', {ascending:true});
     if(jRes.error) throw jRes.error;
     var jerseys = jRes.data || [];
     var bySeason = {};
@@ -447,6 +484,7 @@
     var groups = years.map(function(y){
       var main = bySeason[y].filter(function(j){ return !isTrainingType(j.type); });
       var extra = bySeason[y].filter(function(j){ return isTrainingType(j.type); });
+      main = sortJerseysByType(main, sportSlug, compSlug, y);
       var mainHtml = main.length ? '<div class="jersey-grid">'+main.map(function(j){ return jerseyCard(j, team); }).join('')+'</div>' : '';
       var extraHtml = extra.length
         ? '<h4 class="extra-kits-label">Training &amp; other</h4><div class="jersey-grid">'+extra.map(function(j){ return jerseyCard(j, team); }).join('')+'</div>'
@@ -527,7 +565,7 @@
     var comp = compRes.data, sport = comp.sports;
     setCrumbs([{label:'Home', href:'#/'},{label:sport.name, href:'#/sport/'+sportSlug},{label:comp.name, href:'#/sport/'+sportSlug+'/'+compSlug},{label:year+' season', href:'#'}]);
 
-    var jRes = await supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*)').eq('season', year).eq('teams.competition_slug', compSlug);
+    var jRes = await supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*)').eq('season', year).eq('teams.competition_slug', compSlug).order('created_at', {ascending:true});
     if(jRes.error) throw jRes.error;
     var jerseys = jRes.data || [];
     var byTeam = {};
@@ -535,7 +573,8 @@
 
     var groups = Object.keys(byTeam).map(function(id){
       var entry = byTeam[id];
-      var cards = entry.jerseys.map(function(j){ return jerseyCard(j, entry.team); }).join('');
+      var sorted = sortJerseysByType(entry.jerseys, sportSlug, compSlug, year);
+      var cards = sorted.map(function(j){ return jerseyCard(j, entry.team); }).join('');
       return '<div class="season-group"><h3><a class="spec-link" href="#/sport/'+sportSlug+'/'+compSlug+'/team/'+entry.team.slug+'">'+esc(entry.team.name)+'</a></h3><div class="jersey-grid">'+cards+'</div></div>';
     }).join('');
 
