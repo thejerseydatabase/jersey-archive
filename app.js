@@ -39,6 +39,19 @@
     return { primary: 'hsl('+hue+',48%,28%)', secondary: 'hsl('+hue2+',70%,58%)' };
   }
 
+  // Strips a trailing gender marker so a men's/women's pair of the same
+  // club (e.g. "Adelaide United" / "Adelaide United Women") is recognised
+  // as siblings even when the names aren't byte-identical. Deliberately
+  // narrow — only known marker tokens, nothing that could misfire on an
+  // unrelated club that happens to share a word.
+  function normalizeTeamName(name){
+    return String(name).trim()
+      .replace(/\s*\((women|men)\)\s*$/i, '')
+      .replace(/\s+wfc$/i, '')
+      .replace(/\s+women$/i, '')
+      .trim();
+  }
+
   // A per-browser random id (not tied to identity) so anonymous report
   // submissions can still be rate-limited server-side without requiring
   // sign-in. Clearing site data resets it — that's an accepted gap for
@@ -315,8 +328,11 @@
       return '<div class="season-group"><h3><a class="spec-link" href="#/sport/'+sportSlug+'/'+compSlug+'/season/'+y+'">'+y+'</a></h3>'+mainHtml+extraHtml+'</div>';
     }).join('');
 
-    var siblingRes = await supabaseClient.from('teams').select('*, competitions(*)').ilike('name', team.name).neq('id', team.id);
-    var siblings = (siblingRes.error ? [] : siblingRes.data || []).filter(function(t){ return t.competitions.sport_slug === sportSlug; });
+    var normalizedTeamName = normalizeTeamName(team.name);
+    var siblingRes = await supabaseClient.from('teams').select('*, competitions(*)').ilike('name', normalizedTeamName+'%').neq('id', team.id);
+    var siblings = (siblingRes.error ? [] : siblingRes.data || []).filter(function(t){
+      return t.competitions.sport_slug === sportSlug && normalizeTeamName(t.name).toLowerCase() === normalizedTeamName.toLowerCase();
+    });
     var siblingsHtml = siblings.length
       ? '<p class="also-see">Also see: ' + siblings.map(function(t){
           return '<a class="spec-link" href="#/sport/'+sportSlug+'/'+t.competitions.slug+'/team/'+t.slug+'">'+esc(t.competitions.name)+'</a>';
