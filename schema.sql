@@ -259,6 +259,7 @@ create table reports (
   page_ref text not null,
   page_label text,
   message text not null,
+  attachment_path text,
   reported_by uuid references auth.users(id),
   status text not null default 'open' check (status in ('open','resolved')),
   created_at timestamptz not null default now()
@@ -272,6 +273,16 @@ create policy "admins can resolve reports"
   on reports for update
   using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin))
   with check (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+
+-- reports allow anonymous submission by design; attachments follow the same
+-- rule. Needs a "report-attachments" Storage bucket (Public bucket ON).
+create policy "anyone can view report attachments"
+  on storage.objects for select using (bucket_id = 'report-attachments');
+create policy "anyone can upload a report attachment"
+  on storage.objects for insert with check (bucket_id = 'report-attachments');
+create policy "admins can delete report attachments"
+  on storage.objects for delete to authenticated
+  using (bucket_id = 'report-attachments' and exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
 
 
 -- ============ storage (jersey-photos bucket) ============

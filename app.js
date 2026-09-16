@@ -47,11 +47,12 @@
     return supabaseClient.storage.from('team-logos').getPublicUrl(path).data.publicUrl;
   }
 
-  function teamSwatch(team){
+  function teamSwatch(team, opts){
+    var sizeClass = (opts && opts.large) ? ' team-swatch-lg' : '';
     if(team.logo_path){
-      return '<div class="team-swatch team-swatch-logo"><img src="'+esc(publicLogoUrl(team.logo_path))+'" alt=""></div>';
+      return '<div class="team-swatch team-swatch-logo'+sizeClass+'"><img src="'+esc(publicLogoUrl(team.logo_path))+'" alt=""></div>';
     }
-    return '<div class="team-swatch"><div class="a" style="background:'+esc(team.primary_color)+'"></div><div class="b" style="background:'+esc(team.secondary_color)+'"></div></div>';
+    return '<div class="team-swatch'+sizeClass+'"><div class="a" style="background:'+esc(team.primary_color)+'"></div><div class="b" style="background:'+esc(team.secondary_color)+'"></div></div>';
   }
 
   function jerseyThumb(jersey, team){
@@ -106,24 +107,55 @@
         if(!panel.dataset.wired){
           panel.dataset.wired = '1';
           panel.innerHTML =
-            '<textarea class="report-textarea" rows="3" placeholder="What’s wrong? e.g. wrong season, misspelled team name..."></textarea>' +
+            '<textarea class="report-textarea" rows="3" placeholder="What’s wrong? e.g. wrong season, misspelled team name, incorrect logo..."></textarea>' +
+            '<label class="field-hint" style="display:block;margin-bottom:8px;cursor:pointer;">' +
+              '<input type="checkbox" id="report-attach-toggle-'+esc(uid)+'" style="vertical-align:middle;margin-right:6px;">Attach an image (optional — e.g. the correct logo)' +
+            '</label>' +
+            '<div id="report-attach-area-'+esc(uid)+'" hidden></div>' +
             '<button class="btn" type="button" data-submit>Submit report</button>' +
-            '<p class="field-hint" hidden></p>';
+            '<p class="field-hint" id="report-msg-'+esc(uid)+'" hidden></p>';
           var textarea = panel.querySelector('textarea');
           var submitBtn = panel.querySelector('[data-submit]');
-          var msg = panel.querySelector('.field-hint');
+          var msg = document.getElementById('report-msg-'+uid);
+          var attachToggle = document.getElementById('report-attach-toggle-'+uid);
+          var attachArea = document.getElementById('report-attach-area-'+uid);
+          var attachedFile = null;
+          attachToggle.addEventListener('change', function(){
+            attachArea.hidden = !attachToggle.checked;
+            if(attachToggle.checked && !attachArea.dataset.wired){
+              attachArea.dataset.wired = '1';
+              attachArea.innerHTML = '<input type="file" accept="image/*" style="margin-bottom:10px;">';
+              attachArea.querySelector('input[type=file]').addEventListener('change', function(e){
+                attachedFile = e.target.files[0] || null;
+              });
+            }
+          });
           submitBtn.addEventListener('click', async function(){
             var message = textarea.value.trim();
             if(!message) return;
             submitBtn.disabled = true; submitBtn.textContent = 'Submitting…';
-            var res = await supabaseClient.from('reports').insert({
-              page_type: btn.dataset.pageType, page_ref: btn.dataset.pageRef, page_label: btn.dataset.pageLabel,
-              message: message, reported_by: currentUser ? currentUser.id : null
-            });
-            submitBtn.disabled = false; submitBtn.textContent = 'Submit report';
-            msg.hidden = false;
-            if(res.error){ msg.className = 'field-error'; msg.textContent = 'Error: ' + res.error.message; }
-            else { msg.className = 'field-hint is-match'; msg.textContent = 'Thanks — reported.'; textarea.value = ''; }
+            var attachmentPath = null;
+            try {
+              if(attachedFile){
+                var ext = (attachedFile.name.split('.').pop() || 'jpg').toLowerCase();
+                attachmentPath = 'report-' + Date.now() + '.' + ext;
+                var up = await supabaseClient.storage.from('report-attachments').upload(attachmentPath, attachedFile);
+                if(up.error) throw up.error;
+              }
+              var res = await supabaseClient.from('reports').insert({
+                page_type: btn.dataset.pageType, page_ref: btn.dataset.pageRef, page_label: btn.dataset.pageLabel,
+                message: message, attachment_path: attachmentPath, reported_by: currentUser ? currentUser.id : null
+              });
+              if(res.error) throw res.error;
+              msg.hidden = false;
+              msg.className = 'field-hint is-match'; msg.textContent = 'Thanks — reported.';
+              textarea.value = ''; attachedFile = null; attachToggle.checked = false; attachArea.hidden = true;
+            } catch(err) {
+              msg.hidden = false;
+              msg.className = 'field-error'; msg.textContent = 'Error: ' + (err.message || err);
+            } finally {
+              submitBtn.disabled = false; submitBtn.textContent = 'Submit report';
+            }
           });
         }
         panel.hidden = !panel.hidden;
@@ -225,11 +257,15 @@
       return '<div class="season-group"><h3><a class="spec-link" href="#/sport/'+sportSlug+'/'+compSlug+'/season/'+y+'">'+y+'</a></h3><div class="jersey-grid">'+cards+'</div></div>';
     }).join('');
 
-    var logoBlock = currentUser
-      ? '<div class="add-photos-block"><button class="btn btn-secondary" id="propose-logo-toggle" data-team-id="'+team.id+'" type="button">'+(team.logo_path ? 'Propose a different logo' : '+ Propose a logo')+'</button><div id="propose-logo-panel" hidden></div></div>'
+    // Once a team has a logo, changing it is rare — fold that into the
+    // generic "Report a problem" flow (with an optional image attached)
+    // instead of a permanent button. Only teams with no logo yet get the
+    // prominent top-level proposal button.
+    var logoBlock = (currentUser && !team.logo_path)
+      ? '<div class="add-photos-block"><button class="btn btn-secondary" id="propose-logo-toggle" data-team-id="'+team.id+'" type="button">+ Propose a logo</button><div id="propose-logo-panel" hidden></div></div>'
       : '';
 
-    return '<div class="section-head">'+teamSwatch(team)+'<h2 style="margin-left:2px;">'+esc(team.name)+'</h2></div>' +
+    return '<div class="section-head" style="align-items:center;">'+teamSwatch(team, {large:true})+'<h2 style="margin-left:2px;">'+esc(team.name)+'</h2></div>' +
       logoBlock +
       (groups || '<div class="empty-note">No jerseys logged yet.</div>') +
       renderReportButton('team', team.id, team.name);
@@ -270,7 +306,7 @@
     ]);
 
     var images = j.jersey_images && j.jersey_images.length ? j.jersey_images : null;
-    var mainHtml = images ? '<img src="'+esc(publicImageUrl(images[0].storage_path))+'" alt="">' : jerseyThumb(j, team);
+    var mainHtml = images ? '<img class="lightbox-trigger" src="'+esc(publicImageUrl(images[0].storage_path))+'" alt="">' : jerseyThumb(j, team);
     var thumbs = images ? images.map(function(img,i){
       return '<button class="gallery-thumb'+(i===0?' is-active':'')+'" data-idx="'+i+'" type="button" title="'+esc(img.label)+'"><img src="'+esc(publicImageUrl(img.storage_path))+'" alt=""></button>';
     }).join('') : '';
@@ -477,7 +513,7 @@
       var team = j.teams, comp = team.competitions, sport = comp.sports;
       var uploader = uploaderNames[j.uploaded_by] || 'unknown';
       var thumb = j.jersey_images && j.jersey_images.length
-        ? '<img src="'+esc(publicImageUrl(j.jersey_images[0].storage_path))+'" alt="">'
+        ? '<img class="lightbox-trigger" src="'+esc(publicImageUrl(j.jersey_images[0].storage_path))+'" alt="">'
         : '<div class="thumb-placeholder" style="background:var(--surface-2)"><span>No photo</span></div>';
       return '<div class="mod-card">' +
         '<div class="jersey-thumb">'+thumb+'</div>' +
@@ -497,7 +533,7 @@
       var j = img.jerseys, team = j ? j.teams : null;
       var uploader = uploaderNames[img.uploaded_by] || 'unknown';
       return '<div class="mod-card">' +
-        '<div class="jersey-thumb"><img src="'+esc(publicImageUrl(img.storage_path))+'" alt=""></div>' +
+        '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(publicImageUrl(img.storage_path))+'" alt=""></div>' +
         '<div class="mod-info">' +
           '<strong>'+esc(img.label)+' photo for '+(j ? j.season+' '+esc(team.name)+' '+esc(j.type) : 'a jersey')+'</strong>' +
           '<span>proposed by '+esc(uploader)+'</span>' +
@@ -519,7 +555,13 @@
     var reportCards = openReports.map(function(r){
       var reporter = uploaderNames[r.reported_by] || (r.reported_by ? 'unknown' : 'anonymous');
       var link = reportLink(r);
-      return '<div class="mod-card">' +
+      var thumb = r.attachment_path
+        ? '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(supabaseClient.storage.from('report-attachments').getPublicUrl(r.attachment_path).data.publicUrl)+'" alt=""></div>'
+        : '';
+      var useAsLogoBtn = (r.attachment_path && r.page_type === 'team')
+        ? '<button class="btn" data-type="report-logo" data-action="use" data-id="'+r.id+'" data-team-id="'+esc(r.page_ref)+'" data-path="'+esc(r.attachment_path)+'" type="button">Use as team logo</button>'
+        : '';
+      return '<div class="mod-card">' + thumb +
         '<div class="mod-info">' +
           '<strong>'+esc(r.page_type)+': '+esc(r.page_label || r.page_ref)+'</strong>' +
           '<span>'+esc(r.message)+'</span>' +
@@ -527,6 +569,7 @@
         '</div>' +
         '<div class="mod-actions">' +
           (link ? '<a class="btn btn-secondary" href="'+link+'" target="_blank" style="text-decoration:none;">View</a>' : '') +
+          useAsLogoBtn +
           '<button class="btn" data-type="report" data-action="resolve" data-id="'+r.id+'" type="button">Mark resolved</button>' +
         '</div>' +
       '</div>';
@@ -535,7 +578,7 @@
     var logoCards = pendingLogos.map(function(l){
       var proposer = uploaderNames[l.proposed_by] || 'unknown';
       return '<div class="mod-card">' +
-        '<div class="jersey-thumb"><img src="'+esc(publicLogoUrl(l.storage_path))+'" alt=""></div>' +
+        '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(l.storage_path))+'" alt=""></div>' +
         '<div class="mod-info">' +
           '<strong>Logo for '+(l.teams ? esc(l.teams.name) : 'a team')+'</strong>' +
           '<span>proposed by '+esc(proposer)+'</span>' +
@@ -638,7 +681,7 @@
         btn.addEventListener('click', function(){
           thumbsWrap.querySelectorAll('.gallery-thumb').forEach(function(b){ b.classList.remove('is-active'); });
           btn.classList.add('is-active');
-          main.innerHTML = '<img src="'+esc(publicImageUrl(images[Number(btn.dataset.idx)].storage_path))+'" alt="">';
+          main.innerHTML = '<img class="lightbox-trigger" src="'+esc(publicImageUrl(images[Number(btn.dataset.idx)].storage_path))+'" alt="">';
         });
       });
     }
@@ -882,6 +925,22 @@
           if(type === 'report'){
             var repRes = await supabaseClient.from('reports').update({status:'resolved'}).eq('id', id);
             if(repRes.error) throw repRes.error;
+          } else if(type === 'report-logo'){
+            // the attachment lives in report-attachments, but team logos are
+            // read from team-logos — move the bytes across buckets rather
+            // than just repointing logo_path at the wrong bucket.
+            var teamId = btn.dataset.teamId, oldPath = btn.dataset.path;
+            var dl = await supabaseClient.storage.from('report-attachments').download(oldPath);
+            if(dl.error) throw dl.error;
+            var ext = (oldPath.split('.').pop() || 'png').toLowerCase();
+            var newPath = teamId + '/logo-' + Date.now() + '.' + ext;
+            var moveUp = await supabaseClient.storage.from('team-logos').upload(newPath, dl.data);
+            if(moveUp.error) throw moveUp.error;
+            var teamUpd2 = await supabaseClient.from('teams').update({logo_path: newPath}).eq('id', teamId);
+            if(teamUpd2.error) throw teamUpd2.error;
+            var repRes2 = await supabaseClient.from('reports').update({status:'resolved'}).eq('id', id);
+            if(repRes2.error) throw repRes2.error;
+            await supabaseClient.storage.from('report-attachments').remove([oldPath]);
           } else if(type === 'logo'){
             if(btn.dataset.action === 'approve'){
               var teamUpd = await supabaseClient.from('teams').update({logo_path: btn.dataset.path}).eq('id', btn.dataset.teamId);
@@ -1293,6 +1352,19 @@
       if(location.hash.replace(/^#\/?/,'') === 'upload') render();
     }
   });
+
+  /* ================= lightbox ================= */
+  var lightbox = document.getElementById('lightbox');
+  var lightboxImg = document.getElementById('lightbox-img');
+  function openLightbox(url){ lightboxImg.src = url; lightbox.hidden = false; }
+  function closeLightbox(){ lightbox.hidden = true; lightboxImg.src = ''; }
+  document.addEventListener('click', function(e){
+    var trigger = e.target.closest('.lightbox-trigger');
+    if(trigger){ openLightbox(trigger.src); return; }
+    if(e.target === lightbox) closeLightbox();
+  });
+  document.getElementById('lightbox-close-btn').addEventListener('click', closeLightbox);
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape') closeLightbox(); });
 
   refreshAuthUI();
   window.addEventListener('hashchange', render);
