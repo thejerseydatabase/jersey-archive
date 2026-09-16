@@ -180,13 +180,20 @@ create table jersey_images (
   jersey_id uuid not null references jerseys(id) on delete cascade,
   storage_path text not null,
   label text not null default 'Front',   -- Front / Back / Other
-  sort_order integer not null default 0
+  sort_order integer not null default 0,
+  -- status covers photos proposed onto an ALREADY-approved jersey by someone
+  -- other than the original uploader; photos submitted with a brand-new
+  -- jersey default to 'approved' since the parent jersey's own pending
+  -- status already hides them until the jersey itself is approved.
+  status text not null default 'approved' check (status in ('pending','approved','rejected')),
+  uploaded_by uuid references auth.users(id)
 );
 
 alter table jersey_images enable row level security;
 create policy "images of visible jerseys are readable"
   on jersey_images for select using (
-    exists (select 1 from jerseys j where j.id = jersey_id and (
+    (status = 'approved' or uploaded_by = auth.uid() or exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin))
+    and exists (select 1 from jerseys j where j.id = jersey_id and (
       j.status = 'approved' or j.uploaded_by = auth.uid()
       or exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin)
     ))
@@ -195,6 +202,18 @@ create policy "authenticated users can add images to their own jerseys"
   on jersey_images for insert to authenticated with check (
     exists (select 1 from jerseys where jerseys.id = jersey_id and jerseys.uploaded_by = auth.uid())
   );
+create policy "authenticated users can propose extra photos"
+  on jersey_images for insert to authenticated with check (
+    uploaded_by = auth.uid() and status = 'pending'
+    and exists (select 1 from jerseys j where j.id = jersey_id and j.status = 'approved')
+  );
+create policy "admins can moderate jersey photos"
+  on jersey_images for update
+  using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin))
+  with check (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+create policy "admins can delete jersey image rows"
+  on jersey_images for delete
+  using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
 
 
 -- ============ ratings ============

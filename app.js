@@ -256,6 +256,11 @@
         (j.notes ? '<div class="notes-block">'+esc(j.notes)+'</div>' : '') +
         '<div class="stat-row"><span>logged '+fmtDate(j.created_at)+'</span>'+uploaderHtml+'</div>' +
         '<div class="rate-block"><span class="rate-label">Rate this jersey</span><div id="rating-widget" data-jersey-id="'+j.id+'">'+ratingWidgetHtml(rating, myRatingVal)+'</div></div>' +
+        (j.status === 'approved' ? (
+          currentUser
+            ? '<div class="add-photos-block"><button class="btn btn-secondary" id="add-photos-toggle" data-jersey-id="'+j.id+'" type="button">+ Add more photos</button><div id="add-photos-panel" hidden></div></div>'
+            : '<div class="add-photos-block"><p class="field-hint">Sign in to add more photos to this jersey.</p></div>'
+        ) : '') +
       '</div>' +
     '</div>';
   }
@@ -363,27 +368,40 @@
     if(!currentUser || !currentProfile || !currentProfile.is_admin){
       return '<div class="empty-note">Not authorized.</div>';
     }
-    var res = await supabaseClient.from('jerseys')
+    await refreshAuthUI(); // keeps the topbar count in sync even after changes made outside the app (e.g. deleting rows directly in Supabase)
+
+    var jRes = await supabaseClient.from('jerseys')
       .select('*, jersey_images(*), teams(name, competitions(name, sports(name)))')
       .eq('status', 'pending').order('created_at');
-    if(res.error) throw res.error;
-    var pending = res.data || [];
-    if(!pending.length){
-      return '<div class="section-head"><h2>Moderation queue</h2></div><div class="empty-note">Nothing waiting for review.</div>';
-    }
-    var uploaderIds = pending.map(function(j){ return j.uploaded_by; }).filter(Boolean);
+    if(jRes.error) throw jRes.error;
+    var pendingJerseys = jRes.data || [];
+
+    var pendingPhotos = [];
+    var photoRes = await supabaseClient.from('jersey_images')
+      .select('*, jerseys(id, season, type, teams(name))')
+      .eq('status', 'pending').order('id');
+    if(!photoRes.error) pendingPhotos = photoRes.data || [];
+
+    var uploaderIds = pendingJerseys.map(function(j){ return j.uploaded_by; })
+      .concat(pendingPhotos.map(function(img){ return img.uploaded_by; }))
+      .filter(Boolean);
     var uploaderNames = {};
     if(uploaderIds.length){
       var profRes = await supabaseClient.from('profiles').select('id,username').in('id', uploaderIds);
       (profRes.data || []).forEach(function(p){ uploaderNames[p.id] = p.username; });
     }
-    var cards = pending.map(function(j){
+
+    if(!pendingJerseys.length && !pendingPhotos.length){
+      return '<div class="section-head"><h2>Moderation queue</h2></div><div class="empty-note">Nothing waiting for review.</div>';
+    }
+
+    var jerseyCards = pendingJerseys.map(function(j){
       var team = j.teams, comp = team.competitions, sport = comp.sports;
       var uploader = uploaderNames[j.uploaded_by] || 'unknown';
       var thumb = j.jersey_images && j.jersey_images.length
         ? '<img src="'+esc(publicImageUrl(j.jersey_images[0].storage_path))+'" alt="">'
         : '<div class="thumb-placeholder" style="background:var(--surface-2)"><span>No photo</span></div>';
-      return '<div class="mod-card" data-jersey-id="'+j.id+'">' +
+      return '<div class="mod-card">' +
         '<div class="jersey-thumb">'+thumb+'</div>' +
         '<div class="mod-info">' +
           '<strong>'+j.season+' '+esc(team.name)+' '+esc(j.type)+'</strong>' +
@@ -391,12 +409,36 @@
           (j.notes ? '<span>'+esc(j.notes)+'</span>' : '') +
         '</div>' +
         '<div class="mod-actions">' +
-          '<button class="btn" data-action="approve" data-id="'+j.id+'" type="button">Approve</button>' +
-          '<button class="btn btn-reject" data-action="reject" data-id="'+j.id+'" type="button">Reject</button>' +
+          '<button class="btn" data-type="jersey" data-action="approve" data-id="'+j.id+'" type="button">Approve</button>' +
+          '<button class="btn btn-reject" data-type="jersey" data-action="reject" data-id="'+j.id+'" type="button">Reject</button>' +
         '</div>' +
       '</div>';
     }).join('');
-    return '<div class="section-head"><h2>Moderation queue</h2><span class="count">'+pending.length+' pending</span></div><div class="mod-list">'+cards+'</div>';
+
+    var photoCards = pendingPhotos.map(function(img){
+      var j = img.jerseys, team = j ? j.teams : null;
+      var uploader = uploaderNames[img.uploaded_by] || 'unknown';
+      return '<div class="mod-card">' +
+        '<div class="jersey-thumb"><img src="'+esc(publicImageUrl(img.storage_path))+'" alt=""></div>' +
+        '<div class="mod-info">' +
+          '<strong>'+esc(img.label)+' photo for '+(j ? j.season+' '+esc(team.name)+' '+esc(j.type) : 'a jersey')+'</strong>' +
+          '<span>proposed by '+esc(uploader)+'</span>' +
+        '</div>' +
+        '<div class="mod-actions">' +
+          (j ? '<a class="btn btn-secondary" href="#/jersey/'+j.id+'" target="_blank" style="text-decoration:none;">View jersey</a>' : '') +
+          '<button class="btn" data-type="photo" data-action="approve" data-id="'+img.id+'" type="button">Approve</button>' +
+          '<button class="btn btn-reject" data-type="photo" data-action="reject" data-id="'+img.id+'" data-path="'+esc(img.storage_path)+'" type="button">Reject</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    return '<div class="section-head"><h2>Moderation queue</h2></div>' +
+      '<section class="block"><div class="section-head"><h2>New jerseys</h2><span class="count">'+pendingJerseys.length+' pending</span></div>' +
+        (jerseyCards ? '<div class="mod-list">'+jerseyCards+'</div>' : '<div class="empty-note">None waiting.</div>') +
+      '</section>' +
+      '<section class="block"><div class="section-head"><h2>Proposed photos</h2><span class="count">'+pendingPhotos.length+' pending</span></div>' +
+        (photoCards ? '<div class="mod-list">'+photoCards+'</div>' : '<div class="empty-note">None waiting.</div>') +
+      '</section>';
   }
 
   function viewNotFound(){
@@ -475,19 +517,132 @@
       });
     }
 
+    var addPhotosToggle = document.getElementById('add-photos-toggle');
+    if(addPhotosToggle){
+      addPhotosToggle.addEventListener('click', function(){
+        var panel = document.getElementById('add-photos-panel');
+        if(!panel.dataset.wired){
+          panel.dataset.wired = '1';
+          panel.innerHTML = renderAddPhotosPanel();
+          wireAddPhotosPanel(addPhotosToggle.dataset.jerseyId);
+        }
+        panel.hidden = !panel.hidden;
+      });
+    }
+
     if(parts[0]==='upload' && currentUser){ wireUploadForm(); }
     if(parts[0]==='moderate'){ wireModerationActions(); }
+  }
+
+  function renderAddPhotosPanel(){
+    return '<div class="dropzone" id="ap-dropzone" tabindex="0" role="button" aria-label="Add photos">' +
+        ICON_PHOTO +
+        '<p>Drop photos here, or click to choose</p>' +
+        '<input type="file" id="ap-photos-input" accept="image/*" multiple style="display:none;">' +
+      '</div>' +
+      '<div class="photo-previews" id="ap-photo-previews"></div>' +
+      '<p class="field-error" id="ap-photo-error" hidden>Add at least one photo before submitting.</p>' +
+      '<div style="margin-top:14px;"><button class="btn" id="ap-submit-btn" type="button">Submit for review</button></div>' +
+      '<div id="ap-result"></div>';
+  }
+
+  function wireAddPhotosPanel(jerseyId){
+    var selected = [];
+    var dropzone = document.getElementById('ap-dropzone');
+    var input = document.getElementById('ap-photos-input');
+    var previewsEl = document.getElementById('ap-photo-previews');
+    function labelForIndex(i){ return i === 0 ? 'Front' : i === 1 ? 'Back' : 'Other'; }
+    function renderPreviews(){
+      previewsEl.innerHTML = selected.map(function(p, i){
+        return '<div class="photo-preview-item">' +
+          '<div class="photo-preview-thumb"><img src="'+p.url+'" alt=""></div>' +
+          '<select class="photo-label-select" data-idx="'+i+'">' +
+            ['Front','Back','Other'].map(function(l){ return '<option value="'+l+'"'+(p.label===l?' selected':'')+'>'+l+'</option>'; }).join('') +
+          '</select>' +
+          '<button type="button" class="photo-remove-btn" data-idx="'+i+'" aria-label="Remove photo">✕</button>' +
+        '</div>';
+      }).join('');
+      previewsEl.querySelectorAll('.photo-label-select').forEach(function(sel){
+        sel.addEventListener('change', function(){ selected[Number(sel.dataset.idx)].label = sel.value; });
+      });
+      previewsEl.querySelectorAll('.photo-remove-btn').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          URL.revokeObjectURL(selected[Number(btn.dataset.idx)].url);
+          selected.splice(Number(btn.dataset.idx), 1);
+          renderPreviews();
+        });
+      });
+    }
+    function addFiles(fileList){
+      Array.from(fileList).forEach(function(file){
+        if(!/^image\//.test(file.type)) return;
+        selected.push({file: file, label: labelForIndex(selected.length), url: URL.createObjectURL(file)});
+      });
+      renderPreviews();
+    }
+    dropzone.addEventListener('click', function(){ input.click(); });
+    dropzone.addEventListener('keydown', function(e){ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); input.click(); } });
+    input.addEventListener('change', function(){ addFiles(input.files); input.value = ''; });
+    dropzone.addEventListener('dragover', function(e){ e.preventDefault(); dropzone.classList.add('is-dragover'); });
+    dropzone.addEventListener('dragleave', function(){ dropzone.classList.remove('is-dragover'); });
+    dropzone.addEventListener('drop', function(e){
+      e.preventDefault();
+      dropzone.classList.remove('is-dragover');
+      if(e.dataTransfer && e.dataTransfer.files) addFiles(e.dataTransfer.files);
+    });
+
+    document.getElementById('ap-submit-btn').addEventListener('click', async function(){
+      var errorEl = document.getElementById('ap-photo-error');
+      if(selected.length === 0){ errorEl.hidden = false; return; }
+      errorEl.hidden = true;
+      var btn = this;
+      btn.disabled = true; btn.textContent = 'Submitting…';
+      try {
+        for(var i=0; i<selected.length; i++){
+          var p = selected[i];
+          var ext = (p.file.name.split('.').pop() || 'jpg').toLowerCase();
+          var path = jerseyId + '/proposed-' + slugify(p.label) + '-' + i + '-' + Date.now() + '.' + ext;
+          var up = await supabaseClient.storage.from('jersey-photos').upload(path, p.file);
+          if(up.error) throw up.error;
+          var ins = await supabaseClient.from('jersey_images').insert({
+            jersey_id: jerseyId, storage_path: path, label: p.label, status: 'pending', uploaded_by: currentUser.id
+          });
+          if(ins.error) throw ins.error;
+        }
+        document.getElementById('ap-result').innerHTML = '<p class="field-hint is-match" style="margin-top:10px;">Submitted for review — thanks!</p>';
+        selected.forEach(function(p){ URL.revokeObjectURL(p.url); });
+        selected.length = 0;
+        renderPreviews();
+      } catch(err) {
+        document.getElementById('ap-result').innerHTML = errorBox(err);
+      } finally {
+        btn.disabled = false; btn.textContent = 'Submit for review';
+      }
+    });
   }
 
   function wireModerationActions(){
     document.querySelectorAll('.mod-card [data-action]').forEach(function(btn){
       btn.addEventListener('click', async function(){
         var id = btn.dataset.id;
+        var type = btn.dataset.type;
         var card = btn.closest('.mod-card');
         var siblingButtons = card.querySelectorAll('button');
         siblingButtons.forEach(function(b){ b.disabled = true; });
         try {
-          if(btn.dataset.action === 'approve'){
+          if(type === 'photo'){
+            if(btn.dataset.action === 'approve'){
+              var pr = await supabaseClient.from('jersey_images').update({status:'approved'}).eq('id', id);
+              if(pr.error) throw pr.error;
+            } else {
+              if(btn.dataset.path){
+                var prm = await supabaseClient.storage.from('jersey-photos').remove([btn.dataset.path]);
+                if(prm.error) throw prm.error;
+              }
+              var pdel = await supabaseClient.from('jersey_images').delete().eq('id', id);
+              if(pdel.error) throw pdel.error;
+            }
+          } else if(btn.dataset.action === 'approve'){
             var r = await supabaseClient.from('jerseys').update({status:'approved'}).eq('id', id);
             if(r.error) throw r.error;
           } else {
@@ -841,8 +996,12 @@
       var profRes = await supabaseClient.from('profiles').select('*').eq('id', currentUser.id).maybeSingle();
       currentProfile = profRes.data || null;
       if(currentProfile && currentProfile.is_admin){
-        var countRes = await supabaseClient.from('jerseys').select('id', {count:'exact', head:true}).eq('status', 'pending');
-        pendingCount = countRes.count || 0;
+        var jerseyCountRes = await supabaseClient.from('jerseys').select('id', {count:'exact', head:true}).eq('status', 'pending');
+        pendingCount = jerseyCountRes.count || 0;
+        try {
+          var photoCountRes = await supabaseClient.from('jersey_images').select('id', {count:'exact', head:true}).eq('status', 'pending');
+          if(!photoCountRes.error) pendingCount += (photoCountRes.count || 0);
+        } catch(e){} // jersey_images.status may not exist yet if add_photos.sql hasn't been run
       }
     } else {
       currentProfile = null;
