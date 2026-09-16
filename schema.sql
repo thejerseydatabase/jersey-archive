@@ -10,6 +10,7 @@
 
 drop view if exists jersey_ratings;
 drop trigger if exists on_jersey_uploaded on jerseys;
+drop trigger if exists on_jersey_approved on jerseys;
 drop trigger if exists on_auth_user_created on auth.users;
 drop table if exists ratings, jersey_images, jerseys, teams, competitions, sports, profiles cascade;
 drop function if exists award_upload_point() cascade;
@@ -22,6 +23,7 @@ create table profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   username text unique,
   points integer not null default 0,
+  is_admin boolean not null default false,
   created_at timestamptz not null default now()
 );
 
@@ -120,6 +122,7 @@ create table jerseys (
   notes text,
   uploaded_by uuid references auth.users(id),
   views integer not null default 0,
+  status text not null default 'pending' check (status in ('pending','approved','rejected')),
   created_at timestamptz not null default now()
 );
 
@@ -128,27 +131,45 @@ create index jerseys_season_idx on jerseys(season);
 create index jerseys_manufacturer_idx on jerseys(manufacturer);
 create index jerseys_type_idx on jerseys(type);
 create index jerseys_format_idx on jerseys(format);
+create index jerseys_status_idx on jerseys(status);
 
 alter table jerseys enable row level security;
-create policy "jerseys are publicly readable" on jerseys for select using (true);
+
+-- public sees only approved jerseys; you always see your own; admins see everything
+create policy "visible jerseys are readable"
+  on jerseys for select using (
+    status = 'approved'
+    or uploaded_by = auth.uid()
+    or exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin)
+  );
 create policy "authenticated users can upload jerseys"
   on jerseys for insert to authenticated with check (auth.uid() = uploaded_by);
-create policy "users can edit their own jerseys"
-  on jerseys for update using (auth.uid() = uploaded_by);
+-- you can edit your own jersey while it's pending, but can't approve yourself
+create policy "users can edit their own pending jerseys"
+  on jerseys for update
+  using (auth.uid() = uploaded_by)
+  with check (auth.uid() = uploaded_by and status = 'pending');
+create policy "admins can moderate jerseys"
+  on jerseys for update
+  using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin))
+  with check (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+create policy "admins can delete jerseys"
+  on jerseys for delete
+  using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
 
--- award an upload point automatically
+-- award an upload point once a submission is actually approved, not on raw submission
 create function award_upload_point()
 returns trigger as $$
 begin
-  if new.uploaded_by is not null then
+  if new.status = 'approved' and (old.status is distinct from 'approved') and new.uploaded_by is not null then
     update profiles set points = points + 1 where id = new.uploaded_by;
   end if;
   return new;
 end;
 $$ language plpgsql security definer;
 
-create trigger on_jersey_uploaded
-  after insert on jerseys
+create trigger on_jersey_approved
+  after update of status on jerseys
   for each row execute function award_upload_point();
 
 
@@ -163,7 +184,13 @@ create table jersey_images (
 );
 
 alter table jersey_images enable row level security;
-create policy "jersey images are publicly readable" on jersey_images for select using (true);
+create policy "images of visible jerseys are readable"
+  on jersey_images for select using (
+    exists (select 1 from jerseys j where j.id = jersey_id and (
+      j.status = 'approved' or j.uploaded_by = auth.uid()
+      or exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin)
+    ))
+  );
 create policy "authenticated users can add images to their own jerseys"
   on jersey_images for insert to authenticated with check (
     exists (select 1 from jerseys where jerseys.id = jersey_id and jerseys.uploaded_by = auth.uid())
@@ -204,6 +231,10 @@ create policy "anyone can view jersey photos"
 create policy "authenticated users can upload jersey photos"
   on storage.objects for insert to authenticated
   with check (bucket_id = 'jersey-photos');
+
+create policy "admins can delete jersey photos"
+  on storage.objects for delete to authenticated
+  using (bucket_id = 'jersey-photos' and exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
 
 
 -- ============ seed data ============

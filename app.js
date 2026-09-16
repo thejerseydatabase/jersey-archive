@@ -2,6 +2,7 @@
 
   var ICON_SHIRT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M8 3 5 5 2 8l3 3 2-1.5V21h10V9.5L19 11l3-3-3-3-3-2-2 2h-4z"/></svg>';
   var ICON_STAR = '<svg viewBox="0 0 24 24" fill="currentColor" width="21" height="21"><path d="M12 2.5l3.09 6.26 6.91 1-5 4.87L18.18 21.5 12 18.27 5.82 21.5 7 14.63l-5-4.87 6.91-1z"/></svg>';
+  var ICON_PHOTO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="26" height="26"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M3 17l5-4 4 3 3-2 6 5"/><path d="M17 3v4M15 5h4"/></svg>';
   var FORMATS_BY_SPORT = { cricket: ['Test','T20','T20I','ODI','One Day','First Class'] };
   var JERSEY_TYPES = ['Home','Away','Alternate','Indigenous','Heritage','Training'];
   var MANUFACTURERS = ['ISC','Classic','Kappa','Canterbury','BLK','Burley Sekem','Macron','Puma','Nike','Adidas','New Balance'];
@@ -24,7 +25,7 @@
     return '<span style="color:'+t.color+';font-weight:700;" title="'+t.label+' tier">('+points+')</span>';
   }
 
-  var currentUser = null, currentProfile = null;
+  var currentUser = null, currentProfile = null, pendingCount = 0;
 
   /* ================= helpers ================= */
   function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -57,7 +58,8 @@
     var yearType = jersey.season + ' · ' + jersey.type + (jersey.format ? ' · ' + jersey.format : '');
     var primary = opts.showTeam ? team.name : yearType;
     var secondary = opts.showTeam ? yearType : (jersey.manufacturer || 'Unlisted');
-    return '<a class="jersey-card" href="#/jersey/'+jersey.id+'">' +
+    var pendingBadge = jersey.status && jersey.status !== 'approved' ? '<span class="pending-badge">Pending</span>' : '';
+    return '<a class="jersey-card" href="#/jersey/'+jersey.id+'">' + pendingBadge +
       '<div class="jersey-thumb">'+jerseyThumb(jersey, team)+'</div>' +
       '<div class="jersey-label"><strong>'+esc(primary)+'</strong><span>'+esc(secondary)+'</span></div>' +
     '</a>';
@@ -232,7 +234,10 @@
       }
     }
 
-    return '<div class="detail-grid">' +
+    var pendingBanner = j.status && j.status !== 'approved'
+      ? '<div class="pending-banner">This jersey is '+esc(j.status)+' &mdash; only you and moderators can see it until it’s approved.</div>' : '';
+
+    return pendingBanner + '<div class="detail-grid">' +
       '<div><div class="gallery-main" id="gallery-main">'+mainHtml+'</div>' +
       (thumbs ? '<div class="gallery-thumbs" id="gallery-thumbs" data-images=\''+esc(JSON.stringify(images))+'\'>'+thumbs+'</div>' : '') +
       '</div>' +
@@ -313,13 +318,14 @@
           '<div class="field"><label for="f-season">Season *</label><input type="text" inputmode="numeric" id="f-season" list="season-list" placeholder="e.g. 2022" required><datalist id="season-list">'+seasonOptions+'</datalist></div>' +
           '<div class="field"><label for="f-type">Jersey type *</label><input type="text" id="f-type" list="type-list" placeholder="e.g. Home" required><datalist id="type-list">'+typeOptions+'</datalist></div>' +
           '<div class="field"><label for="f-mfr">Manufacturer <small>optional</small></label><input type="text" id="f-mfr" list="mfr-list" placeholder="e.g. ISC"><datalist id="mfr-list">'+mfrOptions+'</datalist></div>' +
-          '<div class="field field-full" id="field-photos"><label>Photos *</label>' +
-            '<div class="photo-slots">' +
-              '<div class="photo-slot"><p>Front</p><span>recommended</span><input type="file" id="f-photo-front" accept="image/*"></div>' +
-              '<div class="photo-slot"><p>Back</p><span>optional</span><input type="file" id="f-photo-back" accept="image/*"></div>' +
-              '<div class="photo-slot"><p>Other</p><span>tag, sponsor detail...</span><input type="file" id="f-photo-other" accept="image/*"></div>' +
+          '<div class="field field-full" id="field-photos"><label>Photos * <small>drag in several at once, or click to choose</small></label>' +
+            '<div class="dropzone" id="photo-dropzone" tabindex="0" role="button" aria-label="Add photos">' +
+              ICON_PHOTO +
+              '<p>Drop photos here, or click to choose</p>' +
+              '<input type="file" id="f-photos-input" accept="image/*" multiple style="display:none;">' +
             '</div>' +
-            '<p class="field-error" id="photo-error" hidden>Add at least one photo (front, back, or other) before submitting.</p>' +
+            '<div class="photo-previews" id="photo-previews"></div>' +
+            '<p class="field-error" id="photo-error" hidden>Add at least one photo before submitting.</p>' +
           '</div>' +
           '<div class="field field-full"><label for="f-notes">Additional info <small>optional</small></label><textarea id="f-notes" placeholder="Sponsor changes, special edition, match it was worn in..."></textarea></div>' +
         '</div>' +
@@ -352,6 +358,47 @@
     return ins.data;
   }
 
+  async function viewModerate(){
+    setCrumbs([{label:'Home', href:'#/'},{label:'Moderate', href:'#/moderate'}]);
+    if(!currentUser || !currentProfile || !currentProfile.is_admin){
+      return '<div class="empty-note">Not authorized.</div>';
+    }
+    var res = await supabaseClient.from('jerseys')
+      .select('*, jersey_images(*), teams(name, competitions(name, sports(name)))')
+      .eq('status', 'pending').order('created_at');
+    if(res.error) throw res.error;
+    var pending = res.data || [];
+    if(!pending.length){
+      return '<div class="section-head"><h2>Moderation queue</h2></div><div class="empty-note">Nothing waiting for review.</div>';
+    }
+    var uploaderIds = pending.map(function(j){ return j.uploaded_by; }).filter(Boolean);
+    var uploaderNames = {};
+    if(uploaderIds.length){
+      var profRes = await supabaseClient.from('profiles').select('id,username').in('id', uploaderIds);
+      (profRes.data || []).forEach(function(p){ uploaderNames[p.id] = p.username; });
+    }
+    var cards = pending.map(function(j){
+      var team = j.teams, comp = team.competitions, sport = comp.sports;
+      var uploader = uploaderNames[j.uploaded_by] || 'unknown';
+      var thumb = j.jersey_images && j.jersey_images.length
+        ? '<img src="'+esc(publicImageUrl(j.jersey_images[0].storage_path))+'" alt="">'
+        : '<div class="thumb-placeholder" style="background:var(--surface-2)"><span>No photo</span></div>';
+      return '<div class="mod-card" data-jersey-id="'+j.id+'">' +
+        '<div class="jersey-thumb">'+thumb+'</div>' +
+        '<div class="mod-info">' +
+          '<strong>'+j.season+' '+esc(team.name)+' '+esc(j.type)+'</strong>' +
+          '<span>'+esc(comp.name)+' · '+esc(sport.name)+' · by '+esc(uploader)+'</span>' +
+          (j.notes ? '<span>'+esc(j.notes)+'</span>' : '') +
+        '</div>' +
+        '<div class="mod-actions">' +
+          '<button class="btn" data-action="approve" data-id="'+j.id+'" type="button">Approve</button>' +
+          '<button class="btn btn-reject" data-action="reject" data-id="'+j.id+'" type="button">Reject</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+    return '<div class="section-head"><h2>Moderation queue</h2><span class="count">'+pending.length+' pending</span></div><div class="mod-list">'+cards+'</div>';
+  }
+
   function viewNotFound(){
     setCrumbs([{label:'Home', href:'#/'}]);
     return '<div class="empty-note">That page doesn&rsquo;t exist. <a href="#/" style="color:var(--accent);">Back to home</a>.</div>';
@@ -374,6 +421,7 @@
       else if(parts[0]==='jersey' && parts[1]){ html = await viewJerseyDetail(parts[1]); }
       else if(parts[0]==='search' && parts[1]){ html = await viewSearch(parts[1]); }
       else if(parts[0]==='upload'){ html = await viewUpload(); }
+      else if(parts[0]==='moderate'){ html = await viewModerate(); }
       else { html = viewNotFound(); }
       app.innerHTML = html;
       wireViewEvents(parts);
@@ -428,6 +476,38 @@
     }
 
     if(parts[0]==='upload' && currentUser){ wireUploadForm(); }
+    if(parts[0]==='moderate'){ wireModerationActions(); }
+  }
+
+  function wireModerationActions(){
+    document.querySelectorAll('.mod-card [data-action]').forEach(function(btn){
+      btn.addEventListener('click', async function(){
+        var id = btn.dataset.id;
+        var card = btn.closest('.mod-card');
+        var siblingButtons = card.querySelectorAll('button');
+        siblingButtons.forEach(function(b){ b.disabled = true; });
+        try {
+          if(btn.dataset.action === 'approve'){
+            var r = await supabaseClient.from('jerseys').update({status:'approved'}).eq('id', id);
+            if(r.error) throw r.error;
+          } else {
+            var imgRes = await supabaseClient.from('jersey_images').select('storage_path').eq('jersey_id', id);
+            var paths = (imgRes.data || []).map(function(row){ return row.storage_path; });
+            if(paths.length){
+              var rmRes = await supabaseClient.storage.from('jersey-photos').remove(paths);
+              if(rmRes.error) throw rmRes.error;
+            }
+            var delRes = await supabaseClient.from('jerseys').delete().eq('id', id);
+            if(delRes.error) throw delRes.error;
+          }
+          if(card) card.remove();
+          await refreshAuthUI();
+        } catch(err) {
+          alert('Error: ' + (err.message || err));
+          siblingButtons.forEach(function(b){ b.disabled = false; });
+        }
+      });
+    });
   }
 
   function wireUploadForm(){
@@ -461,6 +541,55 @@
       DRAFT_FIELDS.forEach(function(id){ if(restoredDraft[id]) document.getElementById(id).value = restoredDraft[id]; });
       form.insertAdjacentHTML('afterbegin', '<p class="field-hint is-match" style="margin-bottom:14px;">Restored what you’d typed before the page reloaded &mdash; you’ll need to re-attach any photos.</p>');
     }
+
+    // Photos: a managed array instead of the raw <input>, since a native
+    // file input's FileList can't be edited (no removing one file from a
+    // multi-select) — we track {file, label, url} ourselves and just use
+    // the input to grab newly picked/dropped files.
+    var selectedPhotos = [];
+    var dropzone = document.getElementById('photo-dropzone');
+    var photosInput = document.getElementById('f-photos-input');
+    var previewsEl = document.getElementById('photo-previews');
+
+    function labelForIndex(i){ return i === 0 ? 'Front' : i === 1 ? 'Back' : 'Other'; }
+    function renderPhotoPreviews(){
+      previewsEl.innerHTML = selectedPhotos.map(function(p, i){
+        return '<div class="photo-preview-item">' +
+          '<div class="photo-preview-thumb"><img src="'+p.url+'" alt=""></div>' +
+          '<select class="photo-label-select" data-idx="'+i+'">' +
+            ['Front','Back','Other'].map(function(l){ return '<option value="'+l+'"'+(p.label===l?' selected':'')+'>'+l+'</option>'; }).join('') +
+          '</select>' +
+          '<button type="button" class="photo-remove-btn" data-idx="'+i+'" aria-label="Remove photo">✕</button>' +
+        '</div>';
+      }).join('');
+      previewsEl.querySelectorAll('.photo-label-select').forEach(function(sel){
+        sel.addEventListener('change', function(){ selectedPhotos[Number(sel.dataset.idx)].label = sel.value; });
+      });
+      previewsEl.querySelectorAll('.photo-remove-btn').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          URL.revokeObjectURL(selectedPhotos[Number(btn.dataset.idx)].url);
+          selectedPhotos.splice(Number(btn.dataset.idx), 1);
+          renderPhotoPreviews();
+        });
+      });
+    }
+    function addPhotoFiles(fileList){
+      Array.from(fileList).forEach(function(file){
+        if(!/^image\//.test(file.type)) return;
+        selectedPhotos.push({file: file, label: labelForIndex(selectedPhotos.length), url: URL.createObjectURL(file)});
+      });
+      renderPhotoPreviews();
+    }
+    dropzone.addEventListener('click', function(){ photosInput.click(); });
+    dropzone.addEventListener('keydown', function(e){ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); photosInput.click(); } });
+    photosInput.addEventListener('change', function(){ addPhotoFiles(photosInput.files); photosInput.value = ''; });
+    dropzone.addEventListener('dragover', function(e){ e.preventDefault(); dropzone.classList.add('is-dragover'); });
+    dropzone.addEventListener('dragleave', function(){ dropzone.classList.remove('is-dragover'); });
+    dropzone.addEventListener('drop', function(e){
+      e.preventDefault();
+      dropzone.classList.remove('is-dragover');
+      if(e.dataTransfer && e.dataTransfer.files) addPhotoFiles(e.dataTransfer.files);
+    });
 
     async function competitionsForSport(sportSlug){
       var r = await supabaseClient.from('competitions').select('*').eq('sport_slug', sportSlug);
@@ -533,13 +662,8 @@
       }
       seasonInput.setCustomValidity('');
 
-      var files = {};
-      ['front','back','other'].forEach(function(slot){
-        var input = document.getElementById('f-photo-'+slot);
-        if(input.files && input.files[0]) files[slot] = input.files[0];
-      });
       var photoError = document.getElementById('photo-error');
-      if(Object.keys(files).length === 0){
+      if(selectedPhotos.length === 0){
         photoError.hidden = false;
         document.getElementById('field-photos').scrollIntoView({behavior:'smooth', block:'center'});
         return;
@@ -567,14 +691,13 @@
         var jersey = jerseyIns.data;
 
         try {
-          var labelMap = {front:'Front', back:'Back', other:'Other'};
-          for(var slot in files){
-            var file = files[slot];
-            var ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-            var path = jersey.id + '/' + slot + '-' + Date.now() + '.' + ext;
-            var up = await supabaseClient.storage.from('jersey-photos').upload(path, file);
+          for(var i=0; i<selectedPhotos.length; i++){
+            var photo = selectedPhotos[i];
+            var ext = (photo.file.name.split('.').pop() || 'jpg').toLowerCase();
+            var path = jersey.id + '/' + slugify(photo.label) + '-' + i + '-' + Date.now() + '.' + ext;
+            var up = await supabaseClient.storage.from('jersey-photos').upload(path, photo.file);
             if(up.error) throw up.error;
-            var imgIns = await supabaseClient.from('jersey_images').insert({jersey_id: jersey.id, storage_path: path, label: labelMap[slot]});
+            var imgIns = await supabaseClient.from('jersey_images').insert({jersey_id: jersey.id, storage_path: path, label: photo.label, sort_order: i});
             if(imgIns.error) throw imgIns.error;
           }
         } catch(photoErr) {
@@ -589,18 +712,17 @@
         if(!resultEl) return; // page moved on while this was in flight — upload still succeeded
         resultEl.innerHTML =
           '<div class="result-panel">' +
-            '<h3>Filed automatically</h3>' +
-            '<p>The '+season+' '+esc(team.name)+' '+esc(type)+' jersey now appears on four pages &mdash; no manual placement needed:</p>' +
+            '<h3>Your jersey submission is under review</h3>' +
+            '<p>The '+season+' '+esc(team.name)+' '+esc(type)+' jersey has been sent for approval. Once approved, it’ll automatically appear on its team, season, and sport pages &mdash; no extra work needed &mdash; and you’ll earn +1 point.</p>' +
             '<div class="result-links">' +
-              '<a href="#/jersey/'+jersey.id+'"><span>Its own jersey page, with full details</span><span class="go">View &rarr;</span></a>' +
-              '<a href="#/sport/'+sportSlug+'/'+comp.slug+'/team/'+team.slug+'"><span>'+esc(team.name)+' team page, sorted by year</span><span class="go">View &rarr;</span></a>' +
-              '<a href="#/sport/'+sportSlug+'/'+comp.slug+'/season/'+season+'"><span>'+esc(comp.name)+' '+season+' season page</span><span class="go">View &rarr;</span></a>' +
-              '<a href="#/sport/'+sportSlug+'"><span>'+esc(sportSlug)+' hub</span><span class="go">View &rarr;</span></a>' +
+              '<a href="#/jersey/'+jersey.id+'"><span>View your submission (only you and moderators can see it for now)</span><span class="go">View &rarr;</span></a>' +
             '</div>' +
-            '<p style="margin:16px 0 0;font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:var(--text-dim2);">+1 upload point &mdash; check the top right.</p>' +
           '</div>';
         form.reset();
         clearDraft();
+        selectedPhotos.forEach(function(p){ URL.revokeObjectURL(p.url); });
+        selectedPhotos.length = 0;
+        renderPhotoPreviews();
       } catch(err) {
         var resultElOnError = document.getElementById('upload-result');
         if(resultElOnError) resultElOnError.innerHTML = errorBox(err);
@@ -658,8 +780,10 @@
     if(currentUser){
       var username = currentProfile ? currentProfile.username : currentUser.email.split('@')[0];
       var points = currentProfile ? currentProfile.points : 0;
+      var modLink = (currentProfile && currentProfile.is_admin)
+        ? '<a href="#/moderate" style="text-decoration:underline;">Moderate'+(pendingCount ? ' ('+pendingCount+')' : '')+'</a>' : '';
       el.innerHTML =
-        '<div class="auth-status"><span>'+esc(username)+' '+pointsChip(points)+'</span>' +
+        '<div class="auth-status">'+modLink+'<span>'+esc(username)+' '+pointsChip(points)+'</span>' +
         '<button id="edit-username-btn" type="button">Edit</button>' +
         '<button id="sign-out-btn" type="button">Sign out</button></div>';
       document.getElementById('sign-out-btn').addEventListener('click', async function(){
@@ -712,9 +836,14 @@
   async function refreshAuthUI(){
     var sess = await supabaseClient.auth.getSession();
     currentUser = sess.data.session ? sess.data.session.user : null;
+    pendingCount = 0;
     if(currentUser){
       var profRes = await supabaseClient.from('profiles').select('*').eq('id', currentUser.id).maybeSingle();
       currentProfile = profRes.data || null;
+      if(currentProfile && currentProfile.is_admin){
+        var countRes = await supabaseClient.from('jerseys').select('id', {count:'exact', head:true}).eq('status', 'pending');
+        pendingCount = countRes.count || 0;
+      }
     } else {
       currentProfile = null;
     }

@@ -11,8 +11,8 @@ insert into teams (slug, competition_slug, name, primary_color, secondary_color)
   ('canterbury-bulldogs','nrl','Canterbury Bulldogs','#0D3B8C','#FFFFFF'),
   ('north-queensland-cowboys','nrl','North Queensland Cowboys','#002B5C','#F5C518');
 
-insert into jerseys (team_id, season, type, manufacturer)
-select t.id, s.season, ty.type, 'ISC'
+insert into jerseys (team_id, season, type, manufacturer, status)
+select t.id, s.season, ty.type, 'ISC', 'approved'
 from teams t
 cross join (values (2022),(2023),(2024)) as s(season)
 cross join (values ('Home'),('Away')) as ty(type)
