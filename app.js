@@ -399,6 +399,7 @@
         '<div style="display:flex;align-items:center;gap:2px;">'+compLogoSwatch(comp, {large:true})+'<h2 style="margin-left:2px;">'+esc(comp.name)+'</h2></div>' +
         '<span class="count">'+activeTeams.length+' teams</span>' +
       '</div>' +
+      compLogoBlock +
       (activeTeams.length ? '<div class="filter-row"><input type="text" id="team-filter" placeholder="Filter teams..."></div><div class="team-grid" id="team-grid">'+activeTeams.map(teamCard).join('')+'</div>'
         : '<div class="empty-note">No teams logged in '+esc(comp.name)+' yet.</div>') +
       (upcomingTeams.length
@@ -409,8 +410,7 @@
         : '') +
       seasonGalleriesHtml +
       topRatedHtml +
-      renderReportButton('competition', comp.slug, comp.name) +
-      compLogoBlock;
+      renderReportButton('competition', comp.slug, comp.name);
   }
 
   async function viewTeam(sportSlug, compSlug, teamSlug){
