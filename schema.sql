@@ -104,6 +104,10 @@ create table teams (
   primary_color text not null default '#3FA88C',
   secondary_color text not null default '#F2F6EF',
   logo_path text,
+  -- false = no longer competing in this competition (e.g. relegated out of
+  -- Super League) but its jersey history stays exactly where it is; the
+  -- competition page just lists it under "Former teams" instead.
+  is_active boolean not null default true,
   created_by uuid references auth.users(id),
   created_at timestamptz not null default now(),
   unique (competition_slug, slug)

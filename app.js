@@ -255,14 +255,22 @@
     var teamsRes = await supabaseClient.from('teams').select('*').eq('competition_slug', compSlug).order('name');
     if(teamsRes.error) throw teamsRes.error;
     var teams = teamsRes.data || [];
+    // Promotion/relegation comps (Super League etc.) keep a relegated club's
+    // full history right where it is rather than moving it — is_active just
+    // controls which section of this page it shows up in.
+    var activeTeams = teams.filter(function(t){ return t.is_active !== false; });
+    var formerTeams = teams.filter(function(t){ return t.is_active === false; });
 
-    var teamCards = teams.map(function(t){
+    function teamCard(t){
       return '<a class="team-card" href="#/sport/'+sportSlug+'/'+compSlug+'/team/'+t.slug+'">'+teamSwatch(t)+'<div class="team-info"><h3>'+esc(t.name)+'</h3></div></a>';
-    }).join('');
+    }
 
-    return '<div class="section-head"><h2>'+esc(comp.name)+'</h2><span class="count">'+teams.length+' teams</span></div>' +
-      (teams.length ? '<div class="filter-row"><input type="text" id="team-filter" placeholder="Filter teams..."></div><div class="team-grid" id="team-grid">'+teamCards+'</div>'
+    return '<div class="section-head"><h2>'+esc(comp.name)+'</h2><span class="count">'+activeTeams.length+' teams</span></div>' +
+      (activeTeams.length ? '<div class="filter-row"><input type="text" id="team-filter" placeholder="Filter teams..."></div><div class="team-grid" id="team-grid">'+activeTeams.map(teamCard).join('')+'</div>'
         : '<div class="empty-note">No teams logged in '+esc(comp.name)+' yet.</div>') +
+      (formerTeams.length
+        ? '<div class="section-head" style="margin-top:34px;"><h2>Former teams</h2><span class="count">'+formerTeams.length+'</span></div><div class="team-grid">'+formerTeams.map(teamCard).join('')+'</div>'
+        : '') +
       renderReportButton('competition', comp.slug, comp.name);
   }
 
