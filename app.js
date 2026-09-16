@@ -361,7 +361,7 @@
       ? '<div class="section-head" style="margin-top:34px;"><h2>Browse by season</h2></div>' + seasonYears.map(function(y){
           var js = bySeasonAll[y];
           var cards = js.slice(0, 6).map(function(j){ return jerseyCard(j, j.teams, {showTeam:true}); }).join('');
-          var seeAll = js.length > 6 ? ' <a class="spec-link" href="#/sport/'+sportSlug+'/'+compSlug+'/season/'+y+'">See all '+js.length+' &rarr;</a>' : '';
+          var seeAll = js.length > 6 ? ' <a class="spec-link" href="#/sport/'+sportSlug+'/'+compSlug+'/season/'+y+'" style="margin-left:14px;">See all '+js.length+' jerseys &rarr;</a>' : '';
           return '<div class="season-group"><h3><a class="spec-link" href="#/sport/'+sportSlug+'/'+compSlug+'/season/'+y+'">'+y+' season</a>'+seeAll+'</h3><div class="jersey-grid">'+cards+'</div></div>';
         }).join('')
       : '';
