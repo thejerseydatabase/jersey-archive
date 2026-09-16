@@ -430,7 +430,7 @@ create trigger rate_limit_jersey_images
 
 create trigger rate_limit_logo_proposals
   before insert on team_logo_proposals
-  for each row execute function enforce_upload_rate_limit('proposed_by', 5, 60);
+  for each row execute function enforce_upload_rate_limit('proposed_by', 120, 60);
 
 create function enforce_report_rate_limit()
 returns trigger as $$

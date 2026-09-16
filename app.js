@@ -650,7 +650,7 @@
         '</p>' +
 
         '<div class="section-head" style="margin-top:30px;"><h2>Upload limits</h2></div>' +
-        '<p>To keep things sane for everyone, there are hourly caps per account: up to 100 jerseys, 20 extra photos added to existing jerseys, and 5 team logo proposals per hour. That&rsquo;s far more than a normal upload session needs &mdash; it only kicks in to stop runaway/accidental spam. If you hit it, just wait a bit and carry on.</p>' +
+        '<p>To keep things sane for everyone, there are hourly caps per account: up to 100 jerseys, 20 extra photos added to existing jerseys, and 120 team logo proposals per hour. That&rsquo;s far more than a normal upload session needs &mdash; it only kicks in to stop runaway/accidental spam. If you hit it, just wait a bit and carry on.</p>' +
 
         '<div class="section-head" style="margin-top:30px;"><h2>Spotted a mistake?</h2></div>' +
         '<p>Every jersey, team, and competition page has a &ldquo;Report a problem&rdquo; button at the bottom &mdash; use it for anything wrong (wrong season, wrong team, bad photo) and it goes straight to moderation. You can also just <a class="spec-link" href="https://thejerseydatabase.com/contact.html" target="_blank" rel="noopener">get in touch</a> directly.</p>' +
