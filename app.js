@@ -274,7 +274,7 @@
     if(j.uploaded_by){
       var uploaderRes = await supabaseClient.from('profiles').select('username,points').eq('id', j.uploaded_by).maybeSingle();
       if(!uploaderRes.error && uploaderRes.data){
-        uploaderHtml = '<span>uploaded by '+esc(uploaderRes.data.username)+' '+pointsChip(uploaderRes.data.points)+'</span>';
+        uploaderHtml = '<span>uploaded by <a class="spec-link" href="#/user/'+encodeURIComponent(uploaderRes.data.username)+'">'+esc(uploaderRes.data.username)+'</a> '+pointsChip(uploaderRes.data.points)+'</span>';
       }
     }
 
@@ -527,6 +527,24 @@
       '</section>';
   }
 
+  async function viewUserProfile(username){
+    setCrumbs([{label:'Home', href:'#/'},{label:username, href:'#'}]);
+    var profRes = await supabaseClient.from('profiles').select('*').eq('username', username).maybeSingle();
+    if(profRes.error) throw profRes.error;
+    if(!profRes.data) return '<div class="empty-note">No user found with that username.</div>';
+    var profile = profRes.data;
+
+    var jRes = await supabaseClient.from('jerseys')
+      .select('*, jersey_images(*), teams(name, slug, primary_color, secondary_color, competition_slug)')
+      .eq('uploaded_by', profile.id).eq('status', 'approved').order('created_at', {ascending:false});
+    if(jRes.error) throw jRes.error;
+    var jerseys = jRes.data || [];
+    var cards = jerseys.map(function(j){ return jerseyCard(j, j.teams, {showTeam:true}); }).join('');
+
+    return '<div class="section-head"><h2>'+esc(profile.username)+' '+pointsChip(profile.points)+'</h2><span class="count">'+jerseys.length+' upload'+(jerseys.length===1?'':'s')+'</span></div>' +
+      (cards ? '<div class="jersey-grid">'+cards+'</div>' : '<div class="empty-note">No approved uploads yet.</div>');
+  }
+
   function viewNotFound(){
     setCrumbs([{label:'Home', href:'#/'}]);
     return '<div class="empty-note">That page doesn&rsquo;t exist. <a href="#/" style="color:var(--accent);">Back to home</a>.</div>';
@@ -550,6 +568,7 @@
       else if(parts[0]==='search' && parts[1]){ html = await viewSearch(parts[1]); }
       else if(parts[0]==='upload'){ html = await viewUpload(); }
       else if(parts[0]==='moderate'){ html = await viewModerate(); }
+      else if(parts[0]==='user' && parts[1]){ html = await viewUserProfile(parts[1]); }
       else { html = viewNotFound(); }
       app.innerHTML = html;
       wireViewEvents(parts);
@@ -1056,7 +1075,7 @@
       var modLink = (currentProfile && currentProfile.is_admin)
         ? '<a href="#/moderate" style="text-decoration:underline;">Moderate'+(pendingCount ? ' ('+pendingCount+')' : '')+'</a>' : '';
       el.innerHTML =
-        '<div class="auth-status">'+modLink+'<span>'+esc(username)+' '+pointsChip(points)+'</span>' +
+        '<div class="auth-status">'+modLink+'<span><a class="spec-link" href="#/user/'+encodeURIComponent(username)+'">'+esc(username)+'</a> '+pointsChip(points)+'</span>' +
         '<button id="edit-username-btn" type="button">Edit</button>' +
         '<button id="sign-out-btn" type="button">Sign out</button></div>';
       document.getElementById('sign-out-btn').addEventListener('click', async function(){
