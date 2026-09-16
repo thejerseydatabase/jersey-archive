@@ -257,17 +257,24 @@
     var teams = teamsRes.data || [];
     // Promotion/relegation comps (Super League etc.) keep a relegated club's
     // full history right where it is rather than moving it — is_active just
-    // controls which section of this page it shows up in.
-    var activeTeams = teams.filter(function(t){ return t.is_active !== false; });
-    var formerTeams = teams.filter(function(t){ return t.is_active === false; });
+    // controls which section of this page it shows up in. is_upcoming is
+    // for an announced-but-not-yet-playing expansion club (Perth Bears,
+    // Tasmania Devils) — it gets its own section regardless of is_active.
+    var upcomingTeams = teams.filter(function(t){ return t.is_upcoming; });
+    var activeTeams = teams.filter(function(t){ return !t.is_upcoming && t.is_active !== false; });
+    var formerTeams = teams.filter(function(t){ return !t.is_upcoming && t.is_active === false; });
 
     function teamCard(t){
-      return '<a class="team-card" href="#/sport/'+sportSlug+'/'+compSlug+'/team/'+t.slug+'">'+teamSwatch(t)+'<div class="team-info"><h3>'+esc(t.name)+'</h3></div></a>';
+      var note = (t.is_upcoming && t.history_note) ? '<span class="upcoming-note">'+esc(t.history_note)+'</span>' : '';
+      return '<a class="team-card" href="#/sport/'+sportSlug+'/'+compSlug+'/team/'+t.slug+'">'+teamSwatch(t)+'<div class="team-info"><h3>'+esc(t.name)+'</h3>'+note+'</div></a>';
     }
 
     return '<div class="section-head"><h2>'+esc(comp.name)+'</h2><span class="count">'+activeTeams.length+' teams</span></div>' +
       (activeTeams.length ? '<div class="filter-row"><input type="text" id="team-filter" placeholder="Filter teams..."></div><div class="team-grid" id="team-grid">'+activeTeams.map(teamCard).join('')+'</div>'
         : '<div class="empty-note">No teams logged in '+esc(comp.name)+' yet.</div>') +
+      (upcomingTeams.length
+        ? '<div class="section-head" style="margin-top:34px;"><h2>New expansion teams</h2><span class="count">'+upcomingTeams.length+'</span></div><div class="team-grid">'+upcomingTeams.map(teamCard).join('')+'</div>'
+        : '') +
       (formerTeams.length
         ? '<div class="section-head" style="margin-top:34px;"><h2>Former teams</h2><span class="count">'+formerTeams.length+'</span></div><div class="team-grid">'+formerTeams.map(teamCard).join('')+'</div>'
         : '') +
@@ -310,7 +317,9 @@
 
     var isAdmin = currentProfile && currentProfile.is_admin;
     var isActiveTeam = team.is_active !== false;
-    var statusBadge = !isActiveTeam ? '<p class="former-badge">No longer competing in '+esc(comp.name)+'.</p>' : '';
+    var statusBadge = team.is_upcoming
+      ? '<p class="former-badge">Not yet competing in '+esc(comp.name)+' &mdash; upcoming expansion team.</p>'
+      : (!isActiveTeam ? '<p class="former-badge">No longer competing in '+esc(comp.name)+'.</p>' : '');
 
     // Explains gaps in a team's timeline — folded, merged, or promoted away
     // and back — without needing a separate "defunct teams" table; it's

@@ -108,6 +108,10 @@ create table teams (
   -- Super League) but its jersey history stays exactly where it is; the
   -- competition page just lists it under "Former teams" instead.
   is_active boolean not null default true,
+  -- true for an announced-but-not-yet-playing expansion club (Perth
+  -- Bears, Tasmania Devils) — shown in its own section on the
+  -- competition page regardless of is_active.
+  is_upcoming boolean not null default false,
   -- free-text context for a gap in the timeline: folded, merged, or
   -- promoted away and back (e.g. "Merged with Balmain Tigers in 1999 to
   -- form the Wests Tigers").
