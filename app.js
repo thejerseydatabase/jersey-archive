@@ -428,15 +428,18 @@
         '</div>'
       : '';
 
-    // Once a team has a logo, changing it is rare — fold that into the
-    // generic "Report a problem" flow (with an optional image attached)
-    // instead of a permanent button. Only teams with no logo yet get the
-    // prominent top-level proposal button.
-    var logoBlock = (currentUser && !team.logo_path)
-      ? '<div class="add-photos-block"><button class="btn btn-secondary" id="propose-logo-toggle" data-team-id="'+team.id+'" type="button">+ Propose a logo</button><div id="propose-logo-panel" hidden></div></div>'
-      : (team.logo_path
-        ? '<div class="add-photos-block"><button class="btn btn-secondary" id="logo-history-toggle" data-team-id="'+team.id+'" type="button">Logo history</button><div id="logo-history-panel" hidden></div></div>'
-        : '');
+    // Signed-in users can always propose a logo, whether the team has one
+    // yet or is getting an update/replacement — approval (setTeamLogo)
+    // already keeps the old one in history rather than losing it.
+    var logoButtonsHtml = (team.logo_path ? '<button class="btn btn-secondary" id="logo-history-toggle" data-team-id="'+team.id+'" type="button">Logo history</button>' : '') +
+      (currentUser ? '<button class="btn btn-secondary" id="propose-logo-toggle" data-team-id="'+team.id+'" type="button">'+(team.logo_path ? '+ Update logo' : '+ Propose a logo')+'</button>' : '');
+    var logoBlock = logoButtonsHtml
+      ? '<div class="add-photos-block">' +
+          '<div style="display:flex;gap:10px;flex-wrap:wrap;">'+logoButtonsHtml+'</div>' +
+          (team.logo_path ? '<div id="logo-history-panel" hidden></div>' : '') +
+          (currentUser ? '<div id="propose-logo-panel" hidden></div>' : '') +
+        '</div>'
+      : '';
 
     return '<div class="section-head" style="align-items:center;">'+teamSwatch(team, {large:true})+'<h2 style="margin-left:2px;">'+esc(team.name)+'</h2></div>' +
       statusBadge +
