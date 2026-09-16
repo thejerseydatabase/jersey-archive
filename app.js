@@ -48,9 +48,15 @@
   }
 
   function teamSwatch(team, opts){
-    var sizeClass = (opts && opts.large) ? ' team-swatch-lg' : '';
+    var large = opts && opts.large;
+    var sizeClass = large ? ' team-swatch-lg' : '';
     if(team.logo_path){
-      return '<div class="team-swatch team-swatch-logo'+sizeClass+'"><img src="'+esc(publicLogoUrl(team.logo_path))+'" alt=""></div>';
+      // Only the large header version is independently clickable — the
+      // small grid version is already inside a card that links to the
+      // team page, and stacking a zoom action on top of that would fight
+      // the card's own click-to-navigate behavior.
+      var triggerClass = large ? ' lightbox-trigger' : '';
+      return '<div class="team-swatch team-swatch-logo'+sizeClass+'"><img class="'+triggerClass.trim()+'" src="'+esc(publicLogoUrl(team.logo_path))+'" alt=""></div>';
     }
     return '<div class="team-swatch'+sizeClass+'"><div class="a" style="background:'+esc(team.primary_color)+'"></div><div class="b" style="background:'+esc(team.secondary_color)+'"></div></div>';
   }
@@ -104,6 +110,7 @@
     document.querySelectorAll('.report-btn').forEach(function(btn){
       btn.addEventListener('click', function(){
         var panel = document.getElementById(btn.dataset.target);
+        var uid = btn.dataset.pageType + '-' + btn.dataset.pageRef;
         if(!panel.dataset.wired){
           panel.dataset.wired = '1';
           panel.innerHTML =
@@ -263,7 +270,9 @@
     // prominent top-level proposal button.
     var logoBlock = (currentUser && !team.logo_path)
       ? '<div class="add-photos-block"><button class="btn btn-secondary" id="propose-logo-toggle" data-team-id="'+team.id+'" type="button">+ Propose a logo</button><div id="propose-logo-panel" hidden></div></div>'
-      : '';
+      : (team.logo_path
+        ? '<div class="add-photos-block"><button class="btn btn-secondary" id="logo-history-toggle" data-team-id="'+team.id+'" type="button">Logo history</button><div id="logo-history-panel" hidden></div></div>'
+        : '');
 
     return '<div class="section-head" style="align-items:center;">'+teamSwatch(team, {large:true})+'<h2 style="margin-left:2px;">'+esc(team.name)+'</h2></div>' +
       logoBlock +
@@ -465,6 +474,16 @@
     }).select().single();
     if(ins.error) throw ins.error;
     return ins.data;
+  }
+
+  async function setTeamLogo(teamId, path){
+    // never overwrite history — the previous logo just stops being "current"
+    var unmark = await supabaseClient.from('team_logos').update({is_current:false}).eq('team_id', teamId).eq('is_current', true);
+    if(unmark.error) throw unmark.error;
+    var histIns = await supabaseClient.from('team_logos').insert({team_id: teamId, storage_path: path, is_current: true});
+    if(histIns.error) throw histIns.error;
+    var teamUpd = await supabaseClient.from('teams').update({logo_path: path}).eq('id', teamId);
+    if(teamUpd.error) throw teamUpd.error;
   }
 
   async function viewModerate(){
@@ -726,6 +745,29 @@
       });
     }
 
+    var logoHistoryToggle = document.getElementById('logo-history-toggle');
+    if(logoHistoryToggle){
+      logoHistoryToggle.addEventListener('click', async function(){
+        var panel = document.getElementById('logo-history-panel');
+        if(!panel.dataset.wired){
+          panel.dataset.wired = '1';
+          panel.hidden = false;
+          panel.innerHTML = '<p class="loading">Loading…</p>';
+          var res = await supabaseClient.from('team_logos').select('*').eq('team_id', logoHistoryToggle.dataset.teamId).order('approved_at', {ascending:false});
+          if(res.error){ panel.innerHTML = errorBox(res.error); return; }
+          var rows = res.data || [];
+          panel.innerHTML = rows.length
+            ? '<div class="logo-history-grid">' + rows.map(function(r){
+                return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(r.storage_path))+'" alt="">' +
+                  '<span>'+(r.is_current ? 'Current' : fmtDate(r.approved_at))+'</span></div>';
+              }).join('') + '</div>'
+            : '<div class="empty-note">No logo history yet.</div>';
+          return;
+        }
+        panel.hidden = !panel.hidden;
+      });
+    }
+
     if(parts[0]==='upload' && currentUser){ wireUploadForm(); }
     if(parts[0]==='moderate'){ wireModerationActions(); }
     wireReportButtons();
@@ -936,15 +978,13 @@
             var newPath = teamId + '/logo-' + Date.now() + '.' + ext;
             var moveUp = await supabaseClient.storage.from('team-logos').upload(newPath, dl.data);
             if(moveUp.error) throw moveUp.error;
-            var teamUpd2 = await supabaseClient.from('teams').update({logo_path: newPath}).eq('id', teamId);
-            if(teamUpd2.error) throw teamUpd2.error;
+            await setTeamLogo(teamId, newPath);
             var repRes2 = await supabaseClient.from('reports').update({status:'resolved'}).eq('id', id);
             if(repRes2.error) throw repRes2.error;
             await supabaseClient.storage.from('report-attachments').remove([oldPath]);
           } else if(type === 'logo'){
             if(btn.dataset.action === 'approve'){
-              var teamUpd = await supabaseClient.from('teams').update({logo_path: btn.dataset.path}).eq('id', btn.dataset.teamId);
-              if(teamUpd.error) throw teamUpd.error;
+              await setTeamLogo(btn.dataset.teamId, btn.dataset.path);
               var logoApprove = await supabaseClient.from('team_logo_proposals').delete().eq('id', id);
               if(logoApprove.error) throw logoApprove.error;
             } else {

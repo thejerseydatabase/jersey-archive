@@ -338,6 +338,24 @@ create policy "admins can delete team logo files"
   on storage.objects for delete to authenticated
   using (bucket_id = 'team-logos' and exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
 
+-- a full history of past logos, never overwritten when a new one is approved
+create table team_logos (
+  id uuid primary key default gen_random_uuid(),
+  team_id uuid not null references teams(id) on delete cascade,
+  storage_path text not null,
+  is_current boolean not null default false,
+  approved_at timestamptz not null default now()
+);
+alter table team_logos enable row level security;
+create policy "team logo history is publicly readable" on team_logos for select using (true);
+create policy "admins can add to team logo history"
+  on team_logos for insert to authenticated
+  with check (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+create policy "admins can update team logo history"
+  on team_logos for update
+  using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin))
+  with check (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+
 
 -- ============ seed data ============
 insert into sports (slug, name, sort_order) values
