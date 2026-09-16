@@ -79,6 +79,10 @@ create table competitions (
   sport_slug text not null references sports(slug) on delete cascade,
   name text not null,
   tier text not null default 'more' check (tier in ('top','more')),
+  -- lower sorts first, ties broken alphabetically by name; default puts a
+  -- competition at the back unless it's been explicitly pinned earlier
+  -- (e.g. cricket's International/IPL/BBL/Australia Domestic ordering).
+  sort_order integer not null default 999,
   created_by uuid references auth.users(id),
   created_at timestamptz not null default now()
 );

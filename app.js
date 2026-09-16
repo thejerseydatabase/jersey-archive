@@ -227,18 +227,26 @@
     var sport = sportRes.data;
     setCrumbs([{label:'Home', href:'#/'},{label:sport.name, href:'#/sport/'+sportSlug}]);
 
-    var compRes = await supabaseClient.from('competitions').select('*').eq('sport_slug', sportSlug).order('name');
+    var compRes = await supabaseClient.from('competitions').select('*').eq('sport_slug', sportSlug).order('sort_order').order('name');
     if(compRes.error) throw compRes.error;
     var comps = compRes.data || [];
-    var top = comps.filter(function(c){ return c.tier === 'top'; });
-    var more = comps.filter(function(c){ return c.tier !== 'top'; });
 
     function compCard(c){
       return '<a class="comp-card" href="#/sport/'+sportSlug+'/'+c.slug+'"><strong>'+esc(c.name)+'</strong></a>';
     }
-    var compsHtml = '<div class="comp-grid">'+top.map(compCard).join('')+'</div>' +
-      (more.length ? '<button class="chip more-toggle" id="more-comps-btn" type="button">More competitions ↓</button>' +
-        '<div class="comp-grid" id="more-comps" hidden style="margin-top:12px;">'+more.map(compCard).join('')+'</div>' : '');
+    // With only a handful of competitions the top/more split just adds an
+    // extra click for no reason — only bother hiding anything once there
+    // are enough to actually need it.
+    var compsHtml;
+    if(comps.length <= 4){
+      compsHtml = '<div class="comp-grid">'+comps.map(compCard).join('')+'</div>';
+    } else {
+      var top = comps.filter(function(c){ return c.tier === 'top'; });
+      var more = comps.filter(function(c){ return c.tier !== 'top'; });
+      compsHtml = '<div class="comp-grid">'+top.map(compCard).join('')+'</div>' +
+        (more.length ? '<button class="chip more-toggle" id="more-comps-btn" type="button">More competitions ↓</button>' +
+          '<div class="comp-grid" id="more-comps" hidden style="margin-top:12px;">'+more.map(compCard).join('')+'</div>' : '');
+    }
 
     return '<header class="hero" style="padding-bottom:26px;"><p class="eyebrow">Sport</p><h1>'+esc(sport.name)+'</h1></header>' +
       '<section class="block"><div class="section-head"><h2>Competitions</h2></div>' +
