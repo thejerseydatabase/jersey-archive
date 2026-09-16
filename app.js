@@ -3,6 +3,8 @@
   var ICON_SHIRT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M8 3 5 5 2 8l3 3 2-1.5V21h10V9.5L19 11l3-3-3-3-3-2-2 2h-4z"/></svg>';
   var ICON_STAR = '<svg viewBox="0 0 24 24" fill="currentColor" width="21" height="21"><path d="M12 2.5l3.09 6.26 6.91 1-5 4.87L18.18 21.5 12 18.27 5.82 21.5 7 14.63l-5-4.87 6.91-1z"/></svg>';
   var ICON_PHOTO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="26" height="26"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M3 17l5-4 4 3 3-2 6 5"/><path d="M17 3v4M15 5h4"/></svg>';
+  var ICON_PENCIL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>';
+  var ICON_FLAG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22V3"/></svg>';
   var FORMATS_BY_SPORT = { cricket: ['Test','T20','T20I','ODI','One Day','First Class'] };
   var JERSEY_TYPES = ['Home','Away','Alternate','Indigenous','Heritage','Training'];
   var MANUFACTURERS = ['ISC','Classic','Kappa','Canterbury','BLK','Burley Sekem','Macron','Puma','Nike','Adidas','New Balance'];
@@ -82,6 +84,46 @@
     return '<div class="stars-row">'+stars+'</div><p class="rating-summary">'+summary+'</p>';
   }
 
+  function renderReportButton(pageType, pageRef, pageLabel){
+    var uid = pageType + '-' + pageRef;
+    return '<div class="report-block">' +
+      '<button class="report-btn" type="button" data-page-type="'+pageType+'" data-page-ref="'+esc(pageRef)+'" data-page-label="'+esc(pageLabel)+'" data-target="report-panel-'+esc(uid)+'">'+ICON_FLAG+' Report a problem</button>' +
+      '<div class="report-panel" id="report-panel-'+esc(uid)+'" hidden></div>' +
+    '</div>';
+  }
+
+  function wireReportButtons(){
+    document.querySelectorAll('.report-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var panel = document.getElementById(btn.dataset.target);
+        if(!panel.dataset.wired){
+          panel.dataset.wired = '1';
+          panel.innerHTML =
+            '<textarea class="report-textarea" rows="3" placeholder="What’s wrong? e.g. wrong season, misspelled team name..."></textarea>' +
+            '<button class="btn" type="button" data-submit>Submit report</button>' +
+            '<p class="field-hint" hidden></p>';
+          var textarea = panel.querySelector('textarea');
+          var submitBtn = panel.querySelector('[data-submit]');
+          var msg = panel.querySelector('.field-hint');
+          submitBtn.addEventListener('click', async function(){
+            var message = textarea.value.trim();
+            if(!message) return;
+            submitBtn.disabled = true; submitBtn.textContent = 'Submitting…';
+            var res = await supabaseClient.from('reports').insert({
+              page_type: btn.dataset.pageType, page_ref: btn.dataset.pageRef, page_label: btn.dataset.pageLabel,
+              message: message, reported_by: currentUser ? currentUser.id : null
+            });
+            submitBtn.disabled = false; submitBtn.textContent = 'Submit report';
+            msg.hidden = false;
+            if(res.error){ msg.className = 'field-error'; msg.textContent = 'Error: ' + res.error.message; }
+            else { msg.className = 'field-hint is-match'; msg.textContent = 'Thanks — reported.'; textarea.value = ''; }
+          });
+        }
+        panel.hidden = !panel.hidden;
+      });
+    });
+  }
+
   function setCrumbs(items){
     document.getElementById('crumbs').innerHTML = items.map(function(it,i){
       if(i === items.length-1) return '<span class="current">'+esc(it.label)+'</span>';
@@ -155,7 +197,8 @@
 
     return '<div class="section-head"><h2>'+esc(comp.name)+'</h2><span class="count">'+teams.length+' teams</span></div>' +
       (teams.length ? '<div class="filter-row"><input type="text" id="team-filter" placeholder="Filter teams..."></div><div class="team-grid" id="team-grid">'+teamCards+'</div>'
-        : '<div class="empty-note">No teams logged in '+esc(comp.name)+' yet.</div>');
+        : '<div class="empty-note">No teams logged in '+esc(comp.name)+' yet.</div>') +
+      renderReportButton('competition', comp.slug, comp.name);
   }
 
   async function viewTeam(sportSlug, compSlug, teamSlug){
@@ -176,7 +219,8 @@
     }).join('');
 
     return '<div class="section-head">'+teamSwatch(team)+'<h2 style="margin-left:2px;">'+esc(team.name)+'</h2></div>' +
-      (groups || '<div class="empty-note">No jerseys logged yet.</div>');
+      (groups || '<div class="empty-note">No jerseys logged yet.</div>') +
+      renderReportButton('team', team.id, team.name);
   }
 
   async function viewSeason(sportSlug, compSlug, year){
@@ -237,6 +281,17 @@
     var pendingBanner = j.status && j.status !== 'approved'
       ? '<div class="pending-banner">This jersey is '+esc(j.status)+' &mdash; only you and moderators can see it until it’s approved.</div>' : '';
 
+    var isAdmin = currentProfile && currentProfile.is_admin;
+    function specItem(label, valueHtml, editData){
+      var editBtn = (isAdmin && editData) ? ' <button class="edit-pencil-btn" type="button" data-edit=\''+esc(JSON.stringify(editData))+'\'>'+ICON_PENCIL+'</button>' : '';
+      return '<div class="spec-item"><span>'+esc(label)+'</span><div class="spec-value-row"><strong>'+valueHtml+'</strong>'+editBtn+'</div></div>';
+    }
+    var notesEditData = {table:'jerseys', matchCol:'id', matchVal:j.id, field:'notes', current:j.notes || '', multiline:true};
+    var notesEditBtn = isAdmin ? ' <button class="edit-pencil-btn" type="button" data-edit=\''+esc(JSON.stringify(notesEditData))+'\'>'+ICON_PENCIL+'</button>' : '';
+    var notesHtml = (j.notes || isAdmin)
+      ? '<div class="notes-block"><div class="spec-value-row">'+(j.notes ? esc(j.notes) : '<em style="color:var(--text-dim2);">No notes</em>')+notesEditBtn+'</div></div>'
+      : '';
+
     return pendingBanner + '<div class="detail-grid">' +
       '<div><div class="gallery-main" id="gallery-main">'+mainHtml+'</div>' +
       (thumbs ? '<div class="gallery-thumbs" id="gallery-thumbs" data-images=\''+esc(JSON.stringify(images))+'\'>'+thumbs+'</div>' : '') +
@@ -245,15 +300,15 @@
         '<h1 class="detail-title">'+j.season+' '+esc(team.name)+' '+esc(j.type)+'</h1>' +
         '<p class="detail-sub">'+esc(comp.name)+' &middot; '+esc(sport.name)+'</p>' +
         '<div class="spec-list">' +
-          '<div class="spec-item"><span>Sport</span><strong><a class="spec-link" href="#/sport/'+sport.slug+'">'+esc(sport.name)+'</a></strong></div>' +
-          '<div class="spec-item"><span>Competition</span><strong><a class="spec-link" href="#/sport/'+sport.slug+'/'+comp.slug+'">'+esc(comp.name)+'</a></strong></div>' +
-          '<div class="spec-item"><span>Team</span><strong><a class="spec-link" href="#/sport/'+sport.slug+'/'+comp.slug+'/team/'+team.slug+'">'+esc(team.name)+'</a></strong></div>' +
-          '<div class="spec-item"><span>Season</span><strong><a class="spec-link" href="#/sport/'+sport.slug+'/'+comp.slug+'/season/'+j.season+'">'+j.season+'</a></strong></div>' +
-          '<div class="spec-item"><span>Jersey type</span><strong>'+esc(j.type)+'</strong></div>' +
-          '<div class="spec-item"><span>Manufacturer</span><strong>'+esc(j.manufacturer || 'Unlisted')+'</strong></div>' +
-          (j.format ? '<div class="spec-item"><span>Format</span><strong>'+esc(j.format)+'</strong></div>' : '') +
+          specItem('Sport', '<a class="spec-link" href="#/sport/'+sport.slug+'">'+esc(sport.name)+'</a>', null) +
+          specItem('Competition', '<a class="spec-link" href="#/sport/'+sport.slug+'/'+comp.slug+'">'+esc(comp.name)+'</a>', {table:'competitions', matchCol:'slug', matchVal:comp.slug, field:'name', current:comp.name}) +
+          specItem('Team', '<a class="spec-link" href="#/sport/'+sport.slug+'/'+comp.slug+'/team/'+team.slug+'">'+esc(team.name)+'</a>', {table:'teams', matchCol:'id', matchVal:team.id, field:'name', current:team.name}) +
+          specItem('Season', '<a class="spec-link" href="#/sport/'+sport.slug+'/'+comp.slug+'/season/'+j.season+'">'+j.season+'</a>', {table:'jerseys', matchCol:'id', matchVal:j.id, field:'season', current:j.season, numeric:true}) +
+          specItem('Jersey type', esc(j.type), {table:'jerseys', matchCol:'id', matchVal:j.id, field:'type', current:j.type}) +
+          specItem('Manufacturer', esc(j.manufacturer || 'Unlisted'), {table:'jerseys', matchCol:'id', matchVal:j.id, field:'manufacturer', current:j.manufacturer || ''}) +
+          (j.format ? specItem('Format', esc(j.format), {table:'jerseys', matchCol:'id', matchVal:j.id, field:'format', current:j.format}) : '') +
         '</div>' +
-        (j.notes ? '<div class="notes-block">'+esc(j.notes)+'</div>' : '') +
+        notesHtml +
         '<div class="stat-row"><span>logged '+fmtDate(j.created_at)+'</span>'+uploaderHtml+'</div>' +
         '<div class="rate-block"><span class="rate-label">Rate this jersey</span><div id="rating-widget" data-jersey-id="'+j.id+'">'+ratingWidgetHtml(rating, myRatingVal)+'</div></div>' +
         (j.status === 'approved' ? (
@@ -261,6 +316,7 @@
             ? '<div class="add-photos-block"><button class="btn btn-secondary" id="add-photos-toggle" data-jersey-id="'+j.id+'" type="button">+ Add more photos</button><div id="add-photos-panel" hidden></div></div>'
             : '<div class="add-photos-block"><p class="field-hint">Sign in to add more photos to this jersey.</p></div>'
         ) : '') +
+        renderReportButton('jersey', j.id, j.season+' '+team.name+' '+j.type) +
       '</div>' +
     '</div>';
   }
@@ -382,8 +438,13 @@
       .eq('status', 'pending').order('id');
     if(!photoRes.error) pendingPhotos = photoRes.data || [];
 
+    var openReports = [];
+    var reportRes = await supabaseClient.from('reports').select('*').eq('status', 'open').order('created_at');
+    if(!reportRes.error) openReports = reportRes.data || [];
+
     var uploaderIds = pendingJerseys.map(function(j){ return j.uploaded_by; })
       .concat(pendingPhotos.map(function(img){ return img.uploaded_by; }))
+      .concat(openReports.map(function(r){ return r.reported_by; }))
       .filter(Boolean);
     var uploaderNames = {};
     if(uploaderIds.length){
@@ -391,7 +452,7 @@
       (profRes.data || []).forEach(function(p){ uploaderNames[p.id] = p.username; });
     }
 
-    if(!pendingJerseys.length && !pendingPhotos.length){
+    if(!pendingJerseys.length && !pendingPhotos.length && !openReports.length){
       return '<div class="section-head"><h2>Moderation queue</h2></div><div class="empty-note">Nothing waiting for review.</div>';
     }
 
@@ -432,12 +493,37 @@
       '</div>';
     }).join('');
 
+    function reportLink(r){
+      if(r.page_type === 'jersey') return '#/jersey/' + r.page_ref;
+      if(r.page_type === 'team') return null; // team pages need sport+comp context we don't have here
+      if(r.page_type === 'competition') return null;
+      return null;
+    }
+    var reportCards = openReports.map(function(r){
+      var reporter = uploaderNames[r.reported_by] || (r.reported_by ? 'unknown' : 'anonymous');
+      var link = reportLink(r);
+      return '<div class="mod-card">' +
+        '<div class="mod-info">' +
+          '<strong>'+esc(r.page_type)+': '+esc(r.page_label || r.page_ref)+'</strong>' +
+          '<span>'+esc(r.message)+'</span>' +
+          '<span>reported by '+esc(reporter)+' · '+fmtDate(r.created_at)+'</span>' +
+        '</div>' +
+        '<div class="mod-actions">' +
+          (link ? '<a class="btn btn-secondary" href="'+link+'" target="_blank" style="text-decoration:none;">View</a>' : '') +
+          '<button class="btn" data-type="report" data-action="resolve" data-id="'+r.id+'" type="button">Mark resolved</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
     return '<div class="section-head"><h2>Moderation queue</h2></div>' +
       '<section class="block"><div class="section-head"><h2>New jerseys</h2><span class="count">'+pendingJerseys.length+' pending</span></div>' +
         (jerseyCards ? '<div class="mod-list">'+jerseyCards+'</div>' : '<div class="empty-note">None waiting.</div>') +
       '</section>' +
       '<section class="block"><div class="section-head"><h2>Proposed photos</h2><span class="count">'+pendingPhotos.length+' pending</span></div>' +
         (photoCards ? '<div class="mod-list">'+photoCards+'</div>' : '<div class="empty-note">None waiting.</div>') +
+      '</section>' +
+      '<section class="block"><div class="section-head"><h2>Reports</h2><span class="count">'+openReports.length+' open</span></div>' +
+        (reportCards ? '<div class="mod-list">'+reportCards+'</div>' : '<div class="empty-note">None open.</div>') +
       '</section>';
   }
 
@@ -532,6 +618,35 @@
 
     if(parts[0]==='upload' && currentUser){ wireUploadForm(); }
     if(parts[0]==='moderate'){ wireModerationActions(); }
+    wireReportButtons();
+    wireInlineEdits();
+  }
+
+  function wireInlineEdits(){
+    document.querySelectorAll('.edit-pencil-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var data = JSON.parse(btn.dataset.edit);
+        var row = btn.closest('.spec-value-row');
+        row.innerHTML =
+          (data.multiline
+            ? '<textarea class="inline-edit-input" rows="3">'+esc(data.current)+'</textarea>'
+            : '<input type="text" class="inline-edit-input" value="'+esc(data.current)+'">') +
+          '<button class="inline-save-btn" type="button">Save</button>' +
+          '<button class="inline-cancel-btn" type="button">Cancel</button>';
+        var input = row.querySelector('.inline-edit-input');
+        input.focus();
+        if(input.select) input.select();
+        row.querySelector('.inline-cancel-btn').addEventListener('click', function(){ render(); });
+        row.querySelector('.inline-save-btn').addEventListener('click', async function(){
+          var newVal = input.value.trim();
+          var payload = {};
+          payload[data.field] = data.numeric ? Number(newVal) : (newVal || null);
+          var res = await supabaseClient.from(data.table).update(payload).eq(data.matchCol, data.matchVal);
+          if(res.error){ alert('Error: ' + res.error.message); return; }
+          render();
+        });
+      });
+    });
   }
 
   function renderAddPhotosPanel(){
@@ -630,7 +745,10 @@
         var siblingButtons = card.querySelectorAll('button');
         siblingButtons.forEach(function(b){ b.disabled = true; });
         try {
-          if(type === 'photo'){
+          if(type === 'report'){
+            var repRes = await supabaseClient.from('reports').update({status:'resolved'}).eq('id', id);
+            if(repRes.error) throw repRes.error;
+          } else if(type === 'photo'){
             if(btn.dataset.action === 'approve'){
               var pr = await supabaseClient.from('jersey_images').update({status:'approved'}).eq('id', id);
               if(pr.error) throw pr.error;
@@ -1002,6 +1120,10 @@
           var photoCountRes = await supabaseClient.from('jersey_images').select('id', {count:'exact', head:true}).eq('status', 'pending');
           if(!photoCountRes.error) pendingCount += (photoCountRes.count || 0);
         } catch(e){} // jersey_images.status may not exist yet if add_photos.sql hasn't been run
+        try {
+          var reportCountRes = await supabaseClient.from('reports').select('id', {count:'exact', head:true}).eq('status', 'open');
+          if(!reportCountRes.error) pendingCount += (reportCountRes.count || 0);
+        } catch(e){} // reports table may not exist yet if edit_and_report.sql hasn't been run
       }
     } else {
       currentProfile = null;

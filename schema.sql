@@ -87,6 +87,10 @@ alter table competitions enable row level security;
 create policy "competitions are publicly readable" on competitions for select using (true);
 create policy "authenticated users can add competitions"
   on competitions for insert to authenticated with check (true);
+create policy "admins can edit competitions"
+  on competitions for update
+  using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin))
+  with check (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
 
 
 -- ============ teams ============
@@ -109,6 +113,10 @@ alter table teams enable row level security;
 create policy "teams are publicly readable" on teams for select using (true);
 create policy "authenticated users can add teams"
   on teams for insert to authenticated with check (true);
+create policy "admins can edit teams"
+  on teams for update
+  using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin))
+  with check (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
 
 
 -- ============ jerseys ============
@@ -237,6 +245,32 @@ create view jersey_ratings as
   select jersey_id, round(avg(value)::numeric, 1) as avg_rating, count(*) as rating_count
   from ratings
   group by jersey_id;
+
+
+-- ============ reports ============
+-- "page_type" + "page_ref" is a light generic pointer (a jersey id, a team
+-- id, or a competition slug) so one table covers reports from any page.
+-- page_label is a plain-text snapshot for the moderation queue to display
+-- without extra joins.
+create table reports (
+  id uuid primary key default gen_random_uuid(),
+  page_type text not null check (page_type in ('jersey','team','competition')),
+  page_ref text not null,
+  page_label text,
+  message text not null,
+  reported_by uuid references auth.users(id),
+  status text not null default 'open' check (status in ('open','resolved')),
+  created_at timestamptz not null default now()
+);
+
+alter table reports enable row level security;
+create policy "anyone can submit a report" on reports for insert with check (true);
+create policy "admins can read reports"
+  on reports for select using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+create policy "admins can resolve reports"
+  on reports for update
+  using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin))
+  with check (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
 
 
 -- ============ storage (jersey-photos bucket) ============

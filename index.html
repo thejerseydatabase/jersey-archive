@@ -195,6 +195,18 @@
   .spec-link{color:inherit;text-decoration-line:underline;text-decoration-color:var(--line);text-underline-offset:2px;}
   .spec-link:hover{color:var(--accent);text-decoration-color:var(--accent);}
   .notes-block{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;font-size:13.5px;line-height:1.6;color:var(--text-dim);margin-bottom:16px;}
+  .spec-value-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .edit-pencil-btn{background:none;border:none;color:var(--text-dim2);cursor:pointer;padding:2px;display:inline-flex;flex-shrink:0;}
+  .edit-pencil-btn:hover{color:var(--accent);}
+  .inline-edit-input{flex:1;min-width:120px;background:var(--surface-2);border:1px solid var(--accent);border-radius:6px;color:var(--text);font-family:'Inter',sans-serif;font-size:13px;padding:6px 8px;}
+  .inline-save-btn,.inline-cancel-btn{font-family:'IBM Plex Mono',monospace;font-size:10.5px;background:none;border:none;text-decoration:underline;cursor:pointer;color:var(--text-dim2);padding:0;}
+  .inline-save-btn:hover{color:var(--accent);}
+  .inline-cancel-btn:hover{color:var(--danger);}
+  .report-block{margin-top:8px;}
+  .report-btn{display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:var(--text-dim2);font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.03em;text-transform:uppercase;cursor:pointer;padding:0;}
+  .report-btn:hover{color:var(--danger);}
+  .report-panel{margin-top:10px;padding:14px;background:var(--surface);border:1px solid var(--line);border-radius:10px;max-width:420px;}
+  .report-textarea{width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;color:var(--text);font-family:'Inter',sans-serif;font-size:13px;padding:10px;margin-bottom:10px;resize:vertical;}
   .stat-row{display:flex;gap:16px;flex-wrap:wrap;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--text-dim2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:20px;}
 
   footer{margin-top:48px;padding-top:20px;border-top:1px solid var(--line);text-align:center;}
@@ -253,7 +265,7 @@
 })();
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="config.js?v=7"></script>
-<script src="app.js?v=7"></script>
+<script src="config.js?v=8"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>
