@@ -105,8 +105,20 @@
     return '<div class="team-swatch team-swatch-logo'+sizeClass+'"><img class="'+triggerClass.trim()+'" src="'+esc(publicLogoUrl(comp.logo_path))+'" alt=""></div>';
   }
 
+  // The photo labeled "Front" should always be what a visitor sees first,
+  // no matter which order the files were actually dropped/uploaded in —
+  // sort_order alone isn't enough since that just reflects upload order.
+  var IMAGE_LABEL_ORDER = {Front: 0, Back: 1, Other: 2};
+  function sortImagesForDisplay(images){
+    return (images || []).slice().sort(function(a, b){
+      var la = IMAGE_LABEL_ORDER.hasOwnProperty(a.label) ? IMAGE_LABEL_ORDER[a.label] : 2;
+      var lb = IMAGE_LABEL_ORDER.hasOwnProperty(b.label) ? IMAGE_LABEL_ORDER[b.label] : 2;
+      return (la - lb) || (a.sort_order - b.sort_order);
+    });
+  }
+
   function jerseyThumb(jersey, team){
-    var images = jersey.jersey_images || [];
+    var images = sortImagesForDisplay(jersey.jersey_images);
     if(images.length){
       return '<img src="'+esc(publicImageUrl(images[0].storage_path))+'" alt="">';
     }
@@ -542,7 +554,7 @@
       {label:j.season+' '+j.type, href:'#'}
     ]);
 
-    var images = j.jersey_images && j.jersey_images.length ? j.jersey_images : null;
+    var images = j.jersey_images && j.jersey_images.length ? sortImagesForDisplay(j.jersey_images) : null;
     var mainHtml = images ? '<img class="lightbox-trigger" src="'+esc(publicImageUrl(images[0].storage_path))+'" alt="">' : jerseyThumb(j, team);
     var thumbs = images ? images.map(function(img,i){
       return '<button class="gallery-thumb'+(i===0?' is-active':'')+'" data-idx="'+i+'" type="button" title="'+esc(img.label)+'"><img src="'+esc(publicImageUrl(img.storage_path))+'" alt=""></button>';
@@ -604,8 +616,34 @@
             : '<div class="add-photos-block"><p class="field-hint">Sign in to add more photos to this jersey.</p></div>'
         ) : '') +
         renderReportButton('jersey', j.id, j.season+' '+team.name+' '+j.type) +
+        (isAdmin ? renderJerseyAdminBlock(j, images, sport.slug) : '') +
       '</div>' +
     '</div>';
+  }
+
+  // Tucked away like the team page's own admin panel — fixes a mislabeled
+  // front/back photo (which also fixes which one shows as the main image,
+  // since that's always whichever is labeled "Front") and reassigns a
+  // jersey to a different team/sport entirely, for the rare case one gets
+  // approved under the wrong one and can't just be re-uploaded.
+  function renderJerseyAdminBlock(j, images, sportSlug){
+    var relabelHtml = (images && images.length > 1)
+      ? '<label class="rate-label">Photo labels</label><div class="logo-history-grid lightbox-group">' + images.map(function(img){
+          return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicImageUrl(img.storage_path))+'" alt="">' +
+            '<select class="photo-label-select" data-image-id="'+img.id+'">' +
+              ['Front','Back','Other'].map(function(l){ return '<option value="'+l+'"'+(img.label===l?' selected':'')+'>'+l+'</option>'; }).join('') +
+            '</select>' +
+          '</div>';
+        }).join('') + '</div>'
+      : '';
+    return '<div class="admin-settings-block">' +
+        '<button class="chip" id="admin-settings-toggle" type="button">Admin: fix photos/team</button>' +
+        '<div id="admin-settings-panel" hidden data-sport-slug="'+esc(sportSlug)+'">' +
+          relabelHtml +
+          '<label class="rate-label" style="margin-top:14px;">Wrong team or sport?</label>' +
+          renderJerseyReassignControl('jersey-reassign', j.id) +
+        '</div>' +
+      '</div>';
   }
 
   function renderGroupedBySport(jerseys){
@@ -895,6 +933,68 @@
     });
   }
 
+  // Fixes a jersey logged against the wrong team (and, since a team
+  // belongs to exactly one sport, that also covers "wrong sport" — like
+  // a jersey mistakenly filed under cricket instead of football).
+  // Sport/Competition/Team cascade the same way the upload form's own
+  // pickers do, just scoped to a single existing jersey's team_id.
+  function renderJerseyReassignControl(prefix, jerseyId){
+    return '<div class="comp-move-row">' +
+        '<select class="comp-move-select" id="'+prefix+'-sport-select"><option>Loading…</option></select>' +
+      '</div>' +
+      '<div class="comp-move-row" style="margin-top:8px;">' +
+        '<select class="comp-move-select" id="'+prefix+'-comp-select"><option>Loading…</option></select>' +
+      '</div>' +
+      '<div class="comp-move-row" style="margin-top:8px;">' +
+        '<select class="comp-move-select" id="'+prefix+'-team-select"><option>Loading…</option></select>' +
+        '<button class="btn btn-secondary" id="'+prefix+'-reassign-btn" data-jersey-id="'+jerseyId+'" type="button">Reassign</button>' +
+      '</div>' +
+      '<p class="field-hint" id="'+prefix+'-reassign-msg" hidden></p>';
+  }
+  async function wireJerseyReassignControl(prefix, currentSportSlug, onReassigned){
+    var sportSel = document.getElementById(prefix+'-sport-select');
+    var compSel = document.getElementById(prefix+'-comp-select');
+    var teamSel = document.getElementById(prefix+'-team-select');
+    var btn = document.getElementById(prefix+'-reassign-btn');
+    if(!sportSel) return;
+
+    var sportsRes = await supabaseClient.from('sports').select('*').order('sort_order');
+    var sports = sportsRes.data || [];
+    sportSel.innerHTML = sports.map(function(s){ return '<option value="'+esc(s.slug)+'"'+(s.slug===currentSportSlug?' selected':'')+'>'+esc(s.name)+'</option>'; }).join('');
+
+    async function refreshComps(){
+      var r = await supabaseClient.from('competitions').select('*').eq('sport_slug', sportSel.value).order('name');
+      var comps = r.data || [];
+      compSel.innerHTML = comps.map(function(c){ return '<option value="'+esc(c.slug)+'">'+esc(c.name)+'</option>'; }).join('');
+      await refreshTeams();
+    }
+    async function refreshTeams(){
+      var r = await supabaseClient.from('teams').select('id,name').eq('competition_slug', compSel.value).order('name');
+      var teams = r.data || [];
+      teamSel.innerHTML = teams.map(function(t){ return '<option value="'+t.id+'">'+esc(t.name)+'</option>'; }).join('');
+    }
+    sportSel.addEventListener('change', refreshComps);
+    compSel.addEventListener('change', refreshTeams);
+    await refreshComps();
+
+    btn.addEventListener('click', async function(){
+      var msg = document.getElementById(prefix+'-reassign-msg');
+      var teamId = teamSel.value;
+      if(!teamId){
+        msg.hidden = false; msg.className = 'field-error'; msg.textContent = 'Pick a team first.';
+        return;
+      }
+      btn.disabled = true; btn.textContent = 'Reassigning…';
+      var upd = await supabaseClient.from('jerseys').update({team_id: teamId}).eq('id', btn.dataset.jerseyId);
+      btn.disabled = false; btn.textContent = 'Reassign';
+      if(upd.error){
+        msg.hidden = false; msg.className = 'field-error'; msg.textContent = 'Error: ' + upd.error.message;
+        return;
+      }
+      if(onReassigned) onReassigned();
+    });
+  }
+
   // kind is 'team' or 'competition' — same shape of tables for both
   // (a live *_logos history + a logo_path pointer on the main row).
   function logoTables(kind){
@@ -965,16 +1065,22 @@
     var jerseyCards = pendingJerseys.map(function(j){
       var team = j.teams, comp = team.competitions, sport = comp.sports;
       var uploader = uploaderNames[j.uploaded_by] || 'unknown';
-      var images = j.jersey_images || [];
+      var images = sortImagesForDisplay(j.jersey_images);
       var thumb = images.length
         ? '<img class="lightbox-trigger" src="'+esc(publicImageUrl(images[0].storage_path))+'" alt="">'
         : '<div class="thumb-placeholder" style="background:var(--surface-2)"><span>No photo</span></div>';
       // All submitted photos, not just the first — admin needs to check
       // every one for wrong/bad images before approving, not just the
-      // thumbnail.
+      // thumbnail. The label dropdown lets a mislabeled front/back get
+      // fixed right here, which also fixes which one shows as the main
+      // image (that's always whichever one is labeled "Front").
       var allPhotosHtml = images.length > 1
         ? '<div class="logo-history-grid lightbox-group" style="margin-top:8px;">' + images.map(function(img){
-            return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicImageUrl(img.storage_path))+'" alt=""><span>'+esc(img.label)+'</span></div>';
+            return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicImageUrl(img.storage_path))+'" alt="">' +
+              '<select class="photo-label-select" data-image-id="'+img.id+'">' +
+                ['Front','Back','Other'].map(function(l){ return '<option value="'+l+'"'+(img.label===l?' selected':'')+'>'+l+'</option>'; }).join('') +
+              '</select>' +
+            '</div>';
           }).join('') + '</div>'
         : '';
       var moveId = 'mod-jersey-'+j.id;
@@ -1291,6 +1397,28 @@
       });
     }
 
+    if(adminSettingsToggle && parts[0]==='jersey'){
+      adminSettingsToggle.addEventListener('click', function(){
+        var panel = document.getElementById('admin-settings-panel');
+        if(!panel.dataset.wired){
+          panel.dataset.wired = '1';
+          panel.hidden = false;
+          panel.querySelectorAll('.photo-label-select').forEach(function(sel){
+            sel.addEventListener('change', async function(){
+              sel.disabled = true;
+              var upd = await supabaseClient.from('jersey_images').update({label: sel.value}).eq('id', sel.dataset.imageId);
+              sel.disabled = false;
+              if(upd.error){ alert('Error: ' + upd.error.message); return; }
+              render();
+            });
+          });
+          wireJerseyReassignControl('jersey-reassign', panel.dataset.sportSlug, function(){ render(); });
+          return;
+        }
+        panel.hidden = !panel.hidden;
+      });
+    }
+
     var logoHistoryToggle = document.getElementById('logo-history-toggle');
     if(logoHistoryToggle){
       var logoHistoryTeamId = logoHistoryToggle.dataset.teamId;
@@ -1549,6 +1677,15 @@
   }
 
   function wireModerationActions(){
+    document.querySelectorAll('.mod-card .photo-label-select').forEach(function(sel){
+      sel.addEventListener('change', async function(){
+        sel.disabled = true;
+        var upd = await supabaseClient.from('jersey_images').update({label: sel.value}).eq('id', sel.dataset.imageId);
+        sel.disabled = false;
+        if(upd.error){ alert('Error: ' + upd.error.message); return; }
+        render();
+      });
+    });
     document.querySelectorAll('.comp-move-toggle').forEach(function(toggle){
       toggle.addEventListener('click', function(){
         var panel = document.getElementById(toggle.dataset.target);
