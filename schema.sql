@@ -83,6 +83,7 @@ create table competitions (
   -- competition at the back unless it's been explicitly pinned earlier
   -- (e.g. cricket's International/IPL/BBL/Australia Domestic ordering).
   sort_order integer not null default 999,
+  logo_path text,
   created_by uuid references auth.users(id),
   created_at timestamptz not null default now()
 );
@@ -338,9 +339,11 @@ create table team_logo_proposals (
 );
 
 alter table team_logo_proposals enable row level security;
-create policy "logo proposals are readable by proposer and admins"
+-- public once approved (so it can show on a contributor's profile page,
+-- same as an approved jersey), otherwise only the proposer and admins
+create policy "logo proposals are readable once approved, or by proposer/admins"
   on team_logo_proposals for select using (
-    proposed_by = auth.uid() or exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin)
+    status = 'approved' or proposed_by = auth.uid() or exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin)
   );
 create policy "authenticated users can propose a team logo"
   on team_logo_proposals for insert to authenticated with check (proposed_by = auth.uid());
@@ -398,6 +401,73 @@ create policy "admins can update team logo history"
   with check (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
 
 
+-- ============ competition logos ============
+-- Same proposable/history pattern as team logos, for the competition's own
+-- badge (e.g. an NRL or Super Rugby Pacific logo) rather than a team's.
+-- Reuses the "team-logos" Storage bucket under a "comp-<slug>/" prefix so
+-- no extra bucket needs creating.
+create table competition_logo_proposals (
+  id uuid primary key default gen_random_uuid(),
+  competition_slug text not null references competitions(slug) on delete cascade,
+  storage_path text not null,
+  proposed_by uuid references auth.users(id),
+  status text not null default 'pending' check (status in ('pending','approved','rejected')),
+  point_awarded boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+alter table competition_logo_proposals enable row level security;
+create policy "comp logo proposals are readable once approved, or by proposer/admins"
+  on competition_logo_proposals for select using (
+    status = 'approved' or proposed_by = auth.uid() or exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin)
+  );
+create policy "authenticated users can propose a competition logo"
+  on competition_logo_proposals for insert to authenticated with check (proposed_by = auth.uid());
+create policy "admins can moderate comp logo proposals"
+  on competition_logo_proposals for update
+  using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin))
+  with check (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+create policy "admins can delete comp logo proposals"
+  on competition_logo_proposals for delete
+  using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+
+create function award_comp_logo_point()
+returns trigger as $$
+begin
+  if new.status = 'approved' and (old.status is distinct from 'approved') and new.proposed_by is not null and not new.point_awarded then
+    update profiles set points = points + 1 where id = new.proposed_by;
+    new.point_awarded := true;
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+create trigger on_comp_logo_approved
+  before update of status on competition_logo_proposals
+  for each row execute function award_comp_logo_point();
+
+-- rate_limit_comp_logo_proposals is created further down, once
+-- enforce_upload_rate_limit() itself is defined (see "basic spam protection").
+
+create table competition_logos (
+  id uuid primary key default gen_random_uuid(),
+  competition_slug text not null references competitions(slug) on delete cascade,
+  storage_path text not null,
+  is_current boolean not null default false,
+  approved_at timestamptz not null default now(),
+  years_used text
+);
+alter table competition_logos enable row level security;
+create policy "competition logo history is publicly readable" on competition_logos for select using (true);
+create policy "admins can add to competition logo history"
+  on competition_logos for insert to authenticated
+  with check (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+create policy "admins can update competition logo history"
+  on competition_logos for update
+  using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin))
+  with check (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+
+
 -- ============ basic spam protection ============
 -- Per-user hourly caps on signed-in submissions (uploads/photos/logo
 -- proposals), plus a lighter per-browser-token cap on anonymous reports.
@@ -435,6 +505,10 @@ create trigger rate_limit_jersey_images
 
 create trigger rate_limit_logo_proposals
   before insert on team_logo_proposals
+  for each row execute function enforce_upload_rate_limit('proposed_by', 120, 60);
+
+create trigger rate_limit_comp_logo_proposals
+  before insert on competition_logo_proposals
   for each row execute function enforce_upload_rate_limit('proposed_by', 120, 60);
 
 create function enforce_report_rate_limit()

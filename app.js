@@ -93,6 +93,16 @@
     return '<div class="team-swatch'+sizeClass+'"><div class="a" style="background:'+esc(team.primary_color)+'"></div><div class="b" style="background:'+esc(team.secondary_color)+'"></div></div>';
   }
 
+  // Competitions have no fallback colors to swatch, unlike teams — just
+  // render nothing until a logo actually exists.
+  function compLogoSwatch(comp, opts){
+    if(!comp.logo_path) return '';
+    var large = opts && opts.large;
+    var sizeClass = large ? ' team-swatch-lg' : '';
+    var triggerClass = large ? ' lightbox-trigger' : '';
+    return '<div class="team-swatch team-swatch-logo'+sizeClass+'"><img class="'+triggerClass.trim()+'" src="'+esc(publicLogoUrl(comp.logo_path))+'" alt=""></div>';
+  }
+
   function jerseyThumb(jersey, team){
     var images = jersey.jersey_images || [];
     if(images.length){
@@ -115,11 +125,20 @@
 
   // Shares the jersey-card markup/CSS so a logo slots into the same
   // "Recently added" grid as jerseys instead of needing its own layout.
-  function logoCard(logo, team){
+  function logoCard(logo, team, opts){
+    var label = (opts && opts.label) || 'New logo';
     var sportSlug = team.competitions.sport_slug;
     return '<a class="jersey-card" href="#/sport/'+sportSlug+'/'+team.competition_slug+'/team/'+team.slug+'">' +
       '<div class="jersey-thumb"><img src="'+esc(publicLogoUrl(logo.storage_path))+'" alt=""></div>' +
-      '<div class="jersey-label"><strong>'+esc(team.name)+'</strong><span>New logo</span></div>' +
+      '<div class="jersey-label"><strong>'+esc(team.name)+'</strong><span>'+esc(label)+'</span></div>' +
+    '</a>';
+  }
+
+  function compLogoCard(logo, comp, opts){
+    var label = (opts && opts.label) || 'New logo';
+    return '<a class="jersey-card" href="#/sport/'+comp.sport_slug+'/'+comp.slug+'">' +
+      '<div class="jersey-thumb"><img src="'+esc(publicLogoUrl(logo.storage_path))+'" alt=""></div>' +
+      '<div class="jersey-label"><strong>'+esc(comp.name)+'</strong><span>'+esc(label)+'</span></div>' +
     '</a>';
   }
 
@@ -234,11 +253,13 @@
   async function recentJerseysHtml(compSlugs){
     var jq = supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*)').order('created_at', {ascending:false}).limit(6);
     var lq = supabaseClient.from('team_logos').select('*, teams!inner(*, competitions!inner(sport_slug))').eq('is_current', true).order('approved_at', {ascending:false}).limit(6);
-    if(compSlugs){ jq = jq.in('teams.competition_slug', compSlugs); lq = lq.in('teams.competition_slug', compSlugs); }
-    var results = await Promise.all([jq, lq]);
-    var jRes = results[0], lRes = results[1];
+    var cq = supabaseClient.from('competition_logos').select('*, competitions!inner(*)').eq('is_current', true).order('approved_at', {ascending:false}).limit(6);
+    if(compSlugs){ jq = jq.in('teams.competition_slug', compSlugs); lq = lq.in('teams.competition_slug', compSlugs); cq = cq.in('competition_slug', compSlugs); }
+    var results = await Promise.all([jq, lq, cq]);
+    var jRes = results[0], lRes = results[1], cRes = results[2];
     var items = (jRes.data || []).map(function(j){ return {ts: j.created_at, html: jerseyCard(j, j.teams, {showTeam:true})}; })
-      .concat((lRes.data || []).map(function(l){ return {ts: l.approved_at, html: logoCard(l, l.teams)}; }));
+      .concat((lRes.data || []).map(function(l){ return {ts: l.approved_at, html: logoCard(l, l.teams)}; }))
+      .concat((cRes.data || []).map(function(l){ return {ts: l.approved_at, html: compLogoCard(l, l.competitions)}; }));
     items.sort(function(a,b){ return new Date(b.ts) - new Date(a.ts); });
     items = items.slice(0, 6);
     if(!items.length) return '';
@@ -345,7 +366,39 @@
         }).join('')
       : '';
 
-    return '<div class="section-head"><h2>'+esc(comp.name)+'</h2><span class="count">'+activeTeams.length+' teams</span></div>' +
+    // Surfaces whatever's actually popular in this competition, using the
+    // same jersey list the season galleries already fetched — helps drive
+    // traffic to the jerseys people rate highly, not just the newest ones.
+    var topRatedHtml = '';
+    if(seasonJerseys.length){
+      var jerseyIds = seasonJerseys.map(function(j){ return j.id; });
+      var ratingsRes = await supabaseClient.from('jersey_ratings').select('*').in('jersey_id', jerseyIds);
+      var ratingsByJersey = {};
+      (ratingsRes.data || []).forEach(function(r){ ratingsByJersey[r.jersey_id] = r; });
+      var rated = seasonJerseys.filter(function(j){ return ratingsByJersey[j.id]; }).sort(function(a,b){
+        var ra = ratingsByJersey[a.id], rb = ratingsByJersey[b.id];
+        return (rb.avg_rating - ra.avg_rating) || (rb.rating_count - ra.rating_count);
+      }).slice(0, 6);
+      if(rated.length){
+        var topCards = rated.map(function(j){ return jerseyCard(j, j.teams, {showTeam:true}); }).join('');
+        topRatedHtml = '<div class="section-head" style="margin-top:34px;"><h2>Highest rated</h2></div><div class="jersey-grid">'+topCards+'</div>';
+      }
+    }
+
+    var compLogoButtonsHtml = (comp.logo_path ? '<button class="btn btn-secondary" id="comp-logo-history-toggle" data-comp-slug="'+comp.slug+'" type="button">Logo history</button>' : '') +
+      (currentUser ? '<button class="btn btn-secondary" id="propose-comp-logo-toggle" data-comp-slug="'+comp.slug+'" type="button">'+(comp.logo_path ? '+ Update logo' : '+ Propose a logo')+'</button>' : '');
+    var compLogoBlock = compLogoButtonsHtml
+      ? '<div class="add-photos-block">' +
+          '<div style="display:flex;gap:10px;flex-wrap:wrap;">'+compLogoButtonsHtml+'</div>' +
+          (comp.logo_path ? '<div id="comp-logo-history-panel" hidden></div>' : '') +
+          (currentUser ? '<div id="propose-comp-logo-panel" hidden></div>' : '') +
+        '</div>'
+      : '';
+
+    return '<div class="section-head" style="align-items:center;">' +
+        '<div style="display:flex;align-items:center;gap:2px;">'+compLogoSwatch(comp, {large:true})+'<h2 style="margin-left:2px;">'+esc(comp.name)+'</h2></div>' +
+        '<span class="count">'+activeTeams.length+' teams</span>' +
+      '</div>' +
       (activeTeams.length ? '<div class="filter-row"><input type="text" id="team-filter" placeholder="Filter teams..."></div><div class="team-grid" id="team-grid">'+activeTeams.map(teamCard).join('')+'</div>'
         : '<div class="empty-note">No teams logged in '+esc(comp.name)+' yet.</div>') +
       (upcomingTeams.length
@@ -355,7 +408,9 @@
         ? '<div class="section-head" style="margin-top:34px;"><h2>Former teams</h2><span class="count">'+formerTeams.length+'</span></div><div class="team-grid">'+formerTeams.map(teamCard).join('')+'</div>'
         : '') +
       seasonGalleriesHtml +
-      renderReportButton('competition', comp.slug, comp.name);
+      topRatedHtml +
+      renderReportButton('competition', comp.slug, comp.name) +
+      compLogoBlock;
   }
 
   async function viewTeam(sportSlug, compSlug, teamSlug){
@@ -831,14 +886,24 @@
     });
   }
 
-  async function setTeamLogo(teamId, path){
+  // kind is 'team' or 'competition' — same shape of tables for both
+  // (a live *_logos history + a logo_path pointer on the main row).
+  function logoTables(kind){
+    return kind === 'team'
+      ? {history: 'team_logos', main: 'teams', refCol: 'team_id', idCol: 'id'}
+      : {history: 'competition_logos', main: 'competitions', refCol: 'competition_slug', idCol: 'slug'};
+  }
+  async function setLogo(kind, refId, path){
+    var t = logoTables(kind);
     // never overwrite history — the previous logo just stops being "current"
-    var unmark = await supabaseClient.from('team_logos').update({is_current:false}).eq('team_id', teamId).eq('is_current', true);
+    var unmark = await supabaseClient.from(t.history).update({is_current:false}).eq(t.refCol, refId).eq('is_current', true);
     if(unmark.error) throw unmark.error;
-    var histIns = await supabaseClient.from('team_logos').insert({team_id: teamId, storage_path: path, is_current: true});
+    var histRow = {storage_path: path, is_current: true};
+    histRow[t.refCol] = refId;
+    var histIns = await supabaseClient.from(t.history).insert(histRow);
     if(histIns.error) throw histIns.error;
-    var teamUpd = await supabaseClient.from('teams').update({logo_path: path}).eq('id', teamId);
-    if(teamUpd.error) throw teamUpd.error;
+    var mainUpd = await supabaseClient.from(t.main).update({logo_path: path}).eq(t.idCol, refId);
+    if(mainUpd.error) throw mainUpd.error;
   }
 
   async function viewModerate(){
@@ -868,10 +933,15 @@
     var logoRes = await supabaseClient.from('team_logo_proposals').select('*, teams(name)').eq('status', 'pending').order('created_at');
     if(!logoRes.error) pendingLogos = logoRes.data || [];
 
+    var pendingCompLogos = [];
+    var compLogoRes = await supabaseClient.from('competition_logo_proposals').select('*, competitions(name)').eq('status', 'pending').order('created_at');
+    if(!compLogoRes.error) pendingCompLogos = compLogoRes.data || [];
+
     var uploaderIds = pendingJerseys.map(function(j){ return j.uploaded_by; })
       .concat(pendingPhotos.map(function(img){ return img.uploaded_by; }))
       .concat(openReports.map(function(r){ return r.reported_by; }))
       .concat(pendingLogos.map(function(l){ return l.proposed_by; }))
+      .concat(pendingCompLogos.map(function(l){ return l.proposed_by; }))
       .filter(Boolean);
     var uploaderNames = {};
     if(uploaderIds.length){
@@ -879,7 +949,7 @@
       (profRes.data || []).forEach(function(p){ uploaderNames[p.id] = p.username; });
     }
 
-    if(!pendingJerseys.length && !pendingPhotos.length && !openReports.length && !pendingLogos.length){
+    if(!pendingJerseys.length && !pendingPhotos.length && !openReports.length && !pendingLogos.length && !pendingCompLogos.length){
       return '<div class="section-head"><h2>Moderation queue</h2></div><div class="empty-note">Nothing waiting for review.</div>';
     }
 
@@ -979,6 +1049,21 @@
       '</div>';
     }).join('');
 
+    var compLogoCards = pendingCompLogos.map(function(l){
+      var proposer = uploaderNames[l.proposed_by] || 'unknown';
+      return '<div class="mod-card">' +
+        '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(l.storage_path))+'" alt=""></div>' +
+        '<div class="mod-info">' +
+          '<strong>Logo for '+(l.competitions ? esc(l.competitions.name) : 'a competition')+'</strong>' +
+          '<span>proposed by '+esc(proposer)+'</span>' +
+        '</div>' +
+        '<div class="mod-actions">' +
+          '<button class="btn" data-type="comp-logo" data-action="approve" data-id="'+l.id+'" data-comp-slug="'+esc(l.competition_slug)+'" data-path="'+esc(l.storage_path)+'" type="button">Approve</button>' +
+          '<button class="btn btn-reject" data-type="comp-logo" data-action="reject" data-id="'+l.id+'" data-path="'+esc(l.storage_path)+'" type="button">Reject</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
     return '<div class="section-head"><h2>Moderation queue</h2></div>' +
       '<section class="block"><div class="section-head"><h2>New jerseys</h2><span class="count">'+pendingJerseys.length+' pending</span></div>' +
         (jerseyCards ? '<div class="mod-list">'+jerseyCards+'</div>' : '<div class="empty-note">None waiting.</div>') +
@@ -986,8 +1071,11 @@
       '<section class="block"><div class="section-head"><h2>Proposed photos</h2><span class="count">'+pendingPhotos.length+' pending</span></div>' +
         (photoCards ? '<div class="mod-list">'+photoCards+'</div>' : '<div class="empty-note">None waiting.</div>') +
       '</section>' +
-      '<section class="block"><div class="section-head"><h2>Logo proposals</h2><span class="count">'+pendingLogos.length+' pending</span></div>' +
+      '<section class="block"><div class="section-head"><h2>Team logo proposals</h2><span class="count">'+pendingLogos.length+' pending</span></div>' +
         (logoCards ? '<div class="mod-list">'+logoCards+'</div>' : '<div class="empty-note">None waiting.</div>') +
+      '</section>' +
+      '<section class="block"><div class="section-head"><h2>Competition logo proposals</h2><span class="count">'+pendingCompLogos.length+' pending</span></div>' +
+        (compLogoCards ? '<div class="mod-list">'+compLogoCards+'</div>' : '<div class="empty-note">None waiting.</div>') +
       '</section>' +
       '<section class="block"><div class="section-head"><h2>Reports</h2><span class="count">'+openReports.length+' open</span></div>' +
         (reportCards ? '<div class="mod-list">'+reportCards+'</div>' : '<div class="empty-note">None open.</div>') +
@@ -1008,8 +1096,22 @@
     var jerseys = jRes.data || [];
     var cards = jerseys.map(function(j){ return jerseyCard(j, j.teams, {showTeam:true}); }).join('');
 
+    var teamLogoRes = await supabaseClient.from('team_logo_proposals')
+      .select('*, teams(name, slug, competition_slug, competitions!inner(sport_slug))')
+      .eq('proposed_by', profile.id).eq('status', 'approved').order('created_at', {ascending:false});
+    var compLogoRes = await supabaseClient.from('competition_logo_proposals')
+      .select('*, competitions(name, slug, sport_slug)')
+      .eq('proposed_by', profile.id).eq('status', 'approved').order('created_at', {ascending:false});
+    var logoCards = (teamLogoRes.data || []).map(function(l){ return logoCard(l, l.teams, {label:'Team logo'}); })
+      .concat((compLogoRes.data || []).map(function(l){ return compLogoCard(l, l.competitions, {label:'Competition logo'}); }))
+      .join('');
+    var logoSectionHtml = logoCards
+      ? '<div class="section-head" style="margin-top:34px;"><h2>Logos contributed</h2></div><div class="jersey-grid">'+logoCards+'</div>'
+      : '';
+
     return '<div class="section-head"><h2>'+esc(profile.username)+' '+pointsChip(profile.points)+'</h2><span class="count">'+jerseys.length+' upload'+(jerseys.length===1?'':'s')+'</span></div>' +
-      (cards ? '<div class="jersey-grid">'+cards+'</div>' : '<div class="empty-note">No approved uploads yet.</div>');
+      (cards ? '<div class="jersey-grid">'+cards+'</div>' : '<div class="empty-note">No approved uploads yet.</div>') +
+      logoSectionHtml;
   }
 
   function viewNotFound(){
@@ -1114,7 +1216,20 @@
         if(!panel.dataset.wired){
           panel.dataset.wired = '1';
           panel.innerHTML = renderProposeLogoPanel();
-          wireProposeLogoPanel(proposeLogoToggle.dataset.teamId);
+          wireProposeLogoPanel('team', proposeLogoToggle.dataset.teamId);
+        }
+        panel.hidden = !panel.hidden;
+      });
+    }
+
+    var proposeCompLogoToggle = document.getElementById('propose-comp-logo-toggle');
+    if(proposeCompLogoToggle){
+      proposeCompLogoToggle.addEventListener('click', function(){
+        var panel = document.getElementById('propose-comp-logo-panel');
+        if(!panel.dataset.wired){
+          panel.dataset.wired = '1';
+          panel.innerHTML = renderProposeLogoPanel();
+          wireProposeLogoPanel('competition', proposeCompLogoToggle.dataset.compSlug);
         }
         panel.hidden = !panel.hidden;
       });
@@ -1155,7 +1270,22 @@
         if(!panel.dataset.wired){
           panel.dataset.wired = '1';
           panel.hidden = false;
-          await refreshLogoHistoryPanel(logoHistoryTeamId);
+          await refreshLogoHistoryPanel('team', logoHistoryTeamId);
+          return;
+        }
+        panel.hidden = !panel.hidden;
+      });
+    }
+
+    var compLogoHistoryToggle = document.getElementById('comp-logo-history-toggle');
+    if(compLogoHistoryToggle){
+      var logoHistoryCompSlug = compLogoHistoryToggle.dataset.compSlug;
+      compLogoHistoryToggle.addEventListener('click', async function(){
+        var panel = document.getElementById('comp-logo-history-panel');
+        if(!panel.dataset.wired){
+          panel.dataset.wired = '1';
+          panel.hidden = false;
+          await refreshLogoHistoryPanel('competition', logoHistoryCompSlug);
           return;
         }
         panel.hidden = !panel.hidden;
@@ -1168,11 +1298,12 @@
     wireInlineEdits();
   }
 
-  async function refreshLogoHistoryPanel(teamId){
-    var panel = document.getElementById('logo-history-panel');
+  async function refreshLogoHistoryPanel(kind, refId){
+    var t = logoTables(kind);
+    var panel = document.getElementById(kind === 'team' ? 'logo-history-panel' : 'comp-logo-history-panel');
     if(!panel) return;
     panel.innerHTML = '<p class="loading">Loading…</p>';
-    var res = await supabaseClient.from('team_logos').select('*').eq('team_id', teamId).order('approved_at', {ascending:false});
+    var res = await supabaseClient.from(t.history).select('*').eq(t.refCol, refId).order('approved_at', {ascending:false});
     if(res.error){ panel.innerHTML = errorBox(res.error); return; }
     var rows = res.data || [];
     var isAdmin = currentProfile && currentProfile.is_admin;
@@ -1193,12 +1324,12 @@
         var input = row.querySelector('.inline-edit-input');
         input.focus();
         if(input.select) input.select();
-        row.querySelector('.inline-cancel-btn').addEventListener('click', function(){ refreshLogoHistoryPanel(teamId); });
+        row.querySelector('.inline-cancel-btn').addEventListener('click', function(){ refreshLogoHistoryPanel(kind, refId); });
         row.querySelector('.inline-save-btn').addEventListener('click', async function(){
           var newVal = input.value.trim();
-          var upd = await supabaseClient.from('team_logos').update({years_used: newVal || null}).eq('id', btn.dataset.logoId);
+          var upd = await supabaseClient.from(t.history).update({years_used: newVal || null}).eq('id', btn.dataset.logoId);
           if(upd.error){ alert('Error: ' + upd.error.message); return; }
-          refreshLogoHistoryPanel(teamId);
+          refreshLogoHistoryPanel(kind, refId);
         });
       });
     });
@@ -1330,7 +1461,10 @@
       '<div id="pl-result"></div>';
   }
 
-  function wireProposeLogoPanel(teamId){
+  function wireProposeLogoPanel(kind, refId){
+    var proposalTable = kind === 'team' ? 'team_logo_proposals' : 'competition_logo_proposals';
+    var refCol = kind === 'team' ? 'team_id' : 'competition_slug';
+    var pathPrefix = kind === 'team' ? refId : 'comp-' + refId;
     var picked = null;
     var dropzone = document.getElementById('pl-dropzone');
     var input = document.getElementById('pl-logo-input');
@@ -1366,12 +1500,12 @@
       submitBtn.disabled = true; submitBtn.textContent = 'Submitting…';
       try {
         var ext = (picked.file.name.split('.').pop() || 'png').toLowerCase();
-        var path = teamId + '/logo-' + Date.now() + '.' + ext;
+        var path = pathPrefix + '/logo-' + Date.now() + '.' + ext;
         var up = await supabaseClient.storage.from('team-logos').upload(path, picked.file);
         if(up.error) throw up.error;
-        var ins = await supabaseClient.from('team_logo_proposals').insert({
-          team_id: teamId, storage_path: path, proposed_by: currentUser.id
-        });
+        var proposalRow = {storage_path: path, proposed_by: currentUser.id};
+        proposalRow[refCol] = refId;
+        var ins = await supabaseClient.from(proposalTable).insert(proposalRow);
         if(ins.error) throw ins.error;
         document.getElementById('pl-result').innerHTML = '<p class="field-hint is-match" style="margin-top:10px;">Submitted for review — thanks!</p>';
         URL.revokeObjectURL(picked.url);
@@ -1420,23 +1554,26 @@
             var newPath = teamId + '/logo-' + Date.now() + '.' + ext;
             var moveUp = await supabaseClient.storage.from('team-logos').upload(newPath, dl.data);
             if(moveUp.error) throw moveUp.error;
-            await setTeamLogo(teamId, newPath);
+            await setLogo('team', teamId, newPath);
             var repRes2 = await supabaseClient.from('reports').update({status:'resolved'}).eq('id', id);
             if(repRes2.error) throw repRes2.error;
             await supabaseClient.storage.from('report-attachments').remove([oldPath]);
-          } else if(type === 'logo'){
+          } else if(type === 'logo' || type === 'comp-logo'){
+            var logoKind = type === 'logo' ? 'team' : 'competition';
+            var logoProposalTable = type === 'logo' ? 'team_logo_proposals' : 'competition_logo_proposals';
+            var logoRefId = type === 'logo' ? btn.dataset.teamId : btn.dataset.compSlug;
             if(btn.dataset.action === 'approve'){
-              await setTeamLogo(btn.dataset.teamId, btn.dataset.path);
+              await setLogo(logoKind, logoRefId, btn.dataset.path);
               // status update (not delete) so the award_logo_point trigger
               // fires and the proposer gets their point, same as a jersey.
-              var logoApprove = await supabaseClient.from('team_logo_proposals').update({status:'approved'}).eq('id', id);
+              var logoApprove = await supabaseClient.from(logoProposalTable).update({status:'approved'}).eq('id', id);
               if(logoApprove.error) throw logoApprove.error;
             } else {
               if(btn.dataset.path){
                 var logoRm = await supabaseClient.storage.from('team-logos').remove([btn.dataset.path]);
                 if(logoRm.error) throw logoRm.error;
               }
-              var logoDel = await supabaseClient.from('team_logo_proposals').delete().eq('id', id);
+              var logoDel = await supabaseClient.from(logoProposalTable).delete().eq('id', id);
               if(logoDel.error) throw logoDel.error;
             }
           } else if(type === 'photo'){
