@@ -308,6 +308,28 @@
         }).join(' &middot; ') + '</p>'
       : '';
 
+    var isAdmin = currentProfile && currentProfile.is_admin;
+    var isActiveTeam = team.is_active !== false;
+    var statusBadge = !isActiveTeam ? '<p class="former-badge">No longer competing in '+esc(comp.name)+'.</p>' : '';
+
+    // Explains gaps in a team's timeline — folded, merged, or promoted away
+    // and back — without needing a separate "defunct teams" table; it's
+    // just a free-text note an admin can add, same edit affordance as
+    // everything else on this page.
+    var historyEditData = {table:'teams', matchCol:'id', matchVal:team.id, field:'history_note', current:team.history_note || '', multiline:true};
+    var historyEditBtn = isAdmin ? ' <button class="edit-pencil-btn" type="button" data-edit=\''+esc(JSON.stringify(historyEditData))+'\'>'+ICON_PENCIL+'</button>' : '';
+    var historyHtml = (team.history_note || isAdmin)
+      ? '<div class="notes-block"><div class="spec-value-row">'+(team.history_note ? esc(team.history_note) : '<em style="color:var(--text-dim2);">No history note</em>')+historyEditBtn+'</div></div>'
+      : '';
+
+    // Only useful for promotion/relegation competitions (Super League, the
+    // English football pyramid, etc.) — an admin flips this when a club
+    // moves in or out rather than the app trying to guess it, since getting
+    // it wrong in an unfamiliar competition is easy.
+    var activeToggleBlock = isAdmin
+      ? '<div class="add-photos-block"><button class="btn btn-secondary" id="toggle-active-btn" data-team-id="'+team.id+'" data-active="'+isActiveTeam+'" type="button">'+(isActiveTeam ? 'Mark as former team' : 'Mark as active team')+'</button></div>'
+      : '';
+
     // Once a team has a logo, changing it is rare — fold that into the
     // generic "Report a problem" flow (with an optional image attached)
     // instead of a permanent button. Only teams with no logo yet get the
@@ -319,7 +341,10 @@
         : '');
 
     return '<div class="section-head" style="align-items:center;">'+teamSwatch(team, {large:true})+'<h2 style="margin-left:2px;">'+esc(team.name)+'</h2></div>' +
+      statusBadge +
       siblingsHtml +
+      historyHtml +
+      activeToggleBlock +
       logoBlock +
       (groups || '<div class="empty-note">No jerseys logged yet.</div>') +
       renderReportButton('team', team.id, team.name);
@@ -851,6 +876,16 @@
           wireProposeLogoPanel(proposeLogoToggle.dataset.teamId);
         }
         panel.hidden = !panel.hidden;
+      });
+    }
+
+    var toggleActiveBtn = document.getElementById('toggle-active-btn');
+    if(toggleActiveBtn){
+      toggleActiveBtn.addEventListener('click', async function(){
+        var newActive = toggleActiveBtn.dataset.active !== 'true';
+        var res = await supabaseClient.from('teams').update({is_active: newActive}).eq('id', toggleActiveBtn.dataset.teamId);
+        if(res.error){ alert('Error: ' + res.error.message); return; }
+        render();
       });
     }
 

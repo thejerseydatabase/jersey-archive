@@ -108,6 +108,10 @@ create table teams (
   -- Super League) but its jersey history stays exactly where it is; the
   -- competition page just lists it under "Former teams" instead.
   is_active boolean not null default true,
+  -- free-text context for a gap in the timeline: folded, merged, or
+  -- promoted away and back (e.g. "Merged with Balmain Tigers in 1999 to
+  -- form the Wests Tigers").
+  history_note text,
   created_by uuid references auth.users(id),
   created_at timestamptz not null default now(),
   unique (competition_slug, slug)
