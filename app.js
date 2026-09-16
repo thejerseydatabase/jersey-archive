@@ -682,9 +682,16 @@
     renderAuthArea();
   }
 
-  supabaseClient.auth.onAuthStateChange(function(){ refreshAuthUI().then(function(){
-    if(location.hash.replace(/^#\/?/,'') === 'upload') render();
-  }); });
+  // Supabase fires TOKEN_REFRESHED whenever the tab regains focus (it's just
+  // silently renewing the session, not a real identity change) — only a
+  // genuine SIGNED_IN/SIGNED_OUT should ever re-render the current page,
+  // otherwise switching tabs mid-upload wipes whatever was typed so far.
+  supabaseClient.auth.onAuthStateChange(function(event){
+    refreshAuthUI();
+    if(event === 'SIGNED_IN' || event === 'SIGNED_OUT'){
+      if(location.hash.replace(/^#\/?/,'') === 'upload') render();
+    }
+  });
 
   refreshAuthUI();
   window.addEventListener('hashchange', render);
