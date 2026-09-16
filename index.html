@@ -67,6 +67,10 @@
   .field select,.field input[type="number"],.field input[type="text"],.field textarea{background:var(--surface);border:1px solid var(--line);border-radius:9px;color:var(--text);font-family:'Inter',sans-serif;font-size:13.5px;padding:11px 12px;width:100%;}
   .field textarea{resize:vertical;min-height:70px;font-family:'Inter',sans-serif;}
   .field select:focus,.field input:focus,.field textarea:focus{border-color:var(--accent);}
+  .new-value-row{display:flex;gap:8px;}
+  .new-value-row input{flex:1;min-width:0;}
+  .new-value-cancel{flex-shrink:0;width:40px;background:var(--surface);border:1px solid var(--line);border-radius:9px;color:var(--text-dim2);cursor:pointer;font-size:12px;}
+  .new-value-cancel:hover{border-color:var(--accent);color:var(--accent);}
   .field-full{grid-column:1/-1;}
   .field-hint{font-family:'IBM Plex Mono',monospace;font-size:10.5px;margin:1px 0 0;min-height:13px;color:var(--text-dim2);}
   .field-hint.is-match{color:var(--accent);}
@@ -312,7 +316,7 @@
 })();
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="config.js?v=31"></script>
-<script src="app.js?v=31"></script>
+<script src="config.js?v=32"></script>
+<script src="app.js?v=32"></script>
 </body>
 </html>

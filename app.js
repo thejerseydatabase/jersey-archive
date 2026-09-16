@@ -627,18 +627,30 @@
           '<div class="field" id="field-format" hidden><label for="f-format">Format * <small>cricket has several</small></label><select id="f-format" required></select></div>' +
           '<div class="field"><label for="f-comp-select">Competition * <small>pick or add a new one</small></label>' +
             '<select id="f-comp-select" required><option value="">Select a competition</option></select>' +
-            '<input type="text" id="f-comp-new" placeholder="New competition name" hidden></div>' +
+            '<div class="new-value-row" id="f-comp-new-row" hidden>' +
+              '<input type="text" id="f-comp-new" placeholder="New competition name">' +
+              '<button type="button" class="new-value-cancel" id="f-comp-new-cancel" aria-label="Back to list">&#10005;</button>' +
+            '</div></div>' +
           '<div class="field"><label for="f-team-select">Team * <small>any level &mdash; local clubs welcome</small></label>' +
             '<select id="f-team-select" required><option value="">Select a competition first</option></select>' +
-            '<input type="text" id="f-team-new" placeholder="New team name" hidden></div>' +
+            '<div class="new-value-row" id="f-team-new-row" hidden>' +
+              '<input type="text" id="f-team-new" placeholder="New team name">' +
+              '<button type="button" class="new-value-cancel" id="f-team-new-cancel" aria-label="Back to list">&#10005;</button>' +
+            '</div></div>' +
           '<div class="field"><label for="f-season">Season * <small>a single year, or a range for split-year comps</small></label>' +
             '<input type="text" id="f-season" placeholder="e.g. '+thisYear+' or '+thisYear+'-'+String(thisYear+1).slice(-2)+'" required></div>' +
           '<div class="field"><label for="f-type-select">Jersey type *</label>' +
             '<select id="f-type-select" required>'+typeOptions+'</select>' +
-            '<input type="text" id="f-type-new" placeholder="New jersey type" hidden></div>' +
+            '<div class="new-value-row" id="f-type-new-row" hidden>' +
+              '<input type="text" id="f-type-new" placeholder="New jersey type">' +
+              '<button type="button" class="new-value-cancel" id="f-type-new-cancel" aria-label="Back to list">&#10005;</button>' +
+            '</div></div>' +
           '<div class="field"><label for="f-mfr-select">Manufacturer <small>optional</small></label>' +
             '<select id="f-mfr-select">'+mfrOptions+'</select>' +
-            '<input type="text" id="f-mfr-new" placeholder="New manufacturer" hidden></div>' +
+            '<div class="new-value-row" id="f-mfr-new-row" hidden>' +
+              '<input type="text" id="f-mfr-new" placeholder="New manufacturer">' +
+              '<button type="button" class="new-value-cancel" id="f-mfr-new-cancel" aria-label="Back to list">&#10005;</button>' +
+            '</div></div>' +
           '<div class="field field-full" id="field-photos"><label>Photos * <small>drag in several at once, or click to choose</small></label>' +
             '<div class="dropzone" id="photo-dropzone" tabindex="0" role="button" aria-label="Add photos">' +
               ICON_PHOTO +
@@ -1387,26 +1399,40 @@
     if(!form) return;
     var sportSel = document.getElementById('f-sport');
     var compSelect = document.getElementById('f-comp-select');
+    var compNewRow = document.getElementById('f-comp-new-row');
     var compNew = document.getElementById('f-comp-new');
     var teamSelect = document.getElementById('f-team-select');
+    var teamNewRow = document.getElementById('f-team-new-row');
     var teamNew = document.getElementById('f-team-new');
     var seasonInput = document.getElementById('f-season');
     var typeSelect = document.getElementById('f-type-select');
+    var typeNewRow = document.getElementById('f-type-new-row');
     var typeNew = document.getElementById('f-type-new');
     var mfrSelect = document.getElementById('f-mfr-select');
+    var mfrNewRow = document.getElementById('f-mfr-new-row');
     var mfrNew = document.getElementById('f-mfr-new');
     var formatField = document.getElementById('field-format');
     var formatSel = document.getElementById('f-format');
 
     // Every "pick or add new" field is a <select> (so it looks and behaves
-    // like the Sport dropdown) plus a hidden text input that only appears
-    // when "+ Add a new one…" is chosen — same pattern already used for
-    // the admin "move team" competition picker.
-    function syncNewVisibility(selectEl, newInputEl, requiredWhenNew){
+    // like the Sport dropdown) plus a text input that swaps in for it —
+    // not sitting below it — when "+ Add a new one…" is chosen, same
+    // pattern already used for the admin "move team" competition picker.
+    function syncNewVisibility(selectEl, rowEl, newInputEl, requiredWhenNew){
       var isNew = selectEl.value === '__new__';
-      newInputEl.hidden = !isNew;
+      selectEl.hidden = isNew;
+      rowEl.hidden = !isNew;
       if(requiredWhenNew) newInputEl.required = isNew;
       if(isNew) newInputEl.focus();
+    }
+    function wireNewCancel(selectEl, rowEl, newInputEl, requiredWhenNew, onCancel){
+      rowEl.querySelector('.new-value-cancel').addEventListener('click', function(){
+        newInputEl.value = '';
+        selectEl.value = '';
+        syncNewVisibility(selectEl, rowEl, newInputEl, requiredWhenNew);
+        if(onCancel) onCancel();
+        saveDraft();
+      });
     }
     function fieldValue(selectEl, newInputEl){
       return selectEl.value === '__new__' ? newInputEl.value.trim() : selectEl.value;
@@ -1496,19 +1522,19 @@
       compSelect.innerHTML = '<option value="">Select a competition</option>' +
         comps.map(function(c){ return '<option value="'+esc(c.name)+'">'+esc(c.name)+'</option>'; }).join('') +
         '<option value="__new__">+ Add a new competition…</option>';
-      compNew.hidden = true; compNew.value = ''; compNew.required = false;
+      compSelect.hidden = false; compNewRow.hidden = true; compNew.value = ''; compNew.required = false;
       await refreshTeams();
     }
     async function refreshTeams(){
       var val = compSelect.value;
       if(!val){
         teamSelect.innerHTML = '<option value="">Select a competition first</option>';
-        teamNew.hidden = true; teamNew.required = false;
+        teamSelect.hidden = false; teamNewRow.hidden = true; teamNew.required = false;
         return;
       }
       if(val === '__new__'){
         teamSelect.innerHTML = '<option value="__new__" selected>+ Add a new team…</option>';
-        teamNew.hidden = false; teamNew.required = true;
+        teamSelect.hidden = true; teamNewRow.hidden = false; teamNew.required = true;
         return;
       }
       var comps = await competitionsForSport(sportSel.value);
@@ -1519,7 +1545,7 @@
       teamSelect.innerHTML = '<option value="">Select a team</option>' +
         teams.map(function(t){ return '<option value="'+esc(t.name)+'">'+esc(t.name)+'</option>'; }).join('') +
         '<option value="__new__">+ Add a new team…</option>';
-      teamNew.hidden = true; teamNew.value = ''; teamNew.required = false;
+      teamSelect.hidden = false; teamNewRow.hidden = true; teamNew.value = ''; teamNew.required = false;
     }
     // After a successful upload: re-list competitions/teams (in case one
     // was just created via "+ Add a new one…") and select the one just
@@ -1530,7 +1556,7 @@
       compSelect.innerHTML = '<option value="">Select a competition</option>' +
         comps.map(function(c){ return '<option value="'+esc(c.name)+'"'+(c.name===compName?' selected':'')+'>'+esc(c.name)+'</option>'; }).join('') +
         '<option value="__new__">+ Add a new competition…</option>';
-      compNew.hidden = true; compNew.value = ''; compNew.required = false;
+      compSelect.hidden = false; compNewRow.hidden = true; compNew.value = ''; compNew.required = false;
 
       var comp = comps.filter(function(c){ return c.name.toLowerCase() === compName.toLowerCase(); })[0];
       var teams = [];
@@ -1541,7 +1567,7 @@
       teamSelect.innerHTML = '<option value="">Select a team</option>' +
         teams.map(function(t){ return '<option value="'+esc(t.name)+'"'+(t.name===teamName?' selected':'')+'>'+esc(t.name)+'</option>'; }).join('') +
         '<option value="__new__">+ Add a new team…</option>';
-      teamNew.hidden = true; teamNew.value = ''; teamNew.required = false;
+      teamSelect.hidden = false; teamNewRow.hidden = true; teamNew.value = ''; teamNew.required = false;
     }
     function refreshFormat(){
       var formats = FORMATS_BY_SPORT[sportSel.value];
@@ -1551,10 +1577,14 @@
     }
 
     sportSel.addEventListener('change', function(){ refreshComps(); refreshFormat(); saveDraft(); });
-    compSelect.addEventListener('change', function(){ syncNewVisibility(compSelect, compNew, true); refreshTeams(); saveDraft(); });
-    teamSelect.addEventListener('change', function(){ syncNewVisibility(teamSelect, teamNew, true); saveDraft(); });
-    typeSelect.addEventListener('change', function(){ syncNewVisibility(typeSelect, typeNew, true); saveDraft(); });
-    mfrSelect.addEventListener('change', function(){ syncNewVisibility(mfrSelect, mfrNew, false); saveDraft(); });
+    compSelect.addEventListener('change', function(){ syncNewVisibility(compSelect, compNewRow, compNew, true); refreshTeams(); saveDraft(); });
+    teamSelect.addEventListener('change', function(){ syncNewVisibility(teamSelect, teamNewRow, teamNew, true); saveDraft(); });
+    typeSelect.addEventListener('change', function(){ syncNewVisibility(typeSelect, typeNewRow, typeNew, true); saveDraft(); });
+    mfrSelect.addEventListener('change', function(){ syncNewVisibility(mfrSelect, mfrNewRow, mfrNew, false); saveDraft(); });
+    wireNewCancel(compSelect, compNewRow, compNew, true, refreshTeams);
+    wireNewCancel(teamSelect, teamNewRow, teamNew, true);
+    wireNewCancel(typeSelect, typeNewRow, typeNew, true);
+    wireNewCancel(mfrSelect, mfrNewRow, mfrNew, false);
     [compNew, teamNew, seasonInput, typeNew, mfrNew, document.getElementById('f-notes')].forEach(function(el){
       el.addEventListener('input', saveDraft);
       el.addEventListener('change', saveDraft);
@@ -1567,24 +1597,24 @@
       if(restoredDraft){
         if(restoredDraft.comp){
           compSelect.value = restoredDraft.comp.v || '';
-          syncNewVisibility(compSelect, compNew, true);
+          syncNewVisibility(compSelect, compNewRow, compNew, true);
           compNew.value = restoredDraft.comp.n || '';
           await refreshTeams();
         }
         if(restoredDraft.team){
           teamSelect.value = restoredDraft.team.v || '';
-          syncNewVisibility(teamSelect, teamNew, true);
+          syncNewVisibility(teamSelect, teamNewRow, teamNew, true);
           teamNew.value = restoredDraft.team.n || '';
         }
         if(restoredDraft.season) seasonInput.value = restoredDraft.season;
         if(restoredDraft.type){
           typeSelect.value = restoredDraft.type.v || '';
-          syncNewVisibility(typeSelect, typeNew, true);
+          syncNewVisibility(typeSelect, typeNewRow, typeNew, true);
           typeNew.value = restoredDraft.type.n || '';
         }
         if(restoredDraft.mfr){
           mfrSelect.value = restoredDraft.mfr.v || '';
-          syncNewVisibility(mfrSelect, mfrNew, false);
+          syncNewVisibility(mfrSelect, mfrNewRow, mfrNew, false);
           mfrNew.value = restoredDraft.mfr.n || '';
         }
         if(restoredDraft.notes) document.getElementById('f-notes').value = restoredDraft.notes;
@@ -1669,7 +1699,7 @@
         renderPhotoPreviews();
         await reselectAfterSubmit(comp.name, team.name);
         typeSelect.value = '';
-        syncNewVisibility(typeSelect, typeNew, true);
+        syncNewVisibility(typeSelect, typeNewRow, typeNew, true);
         document.getElementById('f-notes').value = '';
         saveDraft();
       } catch(err) {
