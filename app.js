@@ -5,7 +5,6 @@
   var ICON_PHOTO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="26" height="26"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M3 17l5-4 4 3 3-2 6 5"/><path d="M17 3v4M15 5h4"/></svg>';
   var ICON_PENCIL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>';
   var ICON_FLAG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22V3"/></svg>';
-  var GOOGLE_ICON = '<svg width="16" height="16" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 3l6-6C34.6 5.3 29.6 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21 21-9.4 21-21c0-1.2-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.5 15.9 18.9 13 24 13c3.1 0 5.8 1.1 8 3l6-6C34.6 5.3 29.6 3 24 3c-7.4 0-13.8 4-17.2 9.9z"/><path fill="#4CAF50" d="M24 45c5.5 0 10.4-1.9 14.3-5.1l-6.6-5.6C29.6 36.1 26.9 37 24 37c-5.3 0-9.7-3.3-11.3-7.9l-6.6 5.1C9.9 40.9 16.4 45 24 45z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4-4.1 5.3l6.6 5.6C41.9 35.6 45 30.5 45 24c0-1.2-.1-2.4-.4-3.5z"/></svg>';
   var FORMATS_BY_SPORT = { cricket: ['Test','T20','T20I','ODI','One Day','First Class'] };
   var JERSEY_TYPES = ['Home','Away','Alternate','Indigenous','Heritage','Training'];
   var MANUFACTURERS = ['ISC','Classic','Kappa','Canterbury','BLK','Burley Sekem','Macron','Puma','Nike','Adidas','New Balance'];
@@ -1384,22 +1383,12 @@
     panel.className = 'auth-panel';
     panel.id = 'auth-panel';
     panel.innerHTML =
-      '<button class="google-btn" id="auth-google-btn" type="button">'+GOOGLE_ICON+'Continue with Google</button>' +
-      '<div class="auth-divider">or</div>' +
       '<p>Sign in with a magic link — no password needed. Uploads, points, and ratings are tied to this email.</p>' +
       '<input type="email" id="auth-email" placeholder="you@example.com">' +
       '<button class="btn" id="auth-send-btn" type="button" style="width:100%;">Send magic link</button>' +
       '<p class="auth-msg" id="auth-msg" hidden></p>';
     el.appendChild(panel);
     panel.addEventListener('click', function(e){ e.stopPropagation(); });
-    document.getElementById('auth-google-btn').addEventListener('click', async function(){
-      var res = await supabaseClient.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } });
-      if(res.error){
-        var msg = document.getElementById('auth-msg');
-        msg.hidden = false;
-        msg.textContent = 'Error: ' + res.error.message;
-      }
-    });
     document.getElementById('auth-send-btn').addEventListener('click', async function(){
       var email = document.getElementById('auth-email').value.trim();
       var msg = document.getElementById('auth-msg');
