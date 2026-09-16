@@ -227,7 +227,7 @@
     var sport = sportRes.data;
     setCrumbs([{label:'Home', href:'#/'},{label:sport.name, href:'#/sport/'+sportSlug}]);
 
-    var compRes = await supabaseClient.from('competitions').select('*').eq('sport_slug', sportSlug);
+    var compRes = await supabaseClient.from('competitions').select('*').eq('sport_slug', sportSlug).order('name');
     if(compRes.error) throw compRes.error;
     var comps = compRes.data || [];
     var top = comps.filter(function(c){ return c.tier === 'top'; });
@@ -634,21 +634,47 @@
         '<select class="comp-move-select" id="'+prefix+'-comp-select" data-sport-slug="'+esc(sportSlug)+'" data-current="'+esc(currentCompSlug)+'"><option>Loading…</option></select>' +
         '<button class="btn btn-secondary" id="'+prefix+'-comp-move-btn" data-team-id="'+teamId+'" type="button">Move</button>' +
       '</div>' +
+      '<div class="comp-move-new" id="'+prefix+'-comp-new" hidden>' +
+        '<input type="text" class="comp-move-new-input" id="'+prefix+'-comp-new-name" placeholder="New competition name">' +
+        '<select class="comp-move-new-tier" id="'+prefix+'-comp-new-tier">' +
+          '<option value="more">More competitions</option>' +
+          '<option value="top">Top competitions</option>' +
+        '</select>' +
+      '</div>' +
       '<p class="field-hint" id="'+prefix+'-comp-move-msg" hidden></p>';
   }
   async function wireCompetitionMoveControl(prefix, onMoved){
     var select = document.getElementById(prefix+'-comp-select');
     var btn = document.getElementById(prefix+'-comp-move-btn');
+    var newPanel = document.getElementById(prefix+'-comp-new');
     if(!select || !btn) return;
     var sportSlug = select.dataset.sportSlug, currentCompSlug = select.dataset.current;
     var res = await supabaseClient.from('competitions').select('*').eq('sport_slug', sportSlug).order('name');
     var comps = res.error ? [] : (res.data || []);
     select.innerHTML = comps.map(function(c){
       return '<option value="'+esc(c.slug)+'"'+(c.slug===currentCompSlug?' selected':'')+'>'+esc(c.name)+'</option>';
-    }).join('');
+    }).join('') + '<option value="__new__">+ Create new competition…</option>';
+    select.addEventListener('change', function(){ newPanel.hidden = select.value !== '__new__'; });
     btn.addEventListener('click', async function(){
-      var newSlug = select.value;
       var msg = document.getElementById(prefix+'-comp-move-msg');
+      var newSlug = select.value;
+      if(newSlug === '__new__'){
+        var nameInput = document.getElementById(prefix+'-comp-new-name');
+        var tierSelect = document.getElementById(prefix+'-comp-new-tier');
+        var name = nameInput.value.trim();
+        if(!name){
+          msg.hidden = false; msg.className = 'field-error'; msg.textContent = 'Enter a name for the new competition.';
+          return;
+        }
+        btn.disabled = true; btn.textContent = 'Creating…';
+        var compIns = await supabaseClient.from('competitions').insert({slug: slugify(name), sport_slug: sportSlug, name: name, tier: tierSelect.value});
+        if(compIns.error){
+          btn.disabled = false; btn.textContent = 'Move';
+          msg.hidden = false; msg.className = 'field-error'; msg.textContent = 'Error: ' + compIns.error.message;
+          return;
+        }
+        newSlug = slugify(name);
+      }
       if(newSlug === currentCompSlug) return;
       btn.disabled = true; btn.textContent = 'Moving…';
       var upd = await supabaseClient.from('teams').update({competition_slug: newSlug}).eq('id', btn.dataset.teamId);
