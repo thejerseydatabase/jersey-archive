@@ -221,7 +221,7 @@
   // Used on both the homepage (site-wide) and each sport page (scoped to
   // that sport's competitions) to show a small "just uploaded" gallery.
   async function recentJerseysHtml(compSlugs){
-    var q = supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*)').order('created_at', {ascending:false}).limit(5);
+    var q = supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*)').order('created_at', {ascending:false}).limit(6);
     if(compSlugs) q = q.in('teams.competition_slug', compSlugs);
     var res = await q;
     if(res.error || !res.data || !res.data.length) return '';
@@ -310,6 +310,24 @@
       return '<a class="team-card" href="#/sport/'+sportSlug+'/'+compSlug+'/team/'+t.slug+'">'+teamSwatch(t)+'<div class="team-info"><h3>'+esc(t.name)+'</h3>'+note+'</div></a>';
     }
 
+    // Season-by-season mini galleries underneath the team list, most recent
+    // season first, so a visitor who wants "this year's kits" doesn't have
+    // to hunt through the team grid first — same idea as footballkitarchive's
+    // league pages. Only seasons that actually have jerseys logged show up.
+    var seasonJerseysRes = await supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*)').eq('teams.competition_slug', compSlug);
+    var seasonJerseys = seasonJerseysRes.data || [];
+    var bySeasonAll = {};
+    seasonJerseys.forEach(function(j){ (bySeasonAll[j.season] = bySeasonAll[j.season] || []).push(j); });
+    var seasonYears = Object.keys(bySeasonAll).sort(function(a,b){ return seasonSortKey(b) - seasonSortKey(a); });
+    var seasonGalleriesHtml = seasonYears.length
+      ? '<div class="section-head" style="margin-top:34px;"><h2>Browse by season</h2></div>' + seasonYears.map(function(y){
+          var js = bySeasonAll[y];
+          var cards = js.slice(0, 6).map(function(j){ return jerseyCard(j, j.teams, {showTeam:true}); }).join('');
+          var seeAll = js.length > 6 ? ' <a class="spec-link" href="#/sport/'+sportSlug+'/'+compSlug+'/season/'+y+'">See all '+js.length+' &rarr;</a>' : '';
+          return '<div class="season-group"><h3><a class="spec-link" href="#/sport/'+sportSlug+'/'+compSlug+'/season/'+y+'">'+y+' season</a>'+seeAll+'</h3><div class="jersey-grid">'+cards+'</div></div>';
+        }).join('')
+      : '';
+
     return '<div class="section-head"><h2>'+esc(comp.name)+'</h2><span class="count">'+activeTeams.length+' teams</span></div>' +
       (activeTeams.length ? '<div class="filter-row"><input type="text" id="team-filter" placeholder="Filter teams..."></div><div class="team-grid" id="team-grid">'+activeTeams.map(teamCard).join('')+'</div>'
         : '<div class="empty-note">No teams logged in '+esc(comp.name)+' yet.</div>') +
@@ -319,6 +337,7 @@
       (formerTeams.length
         ? '<div class="section-head" style="margin-top:34px;"><h2>Former teams</h2><span class="count">'+formerTeams.length+'</span></div><div class="team-grid">'+formerTeams.map(teamCard).join('')+'</div>'
         : '') +
+      seasonGalleriesHtml +
       renderReportButton('competition', comp.slug, comp.name);
   }
 
