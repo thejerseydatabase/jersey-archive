@@ -322,12 +322,21 @@
       ? '<div class="notes-block"><div class="spec-value-row">'+(team.history_note ? esc(team.history_note) : '<em style="color:var(--text-dim2);">No history note</em>')+historyEditBtn+'</div></div>'
       : '';
 
-    // Only useful for promotion/relegation competitions (Super League, the
-    // English football pyramid, etc.) — an admin flips this when a club
-    // moves in or out rather than the app trying to guess it, since getting
-    // it wrong in an unfamiliar competition is easy.
-    var activeToggleBlock = isAdmin
-      ? '<div class="add-photos-block"><button class="btn btn-secondary" id="toggle-active-btn" data-team-id="'+team.id+'" data-active="'+isActiveTeam+'" type="button">'+(isActiveTeam ? 'Mark as former team' : 'Mark as active team')+'</button></div>'
+    // Tucked away at the bottom rather than a prominent box — this is only
+    // needed for promotion/relegation competitions (Super League, the
+    // English football pyramid, etc.), and only rarely even then. An admin
+    // picks the right competition rather than the app guessing it, since
+    // getting it wrong in an unfamiliar one is easy.
+    var adminSettingsBlock = isAdmin
+      ? '<div class="admin-settings-block">' +
+          '<button class="chip" id="admin-settings-toggle" type="button">Admin: team settings</button>' +
+          '<div id="admin-settings-panel" hidden>' +
+            '<label class="rate-label">Competition</label>' +
+            renderCompetitionMoveControl('team-page', team.id, sportSlug, compSlug) +
+            '<label class="rate-label" style="margin-top:14px;">Status</label>' +
+            '<button class="btn btn-secondary" id="toggle-active-btn" data-team-id="'+team.id+'" data-active="'+isActiveTeam+'" type="button">'+(isActiveTeam ? 'Mark as former team' : 'Mark as active team')+'</button>' +
+          '</div>' +
+        '</div>'
       : '';
 
     // Once a team has a logo, changing it is rare — fold that into the
@@ -344,10 +353,10 @@
       statusBadge +
       siblingsHtml +
       historyHtml +
-      activeToggleBlock +
       logoBlock +
       (groups || '<div class="empty-note">No jerseys logged yet.</div>') +
-      renderReportButton('team', team.id, team.name);
+      renderReportButton('team', team.id, team.name) +
+      adminSettingsBlock;
   }
 
   async function viewSeason(sportSlug, compSlug, year){
@@ -606,6 +615,43 @@
     return ins.data;
   }
 
+  // Shared by the team page's admin panel and the moderation queue: lets an
+  // admin reassign which competition a team currently belongs to (a club
+  // moved divisions, or was filed under the wrong one at upload time)
+  // without touching any of its jersey history — jerseys reference the
+  // team by id, not by competition, so moving the team's row is enough.
+  function renderCompetitionMoveControl(prefix, teamId, sportSlug, currentCompSlug){
+    return '<div class="comp-move-row">' +
+        '<select class="comp-move-select" id="'+prefix+'-comp-select" data-sport-slug="'+esc(sportSlug)+'" data-current="'+esc(currentCompSlug)+'"><option>Loading…</option></select>' +
+        '<button class="btn btn-secondary" id="'+prefix+'-comp-move-btn" data-team-id="'+teamId+'" type="button">Move</button>' +
+      '</div>' +
+      '<p class="field-hint" id="'+prefix+'-comp-move-msg" hidden></p>';
+  }
+  async function wireCompetitionMoveControl(prefix, onMoved){
+    var select = document.getElementById(prefix+'-comp-select');
+    var btn = document.getElementById(prefix+'-comp-move-btn');
+    if(!select || !btn) return;
+    var sportSlug = select.dataset.sportSlug, currentCompSlug = select.dataset.current;
+    var res = await supabaseClient.from('competitions').select('*').eq('sport_slug', sportSlug).order('name');
+    var comps = res.error ? [] : (res.data || []);
+    select.innerHTML = comps.map(function(c){
+      return '<option value="'+esc(c.slug)+'"'+(c.slug===currentCompSlug?' selected':'')+'>'+esc(c.name)+'</option>';
+    }).join('');
+    btn.addEventListener('click', async function(){
+      var newSlug = select.value;
+      var msg = document.getElementById(prefix+'-comp-move-msg');
+      if(newSlug === currentCompSlug) return;
+      btn.disabled = true; btn.textContent = 'Moving…';
+      var upd = await supabaseClient.from('teams').update({competition_slug: newSlug}).eq('id', btn.dataset.teamId);
+      btn.disabled = false; btn.textContent = 'Move';
+      if(upd.error){
+        msg.hidden = false; msg.className = 'field-error'; msg.textContent = 'Error: ' + upd.error.message;
+        return;
+      }
+      onMoved(newSlug);
+    });
+  }
+
   async function setTeamLogo(teamId, path){
     // never overwrite history — the previous logo just stops being "current"
     var unmark = await supabaseClient.from('team_logos').update({is_current:false}).eq('team_id', teamId).eq('is_current', true);
@@ -624,7 +670,7 @@
     await refreshAuthUI(); // keeps the topbar count in sync even after changes made outside the app (e.g. deleting rows directly in Supabase)
 
     var jRes = await supabaseClient.from('jerseys')
-      .select('*, jersey_images(*), teams(name, competitions(name, sports(name)))')
+      .select('*, jersey_images(*), teams(id, name, competition_slug, competitions(slug, name, sport_slug, sports(name)))')
       .eq('status', 'pending').order('created_at');
     if(jRes.error) throw jRes.error;
     var pendingJerseys = jRes.data || [];
@@ -664,12 +710,15 @@
       var thumb = j.jersey_images && j.jersey_images.length
         ? '<img class="lightbox-trigger" src="'+esc(publicImageUrl(j.jersey_images[0].storage_path))+'" alt="">'
         : '<div class="thumb-placeholder" style="background:var(--surface-2)"><span>No photo</span></div>';
+      var moveId = 'mod-jersey-'+j.id;
       return '<div class="mod-card">' +
         '<div class="jersey-thumb">'+thumb+'</div>' +
         '<div class="mod-info">' +
           '<strong>'+j.season+' '+esc(team.name)+' '+esc(j.type)+'</strong>' +
           '<span>'+esc(comp.name)+' · '+esc(sport.name)+' · by '+esc(uploader)+'</span>' +
           (j.notes ? '<span>'+esc(j.notes)+'</span>' : '') +
+          '<button class="chip comp-move-toggle" data-target="'+moveId+'" type="button">Wrong competition?</button>' +
+          '<div class="comp-move-panel" id="'+moveId+'" hidden>'+renderCompetitionMoveControl(moveId, team.id, comp.sport_slug, comp.slug)+'</div>' +
         '</div>' +
         '<div class="mod-actions">' +
           '<button class="btn" data-type="jersey" data-action="approve" data-id="'+j.id+'" type="button">Approve</button>' +
@@ -886,6 +935,23 @@
         var res = await supabaseClient.from('teams').update({is_active: newActive}).eq('id', toggleActiveBtn.dataset.teamId);
         if(res.error){ alert('Error: ' + res.error.message); return; }
         render();
+      });
+    }
+
+    var adminSettingsToggle = document.getElementById('admin-settings-toggle');
+    if(adminSettingsToggle && parts[0]==='sport' && parts[3]==='team'){
+      var teamPageSportSlug = parts[1], teamPageTeamSlug = parts[4];
+      adminSettingsToggle.addEventListener('click', function(){
+        var panel = document.getElementById('admin-settings-panel');
+        if(!panel.dataset.wired){
+          panel.dataset.wired = '1';
+          panel.hidden = false;
+          wireCompetitionMoveControl('team-page', function(newSlug){
+            location.hash = '#/sport/'+teamPageSportSlug+'/'+newSlug+'/team/'+teamPageTeamSlug;
+          });
+          return;
+        }
+        panel.hidden = !panel.hidden;
       });
     }
 
@@ -1128,6 +1194,18 @@
   }
 
   function wireModerationActions(){
+    document.querySelectorAll('.comp-move-toggle').forEach(function(toggle){
+      toggle.addEventListener('click', function(){
+        var panel = document.getElementById(toggle.dataset.target);
+        if(!panel.dataset.wired){
+          panel.dataset.wired = '1';
+          panel.hidden = false;
+          wireCompetitionMoveControl(toggle.dataset.target, function(){ render(); });
+          return;
+        }
+        panel.hidden = !panel.hidden;
+      });
+    });
     document.querySelectorAll('.mod-card [data-action]').forEach(function(btn){
       btn.addEventListener('click', async function(){
         var id = btn.dataset.id;
