@@ -278,10 +278,27 @@
     var bySeason = {};
     jerseys.forEach(function(j){ (bySeason[j.season] = bySeason[j.season] || []).push(j); });
     var years = Object.keys(bySeason).sort(function(a,b){ return b - a; });
+    // Same split as footballkitarchive: main kits up top, training/pre-match
+    // kept as a smaller section underneath each season rather than mixed in.
+    var TRAINING_TYPES = ['training','pre-season','warm-up','pre-match'];
+    function isTrainingType(t){ return TRAINING_TYPES.indexOf(String(t||'').toLowerCase()) > -1; }
     var groups = years.map(function(y){
-      var cards = bySeason[y].map(function(j){ return jerseyCard(j, team); }).join('');
-      return '<div class="season-group"><h3><a class="spec-link" href="#/sport/'+sportSlug+'/'+compSlug+'/season/'+y+'">'+y+'</a></h3><div class="jersey-grid">'+cards+'</div></div>';
+      var main = bySeason[y].filter(function(j){ return !isTrainingType(j.type); });
+      var extra = bySeason[y].filter(function(j){ return isTrainingType(j.type); });
+      var mainHtml = main.length ? '<div class="jersey-grid">'+main.map(function(j){ return jerseyCard(j, team); }).join('')+'</div>' : '';
+      var extraHtml = extra.length
+        ? '<h4 class="extra-kits-label">Training &amp; other</h4><div class="jersey-grid">'+extra.map(function(j){ return jerseyCard(j, team); }).join('')+'</div>'
+        : '';
+      return '<div class="season-group"><h3><a class="spec-link" href="#/sport/'+sportSlug+'/'+compSlug+'/season/'+y+'">'+y+'</a></h3>'+mainHtml+extraHtml+'</div>';
     }).join('');
+
+    var siblingRes = await supabaseClient.from('teams').select('*, competitions(*)').ilike('name', team.name).neq('id', team.id);
+    var siblings = (siblingRes.error ? [] : siblingRes.data || []).filter(function(t){ return t.competitions.sport_slug === sportSlug; });
+    var siblingsHtml = siblings.length
+      ? '<p class="also-see">Also see: ' + siblings.map(function(t){
+          return '<a class="spec-link" href="#/sport/'+sportSlug+'/'+t.competitions.slug+'/team/'+t.slug+'">'+esc(t.competitions.name)+'</a>';
+        }).join(' &middot; ') + '</p>'
+      : '';
 
     // Once a team has a logo, changing it is rare — fold that into the
     // generic "Report a problem" flow (with an optional image attached)
@@ -294,6 +311,7 @@
         : '');
 
     return '<div class="section-head" style="align-items:center;">'+teamSwatch(team, {large:true})+'<h2 style="margin-left:2px;">'+esc(team.name)+'</h2></div>' +
+      siblingsHtml +
       logoBlock +
       (groups || '<div class="empty-note">No jerseys logged yet.</div>') +
       renderReportButton('team', team.id, team.name);
