@@ -44,6 +44,10 @@
   // as siblings even when the names aren't byte-identical. Deliberately
   // narrow — only known marker tokens, nothing that could misfire on an
   // unrelated club that happens to share a word.
+  // Season is text now ("2024-25" for split-year comps), so sorting can't
+  // just subtract the values — pull the leading year out to compare.
+  function seasonSortKey(s){ return parseInt(String(s), 10) || 0; }
+
   function normalizeTeamName(name){
     return String(name).trim()
       .replace(/\s*\((women|men)\)\s*$/i, '')
@@ -313,7 +317,7 @@
     var jerseys = jRes.data || [];
     var bySeason = {};
     jerseys.forEach(function(j){ (bySeason[j.season] = bySeason[j.season] || []).push(j); });
-    var years = Object.keys(bySeason).sort(function(a,b){ return b - a; });
+    var years = Object.keys(bySeason).sort(function(a,b){ return seasonSortKey(b) - seasonSortKey(a); });
     // Same split as footballkitarchive: main kits up top, training/pre-match
     // kept as a smaller section underneath each season rather than mixed in.
     var TRAINING_TYPES = ['training','pre-season','warm-up','pre-match'];
@@ -393,7 +397,6 @@
   }
 
   async function viewSeason(sportSlug, compSlug, year){
-    year = Number(year);
     var compRes = await supabaseClient.from('competitions').select('*, sports(*)').eq('slug', compSlug).single();
     if(compRes.error) throw compRes.error;
     var comp = compRes.data, sport = comp.sports;
@@ -472,7 +475,7 @@
           specItem('Sport', '<a class="spec-link" href="#/sport/'+sport.slug+'">'+esc(sport.name)+'</a>', null) +
           specItem('Competition', '<a class="spec-link" href="#/sport/'+sport.slug+'/'+comp.slug+'">'+esc(comp.name)+'</a>', {table:'competitions', matchCol:'slug', matchVal:comp.slug, field:'name', current:comp.name}) +
           specItem('Team', '<a class="spec-link" href="#/sport/'+sport.slug+'/'+comp.slug+'/team/'+team.slug+'">'+esc(team.name)+'</a>', {table:'teams', matchCol:'id', matchVal:team.id, field:'name', current:team.name}) +
-          specItem('Season', '<a class="spec-link" href="#/sport/'+sport.slug+'/'+comp.slug+'/season/'+j.season+'">'+j.season+'</a>', {table:'jerseys', matchCol:'id', matchVal:j.id, field:'season', current:j.season, numeric:true}) +
+          specItem('Season', '<a class="spec-link" href="#/sport/'+sport.slug+'/'+comp.slug+'/season/'+j.season+'">'+j.season+'</a>', {table:'jerseys', matchCol:'id', matchVal:j.id, field:'season', current:j.season}) +
           specItem('Jersey type', esc(j.type), {table:'jerseys', matchCol:'id', matchVal:j.id, field:'type', current:j.type}) +
           specItem('Manufacturer', esc(j.manufacturer || 'Unlisted'), {table:'jerseys', matchCol:'id', matchVal:j.id, field:'manufacturer', current:j.manufacturer || ''}) +
           (j.format ? specItem('Format', esc(j.format), {table:'jerseys', matchCol:'id', matchVal:j.id, field:'format', current:j.format}) : '') +
@@ -499,7 +502,7 @@
       entry.jerseys.forEach(function(j){ var c=j.teams.competitions; (byComp[c.slug]=byComp[c.slug]||{comp:c,jerseys:[]}).jerseys.push(j); });
       var compBlocks = Object.keys(byComp).map(function(cslug){
         var centry = byComp[cslug];
-        var cards = centry.jerseys.sort(function(a,b){return b.season-a.season;}).map(function(j){ return jerseyCard(j, j.teams, {showTeam:true}); }).join('');
+        var cards = centry.jerseys.sort(function(a,b){return seasonSortKey(b.season)-seasonSortKey(a.season);}).map(function(j){ return jerseyCard(j, j.teams, {showTeam:true}); }).join('');
         return '<div class="season-group"><h3><a class="spec-link" href="#/sport/'+entry.sport.slug+'/'+cslug+'">'+esc(centry.comp.name)+'</a></h3><div class="jersey-grid">'+cards+'</div></div>';
       }).join('');
       return '<section class="block"><div class="section-head"><h2><a class="spec-link" href="#/sport/'+slug+'">'+esc(entry.sport.name)+'</a></h2></div>'+compBlocks+'</section>';
@@ -599,8 +602,6 @@
       MANUFACTURERS.map(function(m){ return '<option value="'+esc(m)+'">'+esc(m)+'</option>'; }).join('') +
       '<option value="__new__">+ Add a new one…</option>';
     var thisYear = new Date().getFullYear();
-    var seasonOptions = '<option value="">Select a year</option>';
-    for(var y=thisYear+1; y>=1900; y--){ seasonOptions += '<option value="'+y+'">'+y+'</option>'; }
 
     return '<div class="section-head"><h2>Upload a jersey</h2></div>' +
       '<p style="font-family:\'IBM Plex Mono\',monospace;font-size:11.5px;color:var(--text-dim2);margin:-10px 0 22px;">* required &mdash; and at least one photo</p>' +
@@ -614,7 +615,8 @@
           '<div class="field"><label for="f-team-select">Team * <small>any level &mdash; local clubs welcome</small></label>' +
             '<select id="f-team-select" required><option value="">Select a competition first</option></select>' +
             '<input type="text" id="f-team-new" placeholder="New team name" hidden></div>' +
-          '<div class="field"><label for="f-season-select">Season *</label><select id="f-season-select" required>'+seasonOptions+'</select></div>' +
+          '<div class="field"><label for="f-season">Season * <small>a single year, or a range for split-year comps</small></label>' +
+            '<input type="text" id="f-season" placeholder="e.g. '+thisYear+' or '+thisYear+'-'+String(thisYear+1).slice(-2)+'" required></div>' +
           '<div class="field"><label for="f-type-select">Jersey type *</label>' +
             '<select id="f-type-select" required>'+typeOptions+'</select>' +
             '<input type="text" id="f-type-new" placeholder="New jersey type" hidden></div>' +
@@ -1372,7 +1374,7 @@
     var compNew = document.getElementById('f-comp-new');
     var teamSelect = document.getElementById('f-team-select');
     var teamNew = document.getElementById('f-team-new');
-    var seasonSelect = document.getElementById('f-season-select');
+    var seasonInput = document.getElementById('f-season');
     var typeSelect = document.getElementById('f-type-select');
     var typeNew = document.getElementById('f-type-new');
     var mfrSelect = document.getElementById('f-mfr-select');
@@ -1405,7 +1407,7 @@
           sport: sportSel.value,
           comp: {v: compSelect.value, n: compNew.value},
           team: {v: teamSelect.value, n: teamNew.value},
-          season: seasonSelect.value,
+          season: seasonInput.value,
           type: {v: typeSelect.value, n: typeNew.value},
           mfr: {v: mfrSelect.value, n: mfrNew.value},
           notes: document.getElementById('f-notes').value
@@ -1503,6 +1505,28 @@
         '<option value="__new__">+ Add a new team…</option>';
       teamNew.hidden = true; teamNew.value = ''; teamNew.required = false;
     }
+    // After a successful upload: re-list competitions/teams (in case one
+    // was just created via "+ Add a new one…") and select the one just
+    // used, rather than resetting to blank like refreshComps/refreshTeams
+    // would — the whole point is to keep it selected for the next upload.
+    async function reselectAfterSubmit(compName, teamName){
+      var comps = await competitionsForSport(sportSel.value);
+      compSelect.innerHTML = '<option value="">Select a competition</option>' +
+        comps.map(function(c){ return '<option value="'+esc(c.name)+'"'+(c.name===compName?' selected':'')+'>'+esc(c.name)+'</option>'; }).join('') +
+        '<option value="__new__">+ Add a new competition…</option>';
+      compNew.hidden = true; compNew.value = ''; compNew.required = false;
+
+      var comp = comps.filter(function(c){ return c.name.toLowerCase() === compName.toLowerCase(); })[0];
+      var teams = [];
+      if(comp){
+        var r = await supabaseClient.from('teams').select('name').eq('competition_slug', comp.slug).order('name');
+        teams = r.data || [];
+      }
+      teamSelect.innerHTML = '<option value="">Select a team</option>' +
+        teams.map(function(t){ return '<option value="'+esc(t.name)+'"'+(t.name===teamName?' selected':'')+'>'+esc(t.name)+'</option>'; }).join('') +
+        '<option value="__new__">+ Add a new team…</option>';
+      teamNew.hidden = true; teamNew.value = ''; teamNew.required = false;
+    }
     function refreshFormat(){
       var formats = FORMATS_BY_SPORT[sportSel.value];
       formatField.hidden = !formats;
@@ -1515,7 +1539,7 @@
     teamSelect.addEventListener('change', function(){ syncNewVisibility(teamSelect, teamNew, true); saveDraft(); });
     typeSelect.addEventListener('change', function(){ syncNewVisibility(typeSelect, typeNew, true); saveDraft(); });
     mfrSelect.addEventListener('change', function(){ syncNewVisibility(mfrSelect, mfrNew, false); saveDraft(); });
-    [compNew, teamNew, seasonSelect, typeNew, mfrNew, document.getElementById('f-notes')].forEach(function(el){
+    [compNew, teamNew, seasonInput, typeNew, mfrNew, document.getElementById('f-notes')].forEach(function(el){
       el.addEventListener('input', saveDraft);
       el.addEventListener('change', saveDraft);
     });
@@ -1536,7 +1560,7 @@
           syncNewVisibility(teamSelect, teamNew, true);
           teamNew.value = restoredDraft.team.n || '';
         }
-        if(restoredDraft.season) seasonSelect.value = restoredDraft.season;
+        if(restoredDraft.season) seasonInput.value = restoredDraft.season;
         if(restoredDraft.type){
           typeSelect.value = restoredDraft.type.v || '';
           syncNewVisibility(typeSelect, typeNew, true);
@@ -1555,7 +1579,14 @@
       e.preventDefault();
       if(!form.reportValidity()) return;
 
-      var seasonVal = seasonSelect.value;
+      var seasonVal = seasonInput.value.trim();
+      if(!/^\d{4}(-\d{2})?$/.test(seasonVal)){
+        seasonInput.setCustomValidity('Enter a year (e.g. 2024) or a split-year season (e.g. 2024-25)');
+        seasonInput.reportValidity();
+        seasonInput.addEventListener('input', function clear(){ seasonInput.setCustomValidity(''); seasonInput.removeEventListener('input', clear); });
+        return;
+      }
+      seasonInput.setCustomValidity('');
 
       var photoError = document.getElementById('photo-error');
       if(selectedPhotos.length === 0){
@@ -1572,7 +1603,7 @@
         var sportSlug = sportSel.value;
         var comp = await ensureCompetition(sportSlug, fieldValue(compSelect, compNew));
         var team = await ensureTeam(comp.slug, fieldValue(teamSelect, teamNew));
-        var season = Number(seasonVal);
+        var season = seasonVal;
         var type = fieldValue(typeSelect, typeNew);
         var manufacturer = fieldValue(mfrSelect, mfrNew) || null;
         var format = FORMATS_BY_SPORT[sportSlug] ? formatSel.value : null;
@@ -1613,11 +1644,18 @@
               '<a href="#/jersey/'+jersey.id+'"><span>View your submission (only you and moderators can see it for now)</span><span class="go">View &rarr;</span></a>' +
             '</div>' +
           '</div>';
-        form.reset();
-        clearDraft();
+
+        // Sport/competition/team/season/manufacturer/format all deliberately
+        // stay put — uploading home/away/alternate for the same team and
+        // season back to back only needs a new photo and jersey type.
         selectedPhotos.forEach(function(p){ URL.revokeObjectURL(p.url); });
         selectedPhotos.length = 0;
         renderPhotoPreviews();
+        await reselectAfterSubmit(comp.name, team.name);
+        typeSelect.value = '';
+        syncNewVisibility(typeSelect, typeNew, true);
+        document.getElementById('f-notes').value = '';
+        saveDraft();
       } catch(err) {
         var resultElOnError = document.getElementById('upload-result');
         if(resultElOnError) resultElOnError.innerHTML = errorBox(err);

@@ -140,7 +140,9 @@ create policy "admins can edit teams"
 create table jerseys (
   id uuid primary key default gen_random_uuid(),
   team_id uuid not null references teams(id) on delete cascade,
-  season integer not null check (season between 1850 and 2100),
+  -- text, not integer — many competitions (NBA, NBL, EPL, Bundesliga...)
+  -- span two calendar years, e.g. "2026-27", not just a single year.
+  season text not null check (season ~ '^[0-9]{4}(-[0-9]{2})?$'),
   type text not null,               -- Home / Away / Alternate / Indigenous / Heritage / Training / user-typed
   manufacturer text,
   format text,                      -- cricket only: Test / T20 / T20I / ODI / One Day / First Class
