@@ -379,6 +379,22 @@
     '</div>';
   }
 
+  function renderGroupedBySport(jerseys){
+    var bySport = {};
+    jerseys.forEach(function(j){ var s=j.teams.competitions.sports; (bySport[s.slug]=bySport[s.slug]||{sport:s,jerseys:[]}).jerseys.push(j); });
+    return Object.keys(bySport).map(function(slug){
+      var entry = bySport[slug];
+      var byComp = {};
+      entry.jerseys.forEach(function(j){ var c=j.teams.competitions; (byComp[c.slug]=byComp[c.slug]||{comp:c,jerseys:[]}).jerseys.push(j); });
+      var compBlocks = Object.keys(byComp).map(function(cslug){
+        var centry = byComp[cslug];
+        var cards = centry.jerseys.sort(function(a,b){return b.season-a.season;}).map(function(j){ return jerseyCard(j, j.teams, {showTeam:true}); }).join('');
+        return '<div class="season-group"><h3><a class="spec-link" href="#/sport/'+entry.sport.slug+'/'+cslug+'">'+esc(centry.comp.name)+'</a></h3><div class="jersey-grid">'+cards+'</div></div>';
+      }).join('');
+      return '<section class="block"><div class="section-head"><h2><a class="spec-link" href="#/sport/'+slug+'">'+esc(entry.sport.name)+'</a></h2></div>'+compBlocks+'</section>';
+    }).join('');
+  }
+
   async function viewSearch(term){
     setCrumbs([{label:'Home', href:'#/'},{label:'Search: '+term, href:'#'}]);
     var res = await supabaseClient.from('jerseys').select('*, jersey_images(*), teams(*, competitions(*, sports(*)))');
@@ -394,21 +410,65 @@
     if(!matches.length){
       return '<div class="section-head"><h2>Results for &ldquo;'+esc(term)+'&rdquo;</h2><span class="count">0 jerseys</span></div><div class="empty-note">Nothing matches yet.</div>';
     }
-    var bySport = {};
-    matches.forEach(function(j){ var s=j.teams.competitions.sports; (bySport[s.slug]=bySport[s.slug]||{sport:s,jerseys:[]}).jerseys.push(j); });
-    var html = Object.keys(bySport).map(function(slug){
-      var entry = bySport[slug];
-      var byComp = {};
-      entry.jerseys.forEach(function(j){ var c=j.teams.competitions; (byComp[c.slug]=byComp[c.slug]||{comp:c,jerseys:[]}).jerseys.push(j); });
-      var compBlocks = Object.keys(byComp).map(function(cslug){
-        var centry = byComp[cslug];
-        var cards = centry.jerseys.sort(function(a,b){return b.season-a.season;}).map(function(j){ return jerseyCard(j, j.teams, {showTeam:true}); }).join('');
-        return '<div class="season-group"><h3><a class="spec-link" href="#/sport/'+entry.sport.slug+'/'+cslug+'">'+esc(centry.comp.name)+'</a></h3><div class="jersey-grid">'+cards+'</div></div>';
-      }).join('');
-      return '<section class="block"><div class="section-head"><h2><a class="spec-link" href="#/sport/'+slug+'">'+esc(entry.sport.name)+'</a></h2></div>'+compBlocks+'</section>';
-    }).join('');
+    return '<div class="section-head"><h2>Results for &ldquo;'+esc(term)+'&rdquo;</h2><span class="count">'+matches.length+' jerseys</span></div>'+renderGroupedBySport(matches);
+  }
 
-    return '<div class="section-head"><h2>Results for &ldquo;'+esc(term)+'&rdquo;</h2><span class="count">'+matches.length+' jerseys</span></div>'+html;
+  async function viewManufacturers(){
+    setCrumbs([{label:'Home', href:'#/'},{label:'Manufacturers', href:'#/manufacturers'}]);
+    var res = await supabaseClient.from('jerseys').select('manufacturer');
+    if(res.error) throw res.error;
+    var counts = {};
+    (res.data || []).forEach(function(j){
+      var m = (j.manufacturer || '').trim();
+      if(!m) return;
+      counts[m] = (counts[m] || 0) + 1;
+    });
+    var names = Object.keys(counts).sort(function(a,b){ return counts[b]-counts[a] || a.localeCompare(b); });
+    var chips = names.map(function(m){
+      return '<a class="chip" href="#/manufacturer/'+encodeURIComponent(m)+'">'+esc(m)+' &middot; '+counts[m]+'</a>';
+    }).join('');
+    return '<div class="section-head"><h2>Browse by manufacturer</h2></div>' +
+      (chips ? '<div class="chip-row">'+chips+'</div>' : '<div class="empty-note">No manufacturers logged yet.</div>');
+  }
+
+  async function viewManufacturer(name){
+    setCrumbs([{label:'Home', href:'#/'},{label:'Manufacturers', href:'#/manufacturers'},{label:name, href:'#'}]);
+    var res = await supabaseClient.from('jerseys').select('*, jersey_images(*), teams(*, competitions(*, sports(*)))').eq('manufacturer', name);
+    if(res.error) throw res.error;
+    var jerseys = res.data || [];
+    if(!jerseys.length){
+      return '<div class="section-head"><h2>'+esc(name)+'</h2><span class="count">0 jerseys</span></div><div class="empty-note">Nothing matches yet.</div>';
+    }
+    return '<div class="section-head"><h2>'+esc(name)+'</h2><span class="count">'+jerseys.length+' jersey'+(jerseys.length===1?'':'s')+'</span></div>'+renderGroupedBySport(jerseys);
+  }
+
+  async function viewTypes(){
+    setCrumbs([{label:'Home', href:'#/'},{label:'Types', href:'#/types'}]);
+    var res = await supabaseClient.from('jerseys').select('type');
+    if(res.error) throw res.error;
+    var counts = {};
+    (res.data || []).forEach(function(j){
+      var t = (j.type || '').trim();
+      if(!t) return;
+      counts[t] = (counts[t] || 0) + 1;
+    });
+    var names = Object.keys(counts).sort(function(a,b){ return counts[b]-counts[a] || a.localeCompare(b); });
+    var chips = names.map(function(t){
+      return '<a class="chip" href="#/type/'+encodeURIComponent(t)+'">'+esc(t)+' &middot; '+counts[t]+'</a>';
+    }).join('');
+    return '<div class="section-head"><h2>Browse by type</h2></div>' +
+      (chips ? '<div class="chip-row">'+chips+'</div>' : '<div class="empty-note">No jersey types logged yet.</div>');
+  }
+
+  async function viewType(name){
+    setCrumbs([{label:'Home', href:'#/'},{label:'Types', href:'#/types'},{label:name, href:'#'}]);
+    var res = await supabaseClient.from('jerseys').select('*, jersey_images(*), teams(*, competitions(*, sports(*)))').eq('type', name);
+    if(res.error) throw res.error;
+    var jerseys = res.data || [];
+    if(!jerseys.length){
+      return '<div class="section-head"><h2>'+esc(name)+'</h2><span class="count">0 jerseys</span></div><div class="empty-note">Nothing matches yet.</div>';
+    }
+    return '<div class="section-head"><h2>'+esc(name)+'</h2><span class="count">'+jerseys.length+' jersey'+(jerseys.length===1?'':'s')+'</span></div>'+renderGroupedBySport(jerseys);
   }
 
   async function viewUpload(){
@@ -664,6 +724,10 @@
       else if(parts[0]==='sport' && parts.length===5 && parts[3]==='season'){ html = await viewSeason(parts[1], parts[2], parts[4]); }
       else if(parts[0]==='jersey' && parts[1]){ html = await viewJerseyDetail(parts[1]); }
       else if(parts[0]==='search' && parts[1]){ html = await viewSearch(parts[1]); }
+      else if(parts[0]==='manufacturers' && parts.length===1){ html = await viewManufacturers(); }
+      else if(parts[0]==='manufacturer' && parts[1]){ html = await viewManufacturer(parts[1]); }
+      else if(parts[0]==='types' && parts.length===1){ html = await viewTypes(); }
+      else if(parts[0]==='type' && parts[1]){ html = await viewType(parts[1]); }
       else if(parts[0]==='upload'){ html = await viewUpload(); }
       else if(parts[0]==='moderate'){ html = await viewModerate(); }
       else if(parts[0]==='user' && parts[1]){ html = await viewUserProfile(parts[1]); }
