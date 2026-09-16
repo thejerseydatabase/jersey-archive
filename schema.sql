@@ -193,6 +193,19 @@ create view jersey_ratings as
   group by jersey_id;
 
 
+-- ============ storage (jersey-photos bucket) ============
+-- Marking a bucket "Public" in the dashboard only controls whether reading
+-- a file requires no auth — uploading is a separate permission, governed by
+-- RLS on Storage's own storage.objects table, same as any other table.
+create policy "anyone can view jersey photos"
+  on storage.objects for select
+  using (bucket_id = 'jersey-photos');
+
+create policy "authenticated users can upload jersey photos"
+  on storage.objects for insert to authenticated
+  with check (bucket_id = 'jersey-photos');
+
+
 -- ============ seed data ============
 insert into sports (slug, name, sort_order) values
   ('rugby-league','Rugby League',1),
