@@ -1161,7 +1161,7 @@
               '<input type="text" id="f-mfr-new" placeholder="New manufacturer">' +
               '<button type="button" class="new-value-cancel" id="f-mfr-new-cancel" aria-label="Back to list">&#10005;</button>' +
             '</div></div>' +
-          '<div class="field"><label for="f-extra-comp">Also used in <small>optional &mdash; e.g. a World Cup, on top of the competition above</small></label>' +
+          '<div class="field"><label for="f-extra-comp">Also used in <small>leave blank if not relevant &mdash; e.g. a World Cup, on top of the competition above</small></label>' +
             '<select id="f-extra-comp"><option value="">&mdash; None &mdash;</option></select>' +
           '</div>' +
           '<div class="field field-full" id="field-photos"><label>Photos *</label>' +
@@ -1377,6 +1377,20 @@
     if(jRes.error) throw jRes.error;
     var pendingJerseys = jRes.data || [];
 
+    // Extra-competition tag per pending jersey (e.g. "Also used in: Rugby
+    // League World Cup") — shown up front on the card, not hidden behind
+    // a click, since it's easy to lose track of what was tagged at
+    // upload time otherwise. All competitions fetched once so each
+    // card's edit dropdown can be built synchronously, no per-card fetch.
+    var extraCompByJersey = {};
+    if(pendingJerseys.length){
+      var jerseyIds = pendingJerseys.map(function(j){ return j.id; });
+      var tagRes = await supabaseClient.from('jersey_competitions').select('jersey_id, competitions(slug, name)').in('jersey_id', jerseyIds);
+      (tagRes.data || []).forEach(function(r){ extraCompByJersey[r.jersey_id] = r.competitions; });
+    }
+    var allCompsRes = await supabaseClient.from('competitions').select('slug, sport_slug, name').order('tier', {ascending:false}).order('name');
+    var allComps = allCompsRes.data || [];
+
     var pendingPhotos = [];
     var photoRes = await supabaseClient.from('jersey_images')
       .select('*, jerseys(id, season, type, teams(name))')
@@ -1444,6 +1458,7 @@
           '<span>Manufacturer: '+esc(j.manufacturer || 'Unlisted')+'</span>' +
           (j.format ? '<span>Format: '+esc(j.format)+'</span>' : '') +
           (j.notes ? '<span>Notes: '+esc(j.notes)+'</span>' : '') +
+          (extraCompByJersey[j.id] ? '<span>Also used in: '+esc(extraCompByJersey[j.id].name)+'</span>' : '') +
           allPhotosHtml +
           '<button class="chip comp-move-toggle" data-target="'+moveId+'" type="button">Wrong competition?</button>' +
           '<div class="comp-move-panel" id="'+moveId+'" hidden>'+renderCompetitionMoveControl(moveId, team.id, comp.sport_slug, comp.slug)+'</div>' +
@@ -1457,8 +1472,17 @@
             '</div>' +
             '<div class="comp-move-row" style="margin-top:10px;">' +
               '<input type="text" class="comp-move-new-input" id="edit-mfr-'+j.id+'" placeholder="Manufacturer" value="'+esc(j.manufacturer || '')+'">' +
+              '<input type="text" class="comp-move-new-input" id="edit-format-'+j.id+'" placeholder="Format (cricket only)" value="'+esc(j.format || '')+'">' +
             '</div>' +
             '<textarea class="report-textarea" id="edit-notes-'+j.id+'" placeholder="Additional info" style="margin-top:10px;">'+esc(j.notes || '')+'</textarea>' +
+            (function(){
+              var currentExtra = extraCompByJersey[j.id];
+              var sameSportComps = allComps.filter(function(c){ return c.sport_slug === sport.slug && c.slug !== comp.slug; });
+              return '<label class="rate-label" style="margin-top:10px;">Also used in</label>' +
+                '<select id="edit-extra-comp-'+j.id+'" style="width:100%;"><option value="">&mdash; None &mdash;</option>' +
+                sameSportComps.map(function(c){ return '<option value="'+esc(c.slug)+'"'+(currentExtra && currentExtra.slug===c.slug?' selected':'')+'>'+esc(c.name)+'</option>'; }).join('') +
+                '</select>';
+            })() +
             '<button class="btn btn-secondary" data-save-edit="'+j.id+'" type="button">Save changes</button>' +
             '<p class="field-hint" id="edit-msg-'+j.id+'" hidden></p>' +
           '</div>' +
@@ -2124,6 +2148,7 @@
         var season = document.getElementById('edit-season-'+id).value.trim();
         var type = document.getElementById('edit-type-'+id).value.trim();
         var manufacturer = document.getElementById('edit-mfr-'+id).value.trim();
+        var format = document.getElementById('edit-format-'+id).value.trim();
         var notes = document.getElementById('edit-notes-'+id).value.trim();
         if(!season || !type){
           msg.hidden = false; msg.className = 'field-error'; msg.textContent = 'Season and jersey type can\'t be blank.';
@@ -2131,13 +2156,26 @@
         }
         btn.disabled = true; btn.textContent = 'Saving…';
         var upd = await supabaseClient.from('jerseys').update({
-          season: season, type: type, manufacturer: manufacturer || null, notes: notes || null
+          season: season, type: type, manufacturer: manufacturer || null, format: format || null, notes: notes || null
         }).eq('id', id);
-        btn.disabled = false; btn.textContent = 'Save changes';
         if(upd.error){
+          btn.disabled = false; btn.textContent = 'Save changes';
           msg.hidden = false; msg.className = 'field-error'; msg.textContent = 'Error: ' + upd.error.message;
           return;
         }
+        var extraCompEl = document.getElementById('edit-extra-comp-'+id);
+        if(extraCompEl){
+          var del = await supabaseClient.from('jersey_competitions').delete().eq('jersey_id', id);
+          if(!del.error && extraCompEl.value){
+            var ins = await supabaseClient.from('jersey_competitions').insert({jersey_id: id, competition_slug: extraCompEl.value});
+            if(ins.error){
+              btn.disabled = false; btn.textContent = 'Save changes';
+              msg.hidden = false; msg.className = 'field-error'; msg.textContent = 'Error: ' + ins.error.message;
+              return;
+            }
+          }
+        }
+        btn.disabled = false; btn.textContent = 'Save changes';
         render();
       });
     });
