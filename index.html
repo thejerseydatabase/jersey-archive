@@ -188,14 +188,17 @@
   .team-jersey-count{display:block;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--text-dim2);margin-top:3px;}
   .team-context{display:block;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--text-dim2);margin-top:2px;}
 
-  /* Compact team cards — used for search results, where a common name
-     (e.g. "Sydney") can match dozens of teams and a full-size grid means
-     a lot of scrolling just to see them all. */
-  .team-grid.compact{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;}
-  .team-card.compact{padding:8px 10px;gap:8px;border-radius:10px;}
-  .team-card.compact .team-swatch{width:26px;height:26px;border-radius:6px;}
-  .team-card.compact .team-info h3{font-size:12px;}
-  .team-card.compact .team-jersey-count,.team-card.compact .team-context{font-size:9.5px;margin-top:1px;}
+  /* Compact team rows — used for search results, where a common name
+     (e.g. "Sydney") can match dozens of teams and full-size cards mean
+     a lot of scrolling just to see them all. One line per team: small
+     swatch, name, competition on the right. */
+  .team-list-compact{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;overflow:hidden;}
+  .team-row-compact{display:flex;align-items:center;gap:10px;padding:7px 12px;background:var(--surface);text-decoration:none;color:var(--text);border-bottom:1px solid var(--line);}
+  .team-row-compact:last-child{border-bottom:none;}
+  .team-row-compact:hover{background:var(--surface-2);}
+  .team-row-compact .team-swatch{width:20px;height:20px;border-radius:5px;flex-shrink:0;}
+  .team-row-compact .team-row-name{font-size:12.5px;font-weight:600;flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .team-row-compact .team-row-comp{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-dim2);flex-shrink:0;white-space:nowrap;margin-left:10px;}
 
   .season-group{margin-bottom:34px;}
   .season-group h3{font-family:'IBM Plex Mono',monospace;font-size:13px;letter-spacing:.06em;color:var(--text-dim);text-transform:uppercase;margin:0 0 14px;padding-bottom:10px;border-bottom:1px solid var(--line);}
@@ -345,7 +348,7 @@
 })();
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="config.js?v=52"></script>
-<script src="app.js?v=52"></script>
+<script src="config.js?v=53"></script>
+<script src="app.js?v=53"></script>
 </body>
 </html>

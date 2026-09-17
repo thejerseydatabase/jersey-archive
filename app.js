@@ -837,7 +837,7 @@
   // "Broncos" shows a Rugby League section and an NFL section rather
   // than one long mixed list) — same idea as renderGroupedBySport but
   // for the Teams section, which has no jerseys to key off yet.
-  function groupTeamsBySport(teamMatches, countByTeam){
+  function groupTeamsBySport(teamMatches){
     var bySport = {};
     teamMatches.forEach(function(t){
       var sport = t.competitions.sports;
@@ -847,13 +847,11 @@
       return bySport[a].sport.name.localeCompare(bySport[b].sport.name);
     }).map(function(slug){
       var entry = bySport[slug];
-      var cards = entry.teams.map(function(t){
+      var rows = entry.teams.map(function(t){
         var c = t.competitions, sport = c.sports;
-        var count = countByTeam[t.id] || 0;
-        var countHtml = '<span class="team-jersey-count">'+(count ? count+' jersey'+(count===1?'':'s') : 'No jerseys yet')+'</span>';
-        return '<a class="team-card compact" href="#/sport/'+sport.slug+'/'+c.slug+'/team/'+t.slug+'">'+teamSwatch(t)+'<div class="team-info"><h3>'+esc(t.name)+'</h3><span class="team-context">'+esc(c.name)+'</span>'+countHtml+'</div></a>';
+        return '<a class="team-row-compact" href="#/sport/'+sport.slug+'/'+c.slug+'/team/'+t.slug+'">'+teamSwatch(t)+'<span class="team-row-name">'+esc(t.name)+'</span><span class="team-row-comp">'+esc(c.name)+'</span></a>';
       }).join('');
-      return '<div class="season-group"><h3>'+esc(entry.sport.name)+'</h3><div class="team-grid compact">'+cards+'</div></div>';
+      return '<div class="season-group"><h3>'+esc(entry.sport.name)+'</h3><div class="team-list-compact">'+rows+'</div></div>';
     }).join('');
   }
 
@@ -897,14 +895,9 @@
       return '<div class="section-head"><h2>Results for &ldquo;'+esc(term)+'&rdquo;</h2><span class="count">0 results</span></div><div class="empty-note">Nothing matches yet.</div>'+suggestHtml;
     }
 
-    var teamsHtml = '';
-    if(teamMatches.length){
-      var teamIds = teamMatches.map(function(t){ return t.id; });
-      var countsRes = await supabaseClient.from('jerseys').select('team_id').in('team_id', teamIds);
-      var countByTeam = {};
-      (countsRes.data || []).forEach(function(j){ countByTeam[j.team_id] = (countByTeam[j.team_id] || 0) + 1; });
-      teamsHtml = '<div class="section-head"><h2>Teams</h2><span class="count">'+teamMatches.length+'</span></div>'+groupTeamsBySport(teamMatches, countByTeam);
-    }
+    var teamsHtml = teamMatches.length
+      ? '<div class="section-head"><h2>Teams</h2><span class="count">'+teamMatches.length+'</span></div>'+groupTeamsBySport(teamMatches)
+      : '';
 
     var jerseysHtml = matches.length
       ? '<div class="section-head" style="margin-top:'+(teamsHtml ? '34px' : '0')+';"><h2>Jerseys</h2><span class="count">'+matches.length+'</span></div>'+renderGroupedBySport(matches)
