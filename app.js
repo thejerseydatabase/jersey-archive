@@ -780,30 +780,121 @@
     }).join('');
   }
 
+  // Search matching: strips accents/diacritics (so typing "sao tome"
+  // finds "São Tomé") and punctuation, then expands a small set of
+  // common sports shorthand so things like "NY Knicks" or "Man Utd"
+  // find "New York Knicks" / "Manchester United" even though those
+  // exact words never appear together in the raw query.
+  var SEARCH_ALIASES = {
+    'ny':'new york', 'nyc':'new york', 'la':'los angeles', 'sf':'san francisco',
+    'gb':'green bay', 'kc':'kansas city', 'philly':'philadelphia',
+    'utd':'united', 'intl':'international', 'int':'international'
+  };
+  var SEARCH_PHRASE_ALIASES = {
+    'man utd':'manchester united', 'man city':'manchester city', 'psg':'paris saint germain'
+  };
+  function normalizeSearchText(s){
+    return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
+      .replace(/['’]/g,'').replace(/[^a-z0-9]+/g,' ').trim();
+  }
+  function expandSearchAliases(normalized){
+    var expanded = normalized.split(' ').map(function(w){ return SEARCH_ALIASES[w] || w; }).join(' ');
+    Object.keys(SEARCH_PHRASE_ALIASES).forEach(function(key){
+      if(normalized.indexOf(key) > -1) expanded += ' ' + SEARCH_PHRASE_ALIASES[key];
+    });
+    return expanded;
+  }
+  function searchTextMatches(haystackRaw, queryRaw){
+    var q = normalizeSearchText(queryRaw);
+    if(!q) return false;
+    var haystack = normalizeSearchText(haystackRaw);
+    if(haystack.indexOf(q) > -1) return true;
+    var expandedQ = expandSearchAliases(q);
+    if(expandedQ !== q && haystack.indexOf(expandedQ) > -1) return true;
+    // Token-subset match: every word of the (expanded) query shows up
+    // somewhere in the name, in any order — catches "knicks ny" as well
+    // as "ny knicks", and partial multi-word names generally.
+    var tokens = expandedQ.split(' ').filter(Boolean);
+    return tokens.length > 1 && tokens.every(function(t){ return haystack.indexOf(t) > -1; });
+  }
+  function editDistance(a, b){
+    var m = a.length, n = b.length;
+    var dp = [];
+    for(var j=0;j<=n;j++) dp[j] = j;
+    for(var i=1;i<=m;i++){
+      var prev = dp[0];
+      dp[0] = i;
+      for(var k=1;k<=n;k++){
+        var tmp = dp[k];
+        dp[k] = a[i-1] === b[k-1] ? prev : 1 + Math.min(prev, dp[k], dp[k-1]);
+        prev = tmp;
+      }
+    }
+    return dp[n];
+  }
+
+  // Groups matched teams into one section per sport (so searching
+  // "Broncos" shows a Rugby League section and an NFL section rather
+  // than one long mixed list) — same idea as renderGroupedBySport but
+  // for the Teams section, which has no jerseys to key off yet.
+  function groupTeamsBySport(teamMatches, countByTeam){
+    var bySport = {};
+    teamMatches.forEach(function(t){
+      var sport = t.competitions.sports;
+      (bySport[sport.slug] = bySport[sport.slug] || {sport:sport, teams:[]}).teams.push(t);
+    });
+    return Object.keys(bySport).sort(function(a,b){
+      return bySport[a].sport.name.localeCompare(bySport[b].sport.name);
+    }).map(function(slug){
+      var entry = bySport[slug];
+      var cards = entry.teams.map(function(t){
+        var c = t.competitions, sport = c.sports;
+        var count = countByTeam[t.id] || 0;
+        var countHtml = '<span class="team-jersey-count">'+(count ? count+' jersey'+(count===1?'':'s') : 'No jerseys yet')+'</span>';
+        return '<a class="team-card" href="#/sport/'+sport.slug+'/'+c.slug+'/team/'+t.slug+'">'+teamSwatch(t)+'<div class="team-info"><h3>'+esc(t.name)+'</h3><span class="team-context">'+esc(c.name)+'</span>'+countHtml+'</div></a>';
+      }).join('');
+      return '<div class="season-group"><h3>'+esc(entry.sport.name)+'</h3><div class="team-grid">'+cards+'</div></div>';
+    }).join('');
+  }
+
   async function viewSearch(term){
     setCrumbs([{label:'Home', href:'#/'},{label:'Search: '+term, href:'#'}]);
-    var q = term.toLowerCase();
 
     // Matched by name so a team with nothing uploaded yet still shows up
     // and can be clicked into (and uploaded to) instead of the search
     // looking like a dead end just because it has zero jerseys so far.
     var teamsRes = await supabaseClient.from('teams').select('*, competitions(*, sports(*))');
     if(teamsRes.error) throw teamsRes.error;
-    var teamMatches = (teamsRes.data || []).filter(function(t){
-      return t.name.toLowerCase().indexOf(q) > -1;
+    var allTeams = teamsRes.data || [];
+    var teamMatches = allTeams.filter(function(t){
+      return searchTextMatches(t.name, term);
     }).sort(function(a,b){ return a.name.localeCompare(b.name); });
 
     var res = await supabaseClient.from('jerseys').select('*, jersey_images(*), teams(*, competitions(*, sports(*)))');
     if(res.error) throw res.error;
     var matches = (res.data || []).filter(function(j){
       var t = j.teams, c = t.competitions;
-      return t.name.toLowerCase().indexOf(q) > -1 || c.name.toLowerCase().indexOf(q) > -1 ||
-        String(j.season).indexOf(q) > -1 || j.type.toLowerCase().indexOf(q) > -1 ||
-        (j.manufacturer||'').toLowerCase().indexOf(q) > -1;
+      return searchTextMatches(t.name, term) || searchTextMatches(c.name, term) ||
+        String(j.season).indexOf(term) > -1 || searchTextMatches(j.type, term) ||
+        searchTextMatches(j.manufacturer||'', term);
     });
 
     if(!matches.length && !teamMatches.length){
-      return '<div class="section-head"><h2>Results for &ldquo;'+esc(term)+'&rdquo;</h2><span class="count">0 results</span></div><div class="empty-note">Nothing matches yet.</div>';
+      // Closest team name by edit distance, offered as a "did you mean"
+      // when it's close enough to plausibly be what was meant to be typed.
+      var nq = normalizeSearchText(term);
+      var suggestion = null, bestDist = Infinity;
+      if(nq.length >= 3){
+        allTeams.forEach(function(t){
+          var d = editDistance(nq, normalizeSearchText(t.name));
+          if(d < bestDist){ bestDist = d; suggestion = t; }
+        });
+      }
+      var maxDist = Math.max(2, Math.floor(nq.length * 0.34));
+      var suggestHtml = (suggestion && bestDist <= maxDist)
+        ? '<p class="empty-note">Did you mean <a class="spec-link" href="#/search/'+encodeURIComponent(suggestion.name)+'">'+esc(suggestion.name)+'</a>?</p>'
+        : '';
+      return '<div class="section-head"><h2>Results for &ldquo;'+esc(term)+'&rdquo;</h2><span class="count">0 results</span></div><div class="empty-note">Nothing matches yet.</div>'+suggestHtml;
     }
 
     var teamsHtml = '';
@@ -812,13 +903,7 @@
       var countsRes = await supabaseClient.from('jerseys').select('team_id').in('team_id', teamIds);
       var countByTeam = {};
       (countsRes.data || []).forEach(function(j){ countByTeam[j.team_id] = (countByTeam[j.team_id] || 0) + 1; });
-      var teamCards = teamMatches.map(function(t){
-        var c = t.competitions, sport = c.sports;
-        var count = countByTeam[t.id] || 0;
-        var countHtml = '<span class="team-jersey-count">'+(count ? count+' jersey'+(count===1?'':'s') : 'No jerseys yet')+'</span>';
-        return '<a class="team-card" href="#/sport/'+sport.slug+'/'+c.slug+'/team/'+t.slug+'">'+teamSwatch(t)+'<div class="team-info"><h3>'+esc(t.name)+'</h3><span class="team-context">'+esc(sport.name)+' &middot; '+esc(c.name)+'</span>'+countHtml+'</div></a>';
-      }).join('');
-      teamsHtml = '<div class="section-head"><h2>Teams</h2><span class="count">'+teamMatches.length+'</span></div><div class="team-grid">'+teamCards+'</div>';
+      teamsHtml = '<div class="section-head"><h2>Teams</h2><span class="count">'+teamMatches.length+'</span></div>'+groupTeamsBySport(teamMatches, countByTeam);
     }
 
     var jerseysHtml = matches.length
@@ -2587,7 +2672,42 @@
     else if(e.key === 'ArrowRight') lightboxStep(1);
   });
 
+  // Footer-wide site stats (teams/competitions counted straight from
+  // their tables; jerseys/manufacturers/contributors derived from one
+  // pass over approved jerseys' manufacturer + uploaded_by columns,
+  // same lightweight-single-column-fetch approach as viewManufacturers).
+  // Runs once at startup, not per route — it isn't route-specific.
+  async function refreshFooterStats(){
+    var el = document.getElementById('footer-stats');
+    if(!el) return;
+    try{
+      var teamsCountRes = await supabaseClient.from('teams').select('id', {count:'exact', head:true});
+      var compsCountRes = await supabaseClient.from('competitions').select('slug', {count:'exact', head:true});
+      var jerseysRes = await supabaseClient.from('jerseys').select('manufacturer, uploaded_by').eq('status', 'approved');
+      if(teamsCountRes.error || compsCountRes.error || jerseysRes.error) return;
+      var jerseys = jerseysRes.data || [];
+      var manufacturers = {}, contributors = {};
+      jerseys.forEach(function(j){
+        var m = (j.manufacturer || '').trim();
+        if(m) manufacturers[m.toLowerCase()] = true;
+        if(j.uploaded_by) contributors[j.uploaded_by] = true;
+      });
+      var jerseyCount = jerseys.length;
+      var teamCount = teamsCountRes.count || 0;
+      var compCount = compsCountRes.count || 0;
+      var mfrCount = Object.keys(manufacturers).length;
+      var userCount = Object.keys(contributors).length;
+      el.textContent = 'The archive includes ' + jerseyCount.toLocaleString() + ' jersey' + (jerseyCount===1?'':'s') +
+        ' from ' + teamCount.toLocaleString() + ' team' + (teamCount===1?'':'s') +
+        ' in ' + compCount.toLocaleString() + ' competition' + (compCount===1?'':'s') +
+        (mfrCount ? ', made by ' + mfrCount.toLocaleString() + ' manufacturer' + (mfrCount===1?'':'s') : '') +
+        (userCount ? ' and submitted by ' + userCount.toLocaleString() + ' contributor' + (userCount===1?'':'s') : '') + '.';
+      el.hidden = false;
+    } catch(e){ /* footer stats are decorative — fail silently */ }
+  }
+
   refreshAuthUI();
+  refreshFooterStats();
   window.addEventListener('hashchange', render);
   render();
 })();
