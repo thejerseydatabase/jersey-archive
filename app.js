@@ -479,8 +479,8 @@
         '</div>';
       teamsGridHtml = formatChipsHtml + (womenTeams.length
         ? '<div class="gender-split-grid">' +
-            '<div><h4 class="extra-kits-label">Men&rsquo;s &middot; '+menTeams.length+'</h4><div class="team-grid">'+menTeams.map(teamCard).join('')+'</div></div>' +
-            '<div><h4 class="extra-kits-label">Women&rsquo;s &middot; '+womenTeams.length+'</h4><div class="team-grid">'+womenTeams.map(teamCard).join('')+'</div></div>' +
+            '<div><h4 class="extra-kits-label">Men&rsquo;s &middot; <span id="men-count">'+menTeams.length+'</span></h4><div class="team-grid" id="men-team-grid">'+menTeams.map(teamCard).join('')+'</div></div>' +
+            '<div><h4 class="extra-kits-label">Women&rsquo;s &middot; <span id="women-count">'+womenTeams.length+'</span></h4><div class="team-grid" id="women-team-grid">'+womenTeams.map(teamCard).join('')+'</div></div>' +
           '</div>'
         : '<div class="team-grid">'+menTeams.map(teamCard).join('')+'</div>');
     } else {
@@ -1428,6 +1428,13 @@
           document.querySelectorAll('.team-grid .team-card').forEach(function(card){
             var formats = card.dataset.formats ? card.dataset.formats.split(',') : [];
             card.hidden = !!wanted && formats.indexOf(wanted) === -1;
+          });
+          ['men','women'].forEach(function(side){
+            var grid = document.getElementById(side+'-team-grid');
+            var countEl = document.getElementById(side+'-count');
+            if(!grid || !countEl) return;
+            var visible = Array.prototype.filter.call(grid.querySelectorAll('.team-card'), function(c){ return !c.hidden; });
+            countEl.textContent = visible.length;
           });
         });
       });
