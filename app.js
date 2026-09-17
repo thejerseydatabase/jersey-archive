@@ -1004,7 +1004,7 @@
     // page over one bad record.
     var allTeams = teamRows.filter(function(t){ return t.competitions && t.competitions.sports; });
     var teamMatches = allTeams.filter(function(t){
-      return searchTextMatches(t.name, term);
+      return searchTextMatches(t.name, term) || searchTextMatches(t.competitions.name, term);
     }).sort(function(a,b){ return a.name.localeCompare(b.name); });
 
     var jerseyRows = await fetchAllRows('jerseys', '*, jersey_images(*), teams(*, competitions(*, sports(*)))');
