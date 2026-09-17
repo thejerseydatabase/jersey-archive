@@ -192,7 +192,7 @@
      (e.g. "Sydney") can match dozens of teams and full-size cards mean
      a lot of scrolling just to see them all. One line per team: small
      swatch, name, competition on the right. */
-  .team-list-compact{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;overflow:hidden;}
+  .team-list-compact{display:inline-flex;flex-direction:column;width:fit-content;max-width:100%;min-width:260px;border:1px solid var(--line);border-radius:10px;overflow:hidden;}
   .team-row-compact{display:flex;align-items:center;gap:10px;padding:7px 12px;background:var(--surface);text-decoration:none;color:var(--text);border-bottom:1px solid var(--line);}
   .team-row-compact:last-child{border-bottom:none;}
   .team-row-compact:hover{background:var(--surface-2);}
@@ -348,7 +348,7 @@
 })();
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="config.js?v=53"></script>
-<script src="app.js?v=53"></script>
+<script src="config.js?v=54"></script>
+<script src="app.js?v=54"></script>
 </body>
 </html>
