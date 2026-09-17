@@ -251,6 +251,36 @@ create policy "admins can delete jersey image rows"
   using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
 
 
+-- ============ jersey_competitions ============
+-- A jersey's "home" competition is still whatever its team belongs to
+-- (jerseys.team_id -> teams.competition_slug) — this table is only for
+-- an EXTRA competition the same physical jersey was also worn in, e.g.
+-- a club's league kit also worn in a continental cup, or a country's
+-- regular kit also worn at a World Cup. One row per extra tag; no row
+-- here at all is the normal case.
+create table jersey_competitions (
+  jersey_id uuid not null references jerseys(id) on delete cascade,
+  competition_slug text not null references competitions(slug) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (jersey_id, competition_slug)
+);
+create index jersey_competitions_comp_idx on jersey_competitions(competition_slug);
+
+alter table jersey_competitions enable row level security;
+create policy "jersey_competitions are publicly readable"
+  on jersey_competitions for select using (true);
+create policy "jersey owner can tag extra competitions while pending"
+  on jersey_competitions for insert to authenticated with check (
+    exists (select 1 from jerseys j where j.id = jersey_id and j.uploaded_by = auth.uid() and j.status = 'pending')
+    or exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin)
+  );
+create policy "jersey owner can untag extra competitions while pending"
+  on jersey_competitions for delete using (
+    exists (select 1 from jerseys j where j.id = jersey_id and j.uploaded_by = auth.uid() and j.status = 'pending')
+    or exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin)
+  );
+
+
 -- ============ ratings ============
 create table ratings (
   jersey_id uuid not null references jerseys(id) on delete cascade,

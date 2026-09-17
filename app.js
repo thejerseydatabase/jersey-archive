@@ -403,6 +403,38 @@
       recentHtml;
   }
 
+  // A jersey "in" a competition is either owned by a team that belongs to
+  // it directly, or explicitly tagged onto it via jersey_competitions (the
+  // same physical jersey also worn in an extra competition — a club's
+  // league kit also worn in a cup, a country's regular kit also worn at a
+  // World Cup). Competition/season pages need both sources merged.
+  async function fetchCompetitionJerseys(compSlug, opts){
+    opts = opts || {};
+    var directQ = supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*)')
+      .eq('teams.competition_slug', compSlug).order('created_at', {ascending:true});
+    if(opts.season) directQ = directQ.eq('season', opts.season);
+    var directRes = await directQ;
+    if(directRes.error) throw directRes.error;
+    var direct = directRes.data || [];
+
+    var tagRes = await supabaseClient.from('jersey_competitions').select('jersey_id').eq('competition_slug', compSlug);
+    if(tagRes.error) throw tagRes.error;
+    var directIds = {};
+    direct.forEach(function(j){ directIds[j.id] = true; });
+    var extraIds = (tagRes.data || []).map(function(r){ return r.jersey_id; }).filter(function(id){ return !directIds[id]; });
+
+    var extra = [];
+    if(extraIds.length){
+      var extraQ = supabaseClient.from('jerseys').select('*, jersey_images(*), teams(*)')
+        .in('id', extraIds).order('created_at', {ascending:true});
+      if(opts.season) extraQ = extraQ.eq('season', opts.season);
+      var extraRes = await extraQ;
+      if(extraRes.error) throw extraRes.error;
+      extra = extraRes.data || [];
+    }
+    return direct.concat(extra);
+  }
+
   async function viewCompetition(sportSlug, compSlug){
     var res = await supabaseClient.from('competitions').select('*, sports(*)').eq('slug', compSlug).single();
     if(res.error) throw res.error;
@@ -438,8 +470,7 @@
     // season first, so a visitor who wants "this year's kits" doesn't have
     // to hunt through the team grid first — same idea as footballkitarchive's
     // league pages. Only seasons that actually have jerseys logged show up.
-    var seasonJerseysRes = await supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*)').eq('teams.competition_slug', compSlug);
-    var seasonJerseys = seasonJerseysRes.data || [];
+    var seasonJerseys = await fetchCompetitionJerseys(compSlug);
     seasonJerseys.forEach(function(j){ jerseyCountByTeam[j.teams.id] = (jerseyCountByTeam[j.teams.id] || 0) + 1; });
     var bySeasonAll = {};
     seasonJerseys.forEach(function(j){ (bySeasonAll[j.season] = bySeasonAll[j.season] || []).push(j); });
@@ -514,11 +545,16 @@
 
     return '<div class="section-head" style="align-items:center;">' +
         '<div style="display:flex;align-items:center;gap:2px;">'+compLogoSwatch(comp, {large:true})+'<h2 style="margin-left:2px;">'+esc(comp.name)+'</h2></div>' +
-        '<span class="count">'+activeTeams.length+' teams</span>' +
+        '<span class="count">'+(activeTeams.length ? activeTeams.length+' teams' : seasonJerseys.length+' jersey'+(seasonJerseys.length===1?'':'s'))+'</span>' +
       '</div>' +
       compLogoBlock +
-      (activeTeams.length ? '<div class="filter-row"><input type="text" id="team-filter" placeholder="Filter teams..."></div>'+teamsGridHtml
-        : '<div class="empty-note">No teams logged in '+esc(comp.name)+' yet.</div>') +
+      (activeTeams.length
+        ? '<div class="filter-row"><input type="text" id="team-filter" placeholder="Filter teams..."></div>'+teamsGridHtml
+        // A competition with no teams of its own (a World Cup-style extra
+        // tag, tagged onto jerseys whose real team lives elsewhere) isn't
+        // "empty" if jerseys are tagged onto it — only say so when it
+        // genuinely has neither.
+        : (seasonJerseys.length ? '' : '<div class="empty-note">No teams logged in '+esc(comp.name)+' yet.</div>')) +
       (upcomingTeams.length
         ? '<div class="section-head" style="margin-top:34px;"><h2>New expansion teams</h2><span class="count">'+upcomingTeams.length+'</span></div><div class="team-grid">'+upcomingTeams.map(teamCard).join('')+'</div>'
         : '') +
@@ -646,9 +682,7 @@
     var comp = compRes.data, sport = comp.sports;
     setCrumbs([{label:'Home', href:'#/'},{label:sport.name, href:'#/sport/'+sportSlug},{label:comp.name, href:'#/sport/'+sportSlug+'/'+compSlug},{label:year+' season', href:'#'}]);
 
-    var jRes = await supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*)').eq('season', year).eq('teams.competition_slug', compSlug).order('created_at', {ascending:true});
-    if(jRes.error) throw jRes.error;
-    var jerseys = jRes.data || [];
+    var jerseys = await fetchCompetitionJerseys(compSlug, {season: year});
     var byTeam = {};
     jerseys.forEach(function(j){ (byTeam[j.teams.id] = byTeam[j.teams.id] || {team:j.teams, jerseys:[]}).jerseys.push(j); });
 
@@ -673,6 +707,12 @@
       {label:team.name, href:'#/sport/'+sport.slug+'/'+comp.slug+'/team/'+team.slug},
       {label:j.season+' '+j.type, href:'#'}
     ]);
+
+    // Extra competitions this same jersey was also worn in — its home
+    // competition is comp above; anything here is a tag on top, e.g. a
+    // country's regular kit also worn at a World Cup.
+    var extraCompsRes = await supabaseClient.from('jersey_competitions').select('competitions(*)').eq('jersey_id', id);
+    var extraComps = (extraCompsRes.data || []).map(function(r){ return r.competitions; }).filter(Boolean);
 
     var images = j.jersey_images && j.jersey_images.length ? sortImagesForDisplay(j.jersey_images) : null;
     var mainHtml = images ? '<img class="lightbox-trigger" src="'+esc(publicImageUrl(images[0].storage_path))+'" alt="">' : jerseyThumb(j, team);
@@ -720,7 +760,9 @@
         '<p class="detail-sub">'+esc(comp.name)+' &middot; '+esc(sport.name)+'</p>' +
         '<div class="spec-list">' +
           specItem('Sport', '<a class="spec-link" href="#/sport/'+sport.slug+'">'+esc(sport.name)+'</a>', null) +
-          specItem('Competition', '<a class="spec-link" href="#/sport/'+sport.slug+'/'+comp.slug+'">'+esc(comp.name)+'</a>', {table:'competitions', matchCol:'slug', matchVal:comp.slug, field:'name', current:comp.name}) +
+          specItem(extraComps.length ? 'Competitions' : 'Competition',
+            [comp].concat(extraComps).map(function(c){ return '<a class="spec-link" href="#/sport/'+sport.slug+'/'+c.slug+'">'+esc(c.name)+'</a>'; }).join(' &middot; '),
+            {table:'competitions', matchCol:'slug', matchVal:comp.slug, field:'name', current:comp.name}) +
           specItem('Team', '<a class="spec-link" href="#/sport/'+sport.slug+'/'+comp.slug+'/team/'+team.slug+'">'+esc(team.name)+'</a>', {table:'teams', matchCol:'id', matchVal:team.id, field:'name', current:team.name}) +
           specItem('Season', '<a class="spec-link" href="#/sport/'+sport.slug+'/'+comp.slug+'/season/'+j.season+'">'+j.season+'</a>', {table:'jerseys', matchCol:'id', matchVal:j.id, field:'season', current:j.season}) +
           specItem('Jersey type', '<a class="spec-link" href="#/type/'+encodeURIComponent(j.type)+'">'+esc(j.type)+'</a>', {table:'jerseys', matchCol:'id', matchVal:j.id, field:'type', current:j.type}) +
@@ -762,8 +804,44 @@
           relabelHtml +
           '<label class="rate-label" style="margin-top:14px;">Wrong team or sport?</label>' +
           renderJerseyReassignControl('jersey-reassign', j.id) +
+          '<label class="rate-label" style="margin-top:14px;">Also used in <small>tag another competition this same jersey was also worn in</small></label>' +
+          '<div class="chip-row" id="jersey-extra-comps"><span class="field-hint">Loading&hellip;</span></div>' +
         '</div>' +
       '</div>';
+  }
+
+  // Toggleable chip per other competition in the same sport (the jersey's
+  // own home competition is excluded — that's set via team/reassign, not
+  // here). Clicking one inserts/deletes its jersey_competitions row
+  // directly; no save button since each click is its own change.
+  async function wireJerseyExtraCompsControl(jerseyId, sportSlug){
+    var container = document.getElementById('jersey-extra-comps');
+    if(!container) return;
+    var jRes = await supabaseClient.from('jerseys').select('teams(competition_slug)').eq('id', jerseyId).single();
+    var primaryCompSlug = jRes.data && jRes.data.teams ? jRes.data.teams.competition_slug : null;
+    var compsRes = await supabaseClient.from('competitions').select('*').eq('sport_slug', sportSlug).order('name');
+    var comps = (compsRes.error ? [] : compsRes.data || []).filter(function(c){ return c.slug !== primaryCompSlug; });
+    var tagRes = await supabaseClient.from('jersey_competitions').select('competition_slug').eq('jersey_id', jerseyId);
+    var tagged = {};
+    (tagRes.data || []).forEach(function(r){ tagged[r.competition_slug] = true; });
+
+    if(!comps.length){ container.innerHTML = '<span class="field-hint">No other competitions in this sport yet.</span>'; return; }
+    container.innerHTML = comps.map(function(c){
+      return '<button type="button" class="chip'+(tagged[c.slug]?' is-active':'')+'" data-slug="'+esc(c.slug)+'">'+esc(c.name)+'</button>';
+    }).join('');
+    container.querySelectorAll('.chip').forEach(function(btn){
+      btn.addEventListener('click', async function(){
+        var slug = btn.dataset.slug;
+        var isActive = btn.classList.contains('is-active');
+        btn.disabled = true;
+        var res = isActive
+          ? await supabaseClient.from('jersey_competitions').delete().eq('jersey_id', jerseyId).eq('competition_slug', slug)
+          : await supabaseClient.from('jersey_competitions').insert({jersey_id: jerseyId, competition_slug: slug});
+        btn.disabled = false;
+        if(res.error){ alert('Error: ' + res.error.message); return; }
+        btn.classList.toggle('is-active');
+      });
+    });
   }
 
   function renderGroupedBySport(jerseys){
@@ -1090,6 +1168,9 @@
               '<input type="text" id="f-mfr-new" placeholder="New manufacturer">' +
               '<button type="button" class="new-value-cancel" id="f-mfr-new-cancel" aria-label="Back to list">&#10005;</button>' +
             '</div></div>' +
+          '<div class="field field-full" id="field-extra-comps"><label>Also used in <small>optional &mdash; e.g. a World Cup, on top of the competition above (same jersey, no need to upload it twice)</small></label>' +
+            '<div class="chip-row" id="f-extra-comps"></div>' +
+          '</div>' +
           '<div class="field field-full" id="field-photos"><label>Photos * <small>drag in several at once, or click to choose</small></label>' +
             '<div class="dropzone" id="photo-dropzone" tabindex="0" role="button" aria-label="Add photos">' +
               ICON_PHOTO +
@@ -1722,6 +1803,7 @@
             });
           });
           wireJerseyReassignControl('jersey-reassign', panel.dataset.sportSlug, function(){ render(); });
+          wireJerseyExtraCompsControl(parts[1], panel.dataset.sportSlug);
           return;
         }
         panel.hidden = !panel.hidden;
@@ -2148,6 +2230,8 @@
     var mfrNew = document.getElementById('f-mfr-new');
     var formatField = document.getElementById('field-format');
     var formatSel = document.getElementById('f-format');
+    var extraCompsEl = document.getElementById('f-extra-comps');
+    var selectedExtraComps = []; // array of competition slugs, same-sport, primary comp excluded
 
     // Every "pick or add new" field is a <select> (so it looks and behaves
     // like the Sport dropdown) plus a text input that swaps in for it —
@@ -2259,6 +2343,7 @@
         '<option value="__new__">+ Add a new competition…</option>';
       compSelect.hidden = false; compNewRow.hidden = true; compNew.value = ''; compNew.required = false;
       await refreshTeams();
+      await refreshExtraComps();
     }
     async function refreshTeams(){
       var val = compSelect.value;
@@ -2282,6 +2367,30 @@
         '<option value="__new__">+ Add a new team…</option>';
       teamSelect.hidden = false; teamNewRow.hidden = true; teamNew.value = ''; teamNew.required = false;
     }
+    // Chips for every OTHER competition in the same sport (the primary
+    // one picked above is excluded — that's set via the Competition field,
+    // not here). Re-rendering keeps whichever were already toggled on.
+    async function refreshExtraComps(){
+      var comps = await competitionsForSport(sportSel.value);
+      var primaryVal = compSelect.value.toLowerCase();
+      var others = comps.filter(function(c){ return c.name.toLowerCase() !== primaryVal; });
+      var prevSelected = {};
+      selectedExtraComps.forEach(function(s){ prevSelected[s] = true; });
+      selectedExtraComps.length = 0;
+      extraCompsEl.innerHTML = others.length ? others.map(function(c){
+        var active = !!prevSelected[c.slug];
+        if(active) selectedExtraComps.push(c.slug);
+        return '<button type="button" class="chip'+(active?' is-active':'')+'" data-slug="'+esc(c.slug)+'">'+esc(c.name)+'</button>';
+      }).join('') : '<span class="field-hint">No other competitions in this sport yet.</span>';
+      extraCompsEl.querySelectorAll('.chip').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          var slug = btn.dataset.slug;
+          var idx = selectedExtraComps.indexOf(slug);
+          if(idx > -1){ selectedExtraComps.splice(idx, 1); btn.classList.remove('is-active'); }
+          else { selectedExtraComps.push(slug); btn.classList.add('is-active'); }
+        });
+      });
+    }
     // After a successful upload: re-list competitions/teams (in case one
     // was just created via "+ Add a new one…") and select the one just
     // used, rather than resetting to blank like refreshComps/refreshTeams
@@ -2303,6 +2412,8 @@
         teams.map(function(t){ return '<option value="'+esc(t.name)+'"'+(t.name===teamName?' selected':'')+'>'+esc(t.name)+'</option>'; }).join('') +
         '<option value="__new__">+ Add a new team…</option>';
       teamSelect.hidden = false; teamNewRow.hidden = true; teamNew.value = ''; teamNew.required = false;
+      selectedExtraComps.length = 0;
+      await refreshExtraComps();
     }
     function refreshFormat(){
       var formats = FORMATS_BY_SPORT[sportSel.value];
@@ -2349,7 +2460,7 @@
     }
 
     sportSel.addEventListener('change', function(){ refreshComps(); refreshFormat(); refreshMfrTypeOptions(); saveDraft(); });
-    compSelect.addEventListener('change', function(){ syncNewVisibility(compSelect, compNewRow, compNew, true); refreshTeams(); saveDraft(); });
+    compSelect.addEventListener('change', function(){ syncNewVisibility(compSelect, compNewRow, compNew, true); refreshTeams(); refreshExtraComps(); saveDraft(); });
     teamSelect.addEventListener('change', function(){ syncNewVisibility(teamSelect, teamNewRow, teamNew, true); saveDraft(); });
     typeSelect.addEventListener('change', function(){ syncNewVisibility(typeSelect, typeNewRow, typeNew, true); saveDraft(); });
     mfrSelect.addEventListener('change', function(){ syncNewVisibility(mfrSelect, mfrNewRow, mfrNew, false); saveDraft(); });
@@ -2434,6 +2545,13 @@
         }).select().single();
         if(jerseyIns.error) throw jerseyIns.error;
         var jersey = jerseyIns.data;
+
+        if(selectedExtraComps.length){
+          var tagIns = await supabaseClient.from('jersey_competitions').insert(
+            selectedExtraComps.map(function(slug){ return {jersey_id: jersey.id, competition_slug: slug}; })
+          );
+          if(tagIns.error) throw tagIns.error;
+        }
 
         try {
           for(var i=0; i<selectedPhotos.length; i++){
