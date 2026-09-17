@@ -41,19 +41,31 @@
     cricket: ['Indigenous'],
     'field-hockey': ['Indigenous']
   };
+  // Picking "Training" reveals a second field for which kind, so
+  // "pre-match", "warm up", "captain's run" etc. don't fragment into
+  // inconsistent one-off type values — stored as "Training - Warm Up"
+  // and collapsed back to the "Training" family by baseJerseyType() for
+  // browsing, same way "Home V1"/"Home V2" collapse to "Home". Retro
+  // isn't in here — that's a genuine match jersey, already covered by
+  // the separate "Heritage" type.
+  var TRAINING_SUBTYPES = ['Pre-match','Warm Up','Captain\'s Run','Travel'];
   // Fixed lead-in, well-known kit makers across every sport on the site —
   // shown up front regardless of whether they've been used yet, so an
   // already-real brand doesn't get re-added as "new" just because nobody's
   // uploaded that sport/brand combo before. After these, the form fills in
   // with whatever's actually used most in the selected sport, then anything
   // else already used anywhere else on the site.
-  var PRIORITY_MANUFACTURERS = [
-    'Adidas','Nike','Puma','Umbro','Kappa','Macron','Under Armour','New Balance',
+  // The 8 biggest global brands first, then the two rugby league-specific
+  // ones right after (still common enough to skip the alphabet), then
+  // everything else A-Z.
+  var MFR_TOP = ['Adidas','Nike','Puma','Umbro','Kappa','Macron','Under Armour','New Balance'];
+  var MFR_SECONDARY = ['Classic Sportswear','Dynasty Sport'];
+  var MFR_REST = [
     'Joma','Hummel','Errea','Uhlsport','Mizuno','Asics','Canterbury','BLK','ISC',
-    'Classic Sportswear','Dynasty Sport','O\'Neills','Castore','Kukri',
-    'Le Coq Sportif','Diadora','Lotto','Legea','Fanatics','Majestic','New Era',
-    'CCM','Bauer','Champion'
-  ];
+    'O\'Neills','Castore','Kukri','Le Coq Sportif','Diadora','Lotto','Legea',
+    'Fanatics','Majestic','New Era','CCM','Bauer','Champion'
+  ].sort();
+  var PRIORITY_MANUFACTURERS = MFR_TOP.concat(MFR_SECONDARY, MFR_REST);
 
   // Reputation tiers by upload points — adjust thresholds/colors/labels here.
   var TIERS = [
@@ -1107,7 +1119,7 @@
   // original string if stripping the suffix would leave nothing.
   function baseJerseyType(t){
     var s = String(t || '');
-    var stripped = s.replace(/\s+(v\.?\s*\d+|\d+)$/i, '').trim();
+    var stripped = s.replace(/\s+(v\.?\s*\d+|\d+)$/i, '').replace(/\s+-\s+.+$/, '').trim();
     return stripped || s;
   }
 
@@ -1234,7 +1246,17 @@
               '<input type="text" id="f-type-new" placeholder="New jersey type">' +
               '<button type="button" class="new-value-cancel" id="f-type-new-cancel" aria-label="Back to list">&#10005;</button>' +
             '</div></div>' +
-          '<div class="field"><label for="f-mfr-select">Manufacturer <small>optional</small></label>' +
+          '<div class="field" id="f-type-sub-field" hidden><label for="f-type-sub-select">Training type <small>optional &mdash; e.g. warm up, captain&rsquo;s run</small></label>' +
+            '<select id="f-type-sub-select">' +
+              '<option value="">&mdash; Just &ldquo;Training&rdquo; &mdash;</option>' +
+              TRAINING_SUBTYPES.map(function(t){ return '<option value="'+t+'">'+t+'</option>'; }).join('') +
+              '<option value="__new__">+ Add a new one&hellip;</option>' +
+            '</select>' +
+            '<div class="new-value-row" id="f-type-sub-new-row" hidden>' +
+              '<input type="text" id="f-type-sub-new" placeholder="New training type">' +
+              '<button type="button" class="new-value-cancel" id="f-type-sub-new-cancel" aria-label="Back to list">&#10005;</button>' +
+            '</div></div>' +
+          '<div class="field"><label for="f-mfr-select">Manufacturer <small>optional &mdash; click the dropdown or click it and start typing to jump to it; add it below if it&rsquo;s not there</small></label>' +
             '<select id="f-mfr-select">'+mfrOptions+'</select>' +
             '<div class="new-value-row" id="f-mfr-new-row" hidden>' +
               '<input type="text" id="f-mfr-new" placeholder="New manufacturer">' +
@@ -2379,6 +2401,10 @@
     var typeSelect = document.getElementById('f-type-select');
     var typeNewRow = document.getElementById('f-type-new-row');
     var typeNew = document.getElementById('f-type-new');
+    var typeSubField = document.getElementById('f-type-sub-field');
+    var typeSubSelect = document.getElementById('f-type-sub-select');
+    var typeSubNewRow = document.getElementById('f-type-sub-new-row');
+    var typeSubNew = document.getElementById('f-type-sub-new');
     var mfrSelect = document.getElementById('f-mfr-select');
     var mfrNewRow = document.getElementById('f-mfr-new-row');
     var mfrNew = document.getElementById('f-mfr-new');
@@ -2413,6 +2439,17 @@
     function fieldValue(selectEl, newInputEl){
       return selectEl.value === '__new__' ? newInputEl.value.trim() : selectEl.value;
     }
+    // Only relevant once "Training" is the chosen type — hidden and
+    // cleared otherwise so it can't leak a leftover subtype onto a
+    // Home/Away/etc. jersey.
+    function refreshTypeSubVisibility(){
+      var isTraining = typeSelect.value === 'Training';
+      typeSubField.hidden = !isTraining;
+      if(!isTraining){
+        typeSubSelect.value = '';
+        syncNewVisibility(typeSubSelect, typeSubNewRow, typeSubNew, false);
+      }
+    }
 
     // Text fields survive an unexpected reload (e.g. the browser discarding
     // a backgrounded tab to save memory) — photos can't be restored this
@@ -2427,6 +2464,7 @@
           team: {v: teamSelect.value, n: teamNew.value},
           season: seasonInput.value,
           type: {v: typeSelect.value, n: typeNew.value},
+          typeSub: {v: typeSubSelect.value, n: typeSubNew.value},
           mfr: {v: mfrSelect.value, n: mfrNew.value},
           notes: document.getElementById('f-notes').value
         }));
@@ -2630,6 +2668,7 @@
         curatedTypes.concat(typeExtra).map(function(t){ return '<option value="'+esc(t)+'">'+esc(t)+'</option>'; }).join('') +
         '<option value="__new__">+ Add a new one…</option>';
       typeSelect.hidden = false; typeNewRow.hidden = true; typeNew.value = ''; typeNew.required = false;
+      refreshTypeSubVisibility();
 
       // Priority brands first, then whatever's actually popular in this
       // sport, then everything else already used ANYWHERE on the site
@@ -2649,7 +2688,8 @@
     sportSel.addEventListener('change', function(){ refreshComps(); refreshFormat(); refreshMfrTypeOptions(); saveDraft(); });
     compSelect.addEventListener('change', function(){ syncNewVisibility(compSelect, compNewRow, compNew, true); refreshTeams(); refreshExtraComps(); saveDraft(); });
     teamSelect.addEventListener('change', function(){ syncNewVisibility(teamSelect, teamNewRow, teamNew, true); saveDraft(); });
-    typeSelect.addEventListener('change', function(){ syncNewVisibility(typeSelect, typeNewRow, typeNew, true); saveDraft(); });
+    typeSelect.addEventListener('change', function(){ syncNewVisibility(typeSelect, typeNewRow, typeNew, true); refreshTypeSubVisibility(); saveDraft(); });
+    typeSubSelect.addEventListener('change', function(){ syncNewVisibility(typeSubSelect, typeSubNewRow, typeSubNew, false); saveDraft(); });
     mfrSelect.addEventListener('change', function(){ syncNewVisibility(mfrSelect, mfrNewRow, mfrNew, false); saveDraft(); });
     extraCompToggle.addEventListener('change', function(){
       extraCompRow.hidden = !extraCompToggle.checked;
@@ -2663,9 +2703,10 @@
     wireNewCancel(compSelect, compNewRow, compNew, true, refreshTeams);
     wireNewCancel(teamSelect, teamNewRow, teamNew, true);
     wireNewCancel(typeSelect, typeNewRow, typeNew, true);
+    wireNewCancel(typeSubSelect, typeSubNewRow, typeSubNew, false);
     wireNewCancel(mfrSelect, mfrNewRow, mfrNew, false);
     wireNewCancel(extraCompSel, extraCompNewRow, extraCompNew, false);
-    [compNew, teamNew, seasonInput, typeNew, mfrNew, extraCompNew, document.getElementById('f-notes')].forEach(function(el){
+    [compNew, teamNew, seasonInput, typeNew, typeSubNew, mfrNew, extraCompNew, document.getElementById('f-notes')].forEach(function(el){
       el.addEventListener('input', saveDraft);
       el.addEventListener('change', saveDraft);
     });
@@ -2692,6 +2733,12 @@
           typeSelect.value = restoredDraft.type.v || '';
           syncNewVisibility(typeSelect, typeNewRow, typeNew, true);
           typeNew.value = restoredDraft.type.n || '';
+          refreshTypeSubVisibility();
+        }
+        if(restoredDraft.typeSub){
+          typeSubSelect.value = restoredDraft.typeSub.v || '';
+          syncNewVisibility(typeSubSelect, typeSubNewRow, typeSubNew, false);
+          typeSubNew.value = restoredDraft.typeSub.n || '';
         }
         if(restoredDraft.mfr){
           mfrSelect.value = restoredDraft.mfr.v || '';
@@ -2732,6 +2779,10 @@
         var team = await ensureTeam(comp.slug, fieldValue(teamSelect, teamNew));
         var season = seasonVal;
         var type = fieldValue(typeSelect, typeNew);
+        if(type === 'Training'){
+          var typeSub = fieldValue(typeSubSelect, typeSubNew);
+          if(typeSub) type = 'Training - ' + typeSub;
+        }
         var manufacturer = fieldValue(mfrSelect, mfrNew) || null;
         var format = FORMATS_BY_SPORT[sportSlug] ? formatSel.value : null;
         var notes = document.getElementById('f-notes').value.trim() || null;
@@ -2792,6 +2843,7 @@
         await reselectAfterSubmit(comp.name, team.name);
         typeSelect.value = '';
         syncNewVisibility(typeSelect, typeNewRow, typeNew, true);
+        refreshTypeSubVisibility();
         document.getElementById('f-notes').value = '';
         saveDraft();
       } catch(err) {
