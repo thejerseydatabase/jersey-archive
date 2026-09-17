@@ -843,7 +843,7 @@
       var sport = t.competitions.sports;
       (bySport[sport.slug] = bySport[sport.slug] || {sport:sport, teams:[]}).teams.push(t);
     });
-    return Object.keys(bySport).sort(function(a,b){
+    var groups = Object.keys(bySport).sort(function(a,b){
       return bySport[a].sport.name.localeCompare(bySport[b].sport.name);
     }).map(function(slug){
       var entry = bySport[slug];
@@ -853,6 +853,10 @@
       }).join('');
       return '<div class="season-group"><h3>'+esc(entry.sport.name)+'</h3><div class="team-list-compact">'+rows+'</div></div>';
     }).join('');
+    // Two columns (sport 1 left, sport 2 right, sport 3 back on the
+    // left, etc.) instead of stacking every sport in one long column —
+    // a broad search can match a dozen different sports.
+    return '<div class="sport-team-columns">'+groups+'</div>';
   }
 
   async function viewSearch(term){

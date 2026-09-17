@@ -200,6 +200,12 @@
   .team-row-compact .team-row-name{font-size:12.5px;font-weight:600;flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .team-row-compact .team-row-comp{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-dim2);flex-shrink:0;white-space:nowrap;margin-left:10px;}
 
+  /* Two sports side by side in search results instead of one long
+     stacked column — saves scrolling on a broad match. */
+  .sport-team-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 24px;align-items:start;}
+  .sport-team-columns .season-group{margin-bottom:0;}
+  @media (max-width:640px){ .sport-team-columns{grid-template-columns:1fr;} }
+
   .season-group{margin-bottom:34px;}
   .season-group h3{font-family:'IBM Plex Mono',monospace;font-size:13px;letter-spacing:.06em;color:var(--text-dim);text-transform:uppercase;margin:0 0 14px;padding-bottom:10px;border-bottom:1px solid var(--line);}
   .jersey-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;}
@@ -348,7 +354,7 @@
 })();
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="config.js?v=54"></script>
-<script src="app.js?v=54"></script>
+<script src="config.js?v=55"></script>
+<script src="app.js?v=55"></script>
 </body>
 </html>
