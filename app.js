@@ -864,7 +864,8 @@
     'utd':'united', 'intl':'international', 'int':'international'
   };
   var SEARCH_PHRASE_ALIASES = {
-    'man utd':'manchester united', 'man city':'manchester city', 'psg':'paris saint germain'
+    'man utd':'manchester united', 'man city':'manchester city', 'psg':'paris saint germain',
+    'hull kr':'hull kingston rovers'
   };
   function normalizeSearchText(s){
     return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
@@ -872,8 +873,13 @@
   }
   function expandSearchAliases(normalized){
     var expanded = normalized.split(' ').map(function(w){ return SEARCH_ALIASES[w] || w; }).join(' ');
+    // Replaced in place, not appended — appending would leave the raw
+    // abbreviation ("kr") as its own token that then has to literally
+    // appear in the target name too, which it doesn't ("Hull Kingston
+    // Rovers" has no "kr" substring), breaking the very match this is
+    // meant to make.
     Object.keys(SEARCH_PHRASE_ALIASES).forEach(function(key){
-      if(normalized.indexOf(key) > -1) expanded += ' ' + SEARCH_PHRASE_ALIASES[key];
+      if(expanded.indexOf(key) > -1) expanded = expanded.split(key).join(SEARCH_PHRASE_ALIASES[key]);
     });
     return expanded;
   }
@@ -1161,8 +1167,15 @@
               '<input type="text" id="f-mfr-new" placeholder="New manufacturer">' +
               '<button type="button" class="new-value-cancel" id="f-mfr-new-cancel" aria-label="Back to list">&#10005;</button>' +
             '</div></div>' +
-          '<div class="field"><label for="f-extra-comp">Also used in <small>leave blank if not relevant &mdash; e.g. a World Cup, on top of the competition above</small></label>' +
-            '<select id="f-extra-comp"><option value="">&mdash; None &mdash;</option></select>' +
+          '<div class="field field-full">' +
+            '<label style="text-transform:none;letter-spacing:normal;"><input type="checkbox" id="f-extra-comp-toggle" style="width:auto;margin-right:8px;">Was this jersey also worn in another competition? <small>e.g. a World Cup, on top of the competition above</small></label>' +
+            '<div id="f-extra-comp-row" style="margin-top:8px;" hidden>' +
+              '<select id="f-extra-comp"><option value="">Select a competition</option></select>' +
+              '<div class="new-value-row" id="f-extra-comp-new-row" hidden>' +
+                '<input type="text" id="f-extra-comp-new" placeholder="New competition name (e.g. Trial Match)">' +
+                '<button type="button" class="new-value-cancel" id="f-extra-comp-new-cancel" aria-label="Back to list">&#10005;</button>' +
+              '</div>' +
+            '</div>' +
           '</div>' +
           '<div class="field field-full" id="field-photos"><label>Photos *</label>' +
             '<div class="dropzone" id="photo-dropzone" tabindex="0" role="button" aria-label="Add photos">' +
@@ -2290,7 +2303,11 @@
     var mfrNew = document.getElementById('f-mfr-new');
     var formatField = document.getElementById('field-format');
     var formatSel = document.getElementById('f-format');
+    var extraCompToggle = document.getElementById('f-extra-comp-toggle');
+    var extraCompRow = document.getElementById('f-extra-comp-row');
     var extraCompSel = document.getElementById('f-extra-comp');
+    var extraCompNewRow = document.getElementById('f-extra-comp-new-row');
+    var extraCompNew = document.getElementById('f-extra-comp-new');
 
     // Every "pick or add new" field is a <select> (so it looks and behaves
     // like the Sport dropdown) plus a text input that swaps in for it —
@@ -2439,8 +2456,10 @@
       var primaryVal = compSelect.value.toLowerCase();
       var others = comps.filter(function(c){ return c.name.toLowerCase() !== primaryVal; });
       var prevValue = extraCompSel.value;
-      extraCompSel.innerHTML = '<option value="">&mdash; None &mdash;</option>' +
-        others.map(function(c){ return '<option value="'+esc(c.slug)+'"'+(c.slug===prevValue?' selected':'')+'>'+esc(c.name)+'</option>'; }).join('');
+      extraCompSel.innerHTML = '<option value="">Select a competition</option>' +
+        others.map(function(c){ return '<option value="'+esc(c.slug)+'"'+(c.slug===prevValue?' selected':'')+'>'+esc(c.name)+'</option>'; }).join('') +
+        '<option value="__new__">+ Add a new competition&hellip;</option>';
+      syncNewVisibility(extraCompSel, extraCompNewRow, extraCompNew, false);
     }
     // After a successful upload: re-list competitions/teams (in case one
     // was just created via "+ Add a new one…") and select the one just
@@ -2463,6 +2482,8 @@
         teams.map(function(t){ return '<option value="'+esc(t.name)+'"'+(t.name===teamName?' selected':'')+'>'+esc(t.name)+'</option>'; }).join('') +
         '<option value="__new__">+ Add a new team…</option>';
       teamSelect.hidden = false; teamNewRow.hidden = true; teamNew.value = ''; teamNew.required = false;
+      extraCompToggle.checked = false;
+      extraCompRow.hidden = true;
       extraCompSel.value = '';
       await refreshExtraComps();
     }
@@ -2515,11 +2536,21 @@
     teamSelect.addEventListener('change', function(){ syncNewVisibility(teamSelect, teamNewRow, teamNew, true); saveDraft(); });
     typeSelect.addEventListener('change', function(){ syncNewVisibility(typeSelect, typeNewRow, typeNew, true); saveDraft(); });
     mfrSelect.addEventListener('change', function(){ syncNewVisibility(mfrSelect, mfrNewRow, mfrNew, false); saveDraft(); });
+    extraCompToggle.addEventListener('change', function(){
+      extraCompRow.hidden = !extraCompToggle.checked;
+      if(!extraCompToggle.checked){
+        extraCompSel.value = '';
+        syncNewVisibility(extraCompSel, extraCompNewRow, extraCompNew, false);
+      }
+      saveDraft();
+    });
+    extraCompSel.addEventListener('change', function(){ syncNewVisibility(extraCompSel, extraCompNewRow, extraCompNew, false); saveDraft(); });
     wireNewCancel(compSelect, compNewRow, compNew, true, refreshTeams);
     wireNewCancel(teamSelect, teamNewRow, teamNew, true);
     wireNewCancel(typeSelect, typeNewRow, typeNew, true);
     wireNewCancel(mfrSelect, mfrNewRow, mfrNew, false);
-    [compNew, teamNew, seasonInput, typeNew, mfrNew, document.getElementById('f-notes')].forEach(function(el){
+    wireNewCancel(extraCompSel, extraCompNewRow, extraCompNew, false);
+    [compNew, teamNew, seasonInput, typeNew, mfrNew, extraCompNew, document.getElementById('f-notes')].forEach(function(el){
       el.addEventListener('input', saveDraft);
       el.addEventListener('change', saveDraft);
     });
@@ -2597,9 +2628,15 @@
         if(jerseyIns.error) throw jerseyIns.error;
         var jersey = jerseyIns.data;
 
-        if(extraCompSel.value){
-          var tagIns = await supabaseClient.from('jersey_competitions').insert({jersey_id: jersey.id, competition_slug: extraCompSel.value});
-          if(tagIns.error) throw tagIns.error;
+        if(extraCompToggle.checked){
+          var extraCompVal = fieldValue(extraCompSel, extraCompNew);
+          if(extraCompVal){
+            var extraComp = extraCompSel.value === '__new__'
+              ? await ensureCompetition(sportSlug, extraCompVal)
+              : {slug: extraCompVal};
+            var tagIns = await supabaseClient.from('jersey_competitions').insert({jersey_id: jersey.id, competition_slug: extraComp.slug});
+            if(tagIns.error) throw tagIns.error;
+          }
         }
 
         try {
