@@ -867,7 +867,11 @@
     // looking like a dead end just because it has zero jerseys so far.
     var teamsRes = await supabaseClient.from('teams').select('*, competitions(*, sports(*))');
     if(teamsRes.error) throw teamsRes.error;
-    var allTeams = teamsRes.data || [];
+    // Guards against a team whose competition/sport link is broken (a
+    // stale or orphaned row) — such a team can't be linked to safely, so
+    // it's excluded here rather than throwing and blanking the whole
+    // page over one bad record.
+    var allTeams = (teamsRes.data || []).filter(function(t){ return t.competitions && t.competitions.sports; });
     var teamMatches = allTeams.filter(function(t){
       return searchTextMatches(t.name, term);
     }).sort(function(a,b){ return a.name.localeCompare(b.name); });
@@ -875,7 +879,8 @@
     var res = await supabaseClient.from('jerseys').select('*, jersey_images(*), teams(*, competitions(*, sports(*)))');
     if(res.error) throw res.error;
     var matches = (res.data || []).filter(function(j){
-      var t = j.teams, c = t.competitions;
+      var t = j.teams, c = t && t.competitions;
+      if(!t || !c || !c.sports) return false;
       return searchTextMatches(t.name, term) || searchTextMatches(c.name, term) ||
         String(j.season).indexOf(term) > -1 || searchTextMatches(j.type, term) ||
         searchTextMatches(j.manufacturer||'', term);
