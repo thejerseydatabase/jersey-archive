@@ -5,6 +5,22 @@
   var ICON_PHOTO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="26" height="26"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M3 17l5-4 4 3 3-2 6 5"/><path d="M17 3v4M15 5h4"/></svg>';
   var ICON_PENCIL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>';
   var ICON_FLAG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22V3"/></svg>';
+  // Per-sport homepage icons — a sport not listed here (a brand new one
+  // just added, say) falls back to the generic jersey icon rather than
+  // erroring or showing nothing.
+  var SPORT_ICONS = {
+    cricket: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M7 4v16M12 4v16M17 4v16"/><path d="M6 5h3M11 5h3M16 5h3"/></svg>',
+    basketball: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18M5.5 5.5c2 2.5 2 12.5 0 15M18.5 5.5c-2 2.5-2 12.5 0 15"/></svg>',
+    'american-football': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><ellipse cx="12" cy="12" rx="9" ry="5"/><path d="M7 12h10M9.5 10v4M12 10v4M14.5 10v4"/></svg>',
+    'ice-hockey': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M19 3 9 19h4"/><ellipse cx="7" cy="20" rx="4" ry="1.4"/></svg>',
+    'rugby-league': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><ellipse cx="12" cy="12" rx="5" ry="9" transform="rotate(45 12 12)"/><path d="M8.5 15.5 15.5 8.5"/></svg>',
+    'rugby-union': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><ellipse cx="12" cy="12" rx="5" ry="9" transform="rotate(45 12 12)"/><path d="M8.5 15.5 15.5 8.5"/></svg>',
+    football: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><circle cx="12" cy="12" r="9"/><path d="M12 7l3 2.2-1.1 3.6H10.1L9 9.2z"/><path d="M12 7V4M15 9.2l2.6-1.7M13.9 12.8l1.6 2.9M10.1 12.8l-1.6 2.9M9 9.2 6.4 7.5"/></svg>',
+    baseball: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><circle cx="12" cy="12" r="9"/><path d="M6 6c3 2 3 10 0 12M18 6c-3 2-3 10 0 12"/></svg>',
+    afl: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M5 21V5M19 21V5M3 5h4M17 5h4"/></svg>',
+    netball: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><ellipse cx="12" cy="6" rx="5" ry="1.6"/><circle cx="12" cy="16" r="5"/></svg>'
+  };
+  function sportIcon(sportSlug){ return SPORT_ICONS[sportSlug] || ICON_SHIRT; }
   // International formats paired with their domestic equivalent right
   // after (Test/First Class, ODI/One Day, T20I/T20, T10I/T10) — the "I"
   // suffix always means international.
@@ -334,7 +350,7 @@
     var sports = res.data || [];
     var cards = sports.map(function(s){
       return '<a class="sport-card" href="#/sport/'+s.slug+'">' +
-        '<div class="sport-icon">'+ICON_SHIRT+'</div>' +
+        '<div class="sport-icon">'+sportIcon(s.slug)+'</div>' +
         '<div><div class="sport-name">'+esc(s.name)+'</div></div>' +
       '</a>';
     }).join('');
@@ -403,10 +419,17 @@
     var activeTeams = teams.filter(function(t){ return !t.is_upcoming && t.is_active !== false; });
     var formerTeams = teams.filter(function(t){ return !t.is_upcoming && t.is_active === false; });
 
+    // A team with nothing logged yet looks identical to one with a full
+    // history until you click in — a count on the card itself saves that
+    // click, especially useful on the huge international rosters where
+    // most teams currently have nothing uploaded.
+    var jerseyCountByTeam = {};
     function teamCard(t){
       var note = (t.is_upcoming && t.history_note) ? '<span class="upcoming-note">'+esc(t.history_note)+'</span>' : '';
       var formatsAttr = t.formats && t.formats.length ? ' data-formats="'+esc(t.formats.join(','))+'"' : '';
-      return '<a class="team-card" href="#/sport/'+sportSlug+'/'+compSlug+'/team/'+t.slug+'"'+formatsAttr+'>'+teamSwatch(t)+'<div class="team-info"><h3>'+esc(t.name)+'</h3>'+note+'</div></a>';
+      var count = jerseyCountByTeam[t.id] || 0;
+      var countHtml = '<span class="team-jersey-count">'+(count ? count+' jersey'+(count===1?'':'s') : 'No jerseys yet')+'</span>';
+      return '<a class="team-card" href="#/sport/'+sportSlug+'/'+compSlug+'/team/'+t.slug+'"'+formatsAttr+'>'+teamSwatch(t)+'<div class="team-info"><h3>'+esc(t.name)+'</h3>'+note+countHtml+'</div></a>';
     }
 
     // Season-by-season mini galleries underneath the team list, most recent
@@ -415,6 +438,7 @@
     // league pages. Only seasons that actually have jerseys logged show up.
     var seasonJerseysRes = await supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*)').eq('teams.competition_slug', compSlug);
     var seasonJerseys = seasonJerseysRes.data || [];
+    seasonJerseys.forEach(function(j){ jerseyCountByTeam[j.teams.id] = (jerseyCountByTeam[j.teams.id] || 0) + 1; });
     var bySeasonAll = {};
     seasonJerseys.forEach(function(j){ (bySeasonAll[j.season] = bySeasonAll[j.season] || []).push(j); });
     var seasonYears = Object.keys(bySeasonAll).sort(function(a,b){ return seasonSortKey(b) - seasonSortKey(a); });
@@ -460,32 +484,31 @@
     // very different real-world status — every Test nation also plays
     // ODI/T20I, but plenty of countries are T20I-only, and a single
     // alphabetical grid buries the likes of the USA a long way from
-    // Australia. Where teams carry a `formats` tag: filter chips switch
-    // which formats show (a team can match more than one), and the grid
-    // splits into men's/women's columns. Competitions without that
-    // tagging keep the plain grid.
+    // Australia. Where teams carry a `formats` tag, filter chips switch
+    // which formats show (a team can match more than one). Independently,
+    // any competition that mixes men's and women's teams (the merged
+    // internationals, rugby union's international, WPL/WCPL...) splits
+    // into men's/women's columns side by side.
     var formatOrder = FORMATS_BY_SPORT[sportSlug] || [];
     var hasFormatTags = activeTeams.some(function(t){ return t.formats && t.formats.length; });
-    var teamsGridHtml;
+    var menTeams = activeTeams.filter(function(t){ return !/\bwomen\b/i.test(t.name); });
+    var womenTeams = activeTeams.filter(function(t){ return /\bwomen\b/i.test(t.name); });
+    var formatChipsHtml = '';
     if(hasFormatTags){
       var presentFormats = formatOrder.filter(function(f){
         return activeTeams.some(function(t){ return t.formats && t.formats.indexOf(f) > -1; });
       });
-      var menTeams = activeTeams.filter(function(t){ return !/\bwomen\b/i.test(t.name); });
-      var womenTeams = activeTeams.filter(function(t){ return /\bwomen\b/i.test(t.name); });
-      var formatChipsHtml = '<div class="filter-row" id="team-format-filter-row">' +
+      formatChipsHtml = '<div class="filter-row" id="team-format-filter-row">' +
           '<button class="chip team-format-filter-chip is-active" data-format="" type="button">All Formats</button>' +
           presentFormats.map(function(f){ return '<button class="chip team-format-filter-chip" data-format="'+esc(f)+'" type="button">'+esc(f)+'</button>'; }).join('') +
         '</div>';
-      teamsGridHtml = formatChipsHtml + (womenTeams.length
-        ? '<div class="gender-split-grid">' +
-            '<div><h4 class="extra-kits-label">Men&rsquo;s &middot; <span id="men-count">'+menTeams.length+'</span></h4><div class="team-grid" id="men-team-grid">'+menTeams.map(teamCard).join('')+'</div></div>' +
-            '<div><h4 class="extra-kits-label">Women&rsquo;s &middot; <span id="women-count">'+womenTeams.length+'</span></h4><div class="team-grid" id="women-team-grid">'+womenTeams.map(teamCard).join('')+'</div></div>' +
-          '</div>'
-        : '<div class="team-grid">'+menTeams.map(teamCard).join('')+'</div>');
-    } else {
-      teamsGridHtml = '<div class="team-grid">'+activeTeams.map(teamCard).join('')+'</div>';
     }
+    var teamsGridHtml = formatChipsHtml + (womenTeams.length
+      ? '<div class="gender-split-grid">' +
+          '<div><h4 class="extra-kits-label">Men&rsquo;s &middot; <span id="men-count">'+menTeams.length+'</span></h4><div class="team-grid" id="men-team-grid">'+menTeams.map(teamCard).join('')+'</div></div>' +
+          '<div><h4 class="extra-kits-label">Women&rsquo;s &middot; <span id="women-count">'+womenTeams.length+'</span></h4><div class="team-grid" id="women-team-grid">'+womenTeams.map(teamCard).join('')+'</div></div>' +
+        '</div>'
+      : '<div class="team-grid">'+menTeams.map(teamCard).join('')+'</div>');
 
     return '<div class="section-head" style="align-items:center;">' +
         '<div style="display:flex;align-items:center;gap:2px;">'+compLogoSwatch(comp, {large:true})+'<h2 style="margin-left:2px;">'+esc(comp.name)+'</h2></div>' +
@@ -853,6 +876,10 @@
           '<li>Attach at least one photo &mdash; front, back, and any other angle all help, and you can label each one.</li>' +
           '<li>Submit. After it&rsquo;s approved, the sport/competition/team/season/manufacturer stay filled in so you can upload the next kit for the same team (say, the away or alternate jersey) without retyping everything &mdash; just swap the photo and jersey type.</li>' +
         '</ol>' +
+
+        '<div class="section-head" style="margin-top:30px;"><h2>What makes a good photo</h2></div>' +
+        '<p>We&rsquo;re after the best photo you can find — the main (front) image especially should be clear and in focus, showing the whole jersey with nothing cropped off or blocking the design. A clean promo photo from an online store is ideal, but a good clear photo taken at a game works well too.</p>' +
+        '<p>We understand a great photo isn&rsquo;t always out there, especially for older or obscure jerseys — do your best with what you can find. Blurry, cropped, or otherwise low-quality photos may be rejected, or replaced later if someone turns up a better one for the same jersey.</p>' +
 
         '<div class="section-head" style="margin-top:30px;"><h2>Why isn&rsquo;t my upload showing yet?</h2></div>' +
         '<p>Every submission &mdash; a jersey, an extra photo on an existing jersey, or a team logo &mdash; goes into a moderation queue first, so the archive stays accurate. You can always see your own pending submissions (they&rsquo;re marked &ldquo;Pending&rdquo;); once approved, they go live for everyone and you earn points for the contribution.</p>' +
