@@ -804,43 +804,36 @@
           relabelHtml +
           '<label class="rate-label" style="margin-top:14px;">Wrong team or sport?</label>' +
           renderJerseyReassignControl('jersey-reassign', j.id) +
-          '<label class="rate-label" style="margin-top:14px;">Also used in <small>tag another competition this same jersey was also worn in</small></label>' +
-          '<div class="chip-row" id="jersey-extra-comps"><span class="field-hint">Loading&hellip;</span></div>' +
+          '<label class="rate-label" style="margin-top:14px;">Also used in <small>one extra competition this same jersey was also worn in, e.g. a World Cup</small></label>' +
+          '<select id="jersey-extra-comp"><option value="">Loading&hellip;</option></select>' +
         '</div>' +
       '</div>';
   }
 
-  // Toggleable chip per other competition in the same sport (the jersey's
-  // own home competition is excluded — that's set via team/reassign, not
-  // here). Clicking one inserts/deletes its jersey_competitions row
-  // directly; no save button since each click is its own change.
+  // One optional extra competition per jersey (the jersey's own home
+  // competition is excluded — that's set via team/reassign, not here).
+  // Saves immediately on change — picking "None" deletes the tag.
   async function wireJerseyExtraCompsControl(jerseyId, sportSlug){
-    var container = document.getElementById('jersey-extra-comps');
-    if(!container) return;
+    var select = document.getElementById('jersey-extra-comp');
+    if(!select) return;
     var jRes = await supabaseClient.from('jerseys').select('teams(competition_slug)').eq('id', jerseyId).single();
     var primaryCompSlug = jRes.data && jRes.data.teams ? jRes.data.teams.competition_slug : null;
     var compsRes = await supabaseClient.from('competitions').select('*').eq('sport_slug', sportSlug).order('name');
     var comps = (compsRes.error ? [] : compsRes.data || []).filter(function(c){ return c.slug !== primaryCompSlug; });
     var tagRes = await supabaseClient.from('jersey_competitions').select('competition_slug').eq('jersey_id', jerseyId);
-    var tagged = {};
-    (tagRes.data || []).forEach(function(r){ tagged[r.competition_slug] = true; });
+    var current = (tagRes.data && tagRes.data[0]) ? tagRes.data[0].competition_slug : '';
 
-    if(!comps.length){ container.innerHTML = '<span class="field-hint">No other competitions in this sport yet.</span>'; return; }
-    container.innerHTML = comps.map(function(c){
-      return '<button type="button" class="chip'+(tagged[c.slug]?' is-active':'')+'" data-slug="'+esc(c.slug)+'">'+esc(c.name)+'</button>';
-    }).join('');
-    container.querySelectorAll('.chip').forEach(function(btn){
-      btn.addEventListener('click', async function(){
-        var slug = btn.dataset.slug;
-        var isActive = btn.classList.contains('is-active');
-        btn.disabled = true;
-        var res = isActive
-          ? await supabaseClient.from('jersey_competitions').delete().eq('jersey_id', jerseyId).eq('competition_slug', slug)
-          : await supabaseClient.from('jersey_competitions').insert({jersey_id: jerseyId, competition_slug: slug});
-        btn.disabled = false;
-        if(res.error){ alert('Error: ' + res.error.message); return; }
-        btn.classList.toggle('is-active');
-      });
+    select.innerHTML = '<option value="">&mdash; None &mdash;</option>' +
+      comps.map(function(c){ return '<option value="'+esc(c.slug)+'"'+(c.slug===current?' selected':'')+'>'+esc(c.name)+'</option>'; }).join('');
+    select.addEventListener('change', async function(){
+      select.disabled = true;
+      var del = await supabaseClient.from('jersey_competitions').delete().eq('jersey_id', jerseyId);
+      if(del.error){ select.disabled = false; alert('Error: ' + del.error.message); return; }
+      if(select.value){
+        var ins = await supabaseClient.from('jersey_competitions').insert({jersey_id: jerseyId, competition_slug: select.value});
+        if(ins.error){ select.disabled = false; alert('Error: ' + ins.error.message); return; }
+      }
+      select.disabled = false;
     });
   }
 
@@ -1168,10 +1161,10 @@
               '<input type="text" id="f-mfr-new" placeholder="New manufacturer">' +
               '<button type="button" class="new-value-cancel" id="f-mfr-new-cancel" aria-label="Back to list">&#10005;</button>' +
             '</div></div>' +
-          '<div class="field field-full" id="field-extra-comps"><label>Also used in <small>optional &mdash; e.g. a World Cup, on top of the competition above (same jersey, no need to upload it twice)</small></label>' +
-            '<div class="chip-row" id="f-extra-comps"></div>' +
+          '<div class="field"><label for="f-extra-comp">Also used in <small>optional &mdash; e.g. a World Cup, on top of the competition above</small></label>' +
+            '<select id="f-extra-comp"><option value="">&mdash; None &mdash;</option></select>' +
           '</div>' +
-          '<div class="field field-full" id="field-photos"><label>Photos * <small>drag in several at once, or click to choose</small></label>' +
+          '<div class="field field-full" id="field-photos"><label>Photos *</label>' +
             '<div class="dropzone" id="photo-dropzone" tabindex="0" role="button" aria-label="Add photos">' +
               ICON_PHOTO +
               '<p>Drop photos here, or click to choose</p>' +
@@ -1189,10 +1182,24 @@
   }
 
   async function ensureCompetition(sportSlug, name){
-    var slug = slugify(name);
-    var existing = await supabaseClient.from('competitions').select('*').eq('slug', slug).maybeSingle();
+    // Matched by (sport, name), not slug — several sports now legitimately
+    // have a competition simply named "International" (rugby league,
+    // football, basketball...), and competitions.slug is a bare primary
+    // key with no per-sport scoping, so a slug-only lookup could silently
+    // return a DIFFERENT sport's same-named competition (this actually
+    // happened: an upload picked as its competition rugby league's
+    // "International" but got matched to cricket's, since both slugify
+    // differently but a slug-only match found whichever existed first).
+    var existing = await supabaseClient.from('competitions').select('*').eq('sport_slug', sportSlug).ilike('name', name).maybeSingle();
     if(existing.error) throw existing.error;
     if(existing.data) return existing.data;
+    // Brand new competition — generate a slug that won't collide with a
+    // same-named competition that already exists under a different sport.
+    var baseSlug = slugify(name);
+    var slug = baseSlug;
+    var collision = await supabaseClient.from('competitions').select('slug').eq('slug', slug).maybeSingle();
+    if(collision.error) throw collision.error;
+    if(collision.data) slug = baseSlug + '-' + sportSlug;
     var ins = await supabaseClient.from('competitions').insert({slug:slug, sport_slug:sportSlug, name:name, tier:'more'}).select().single();
     if(ins.error) throw ins.error;
     return ins.data;
@@ -1426,6 +1433,7 @@
           }).join('') + '</div>'
         : '';
       var moveId = 'mod-jersey-'+j.id;
+      var reassignId = 'mod-reassign-'+j.id;
       var editId = 'mod-edit-'+j.id;
       var rejectId = 'mod-reject-'+j.id;
       return '<div class="mod-card">' +
@@ -1439,6 +1447,8 @@
           allPhotosHtml +
           '<button class="chip comp-move-toggle" data-target="'+moveId+'" type="button">Wrong competition?</button>' +
           '<div class="comp-move-panel" id="'+moveId+'" hidden>'+renderCompetitionMoveControl(moveId, team.id, comp.sport_slug, comp.slug)+'</div>' +
+          '<button class="chip mod-reassign-toggle" data-target="'+reassignId+'" type="button">Wrong team or sport?</button>' +
+          '<div class="comp-move-panel" id="'+reassignId+'" hidden data-sport-slug="'+esc(sport.slug)+'">'+renderJerseyReassignControl(reassignId, j.id)+'</div>' +
           '<button class="chip mod-edit-toggle" data-target="'+editId+'" type="button">Edit details</button>' +
           '<div class="comp-move-panel" id="'+editId+'" hidden style="max-width:420px;">' +
             '<div class="comp-move-row">' +
@@ -2089,6 +2099,18 @@
         panel.hidden = !panel.hidden;
       });
     });
+    document.querySelectorAll('.mod-reassign-toggle').forEach(function(toggle){
+      toggle.addEventListener('click', function(){
+        var panel = document.getElementById(toggle.dataset.target);
+        if(!panel.dataset.wired){
+          panel.dataset.wired = '1';
+          panel.hidden = false;
+          wireJerseyReassignControl(toggle.dataset.target, panel.dataset.sportSlug, function(){ render(); });
+          return;
+        }
+        panel.hidden = !panel.hidden;
+      });
+    });
     document.querySelectorAll('.mod-edit-toggle, .mod-reject-toggle').forEach(function(toggle){
       toggle.addEventListener('click', function(){
         var panel = document.getElementById(toggle.dataset.target);
@@ -2230,8 +2252,7 @@
     var mfrNew = document.getElementById('f-mfr-new');
     var formatField = document.getElementById('field-format');
     var formatSel = document.getElementById('f-format');
-    var extraCompsEl = document.getElementById('f-extra-comps');
-    var selectedExtraComps = []; // array of competition slugs, same-sport, primary comp excluded
+    var extraCompSel = document.getElementById('f-extra-comp');
 
     // Every "pick or add new" field is a <select> (so it looks and behaves
     // like the Sport dropdown) plus a text input that swaps in for it —
@@ -2332,7 +2353,12 @@
     });
 
     async function competitionsForSport(sportSlug){
-      var r = await supabaseClient.from('competitions').select('*').eq('sport_slug', sportSlug).order('name');
+      // Top-tier competitions (the ones actually shown without a "more"
+      // click on the site — NRL, Super League, etc.) first since they're
+      // what most uploads will actually be, then alphabetical within each
+      // group rather than one long A-Z list burying the popular ones.
+      var r = await supabaseClient.from('competitions').select('*').eq('sport_slug', sportSlug)
+        .order('tier', {ascending:false}).order('name');
       if(r.error) throw r.error;
       return r.data || [];
     }
@@ -2367,29 +2393,16 @@
         '<option value="__new__">+ Add a new team…</option>';
       teamSelect.hidden = false; teamNewRow.hidden = true; teamNew.value = ''; teamNew.required = false;
     }
-    // Chips for every OTHER competition in the same sport (the primary
-    // one picked above is excluded — that's set via the Competition field,
-    // not here). Re-rendering keeps whichever were already toggled on.
+    // One optional extra competition in the same sport (the primary one
+    // picked above is excluded — that's set via the Competition field,
+    // not here). Keeps whatever was already picked when re-rendered.
     async function refreshExtraComps(){
       var comps = await competitionsForSport(sportSel.value);
       var primaryVal = compSelect.value.toLowerCase();
       var others = comps.filter(function(c){ return c.name.toLowerCase() !== primaryVal; });
-      var prevSelected = {};
-      selectedExtraComps.forEach(function(s){ prevSelected[s] = true; });
-      selectedExtraComps.length = 0;
-      extraCompsEl.innerHTML = others.length ? others.map(function(c){
-        var active = !!prevSelected[c.slug];
-        if(active) selectedExtraComps.push(c.slug);
-        return '<button type="button" class="chip'+(active?' is-active':'')+'" data-slug="'+esc(c.slug)+'">'+esc(c.name)+'</button>';
-      }).join('') : '<span class="field-hint">No other competitions in this sport yet.</span>';
-      extraCompsEl.querySelectorAll('.chip').forEach(function(btn){
-        btn.addEventListener('click', function(){
-          var slug = btn.dataset.slug;
-          var idx = selectedExtraComps.indexOf(slug);
-          if(idx > -1){ selectedExtraComps.splice(idx, 1); btn.classList.remove('is-active'); }
-          else { selectedExtraComps.push(slug); btn.classList.add('is-active'); }
-        });
-      });
+      var prevValue = extraCompSel.value;
+      extraCompSel.innerHTML = '<option value="">&mdash; None &mdash;</option>' +
+        others.map(function(c){ return '<option value="'+esc(c.slug)+'"'+(c.slug===prevValue?' selected':'')+'>'+esc(c.name)+'</option>'; }).join('');
     }
     // After a successful upload: re-list competitions/teams (in case one
     // was just created via "+ Add a new one…") and select the one just
@@ -2412,7 +2425,7 @@
         teams.map(function(t){ return '<option value="'+esc(t.name)+'"'+(t.name===teamName?' selected':'')+'>'+esc(t.name)+'</option>'; }).join('') +
         '<option value="__new__">+ Add a new team…</option>';
       teamSelect.hidden = false; teamNewRow.hidden = true; teamNew.value = ''; teamNew.required = false;
-      selectedExtraComps.length = 0;
+      extraCompSel.value = '';
       await refreshExtraComps();
     }
     function refreshFormat(){
@@ -2546,10 +2559,8 @@
         if(jerseyIns.error) throw jerseyIns.error;
         var jersey = jerseyIns.data;
 
-        if(selectedExtraComps.length){
-          var tagIns = await supabaseClient.from('jersey_competitions').insert(
-            selectedExtraComps.map(function(slug){ return {jersey_id: jersey.id, competition_slug: slug}; })
-          );
+        if(extraCompSel.value){
+          var tagIns = await supabaseClient.from('jersey_competitions').insert({jersey_id: jersey.id, competition_slug: extraCompSel.value});
           if(tagIns.error) throw tagIns.error;
         }
 
