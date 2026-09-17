@@ -859,26 +859,46 @@
     return '<div class="sport-team-columns">'+groups+'</div>';
   }
 
+  // Supabase/PostgREST caps how many rows a single request can return
+  // (commonly 1000) — a plain .select() over a table bigger than that
+  // silently truncates instead of erroring. The teams table in
+  // particular has grown well past that with everything added this
+  // year, so anything that needs "every row" pages through with
+  // .range() until a page comes back short, rather than trusting one
+  // request to have gotten everything.
+  async function fetchAllRows(table, selectStr, applyFilters){
+    var pageSize = 1000, all = [], from = 0;
+    while(true){
+      var q = supabaseClient.from(table).select(selectStr);
+      if(applyFilters) q = applyFilters(q);
+      var res = await q.range(from, from + pageSize - 1);
+      if(res.error) throw res.error;
+      var rows = res.data || [];
+      all = all.concat(rows);
+      if(rows.length < pageSize) break;
+      from += pageSize;
+    }
+    return all;
+  }
+
   async function viewSearch(term){
     setCrumbs([{label:'Home', href:'#/'},{label:'Search: '+term, href:'#'}]);
 
     // Matched by name so a team with nothing uploaded yet still shows up
     // and can be clicked into (and uploaded to) instead of the search
     // looking like a dead end just because it has zero jerseys so far.
-    var teamsRes = await supabaseClient.from('teams').select('*, competitions(*, sports(*))');
-    if(teamsRes.error) throw teamsRes.error;
+    var teamRows = await fetchAllRows('teams', '*, competitions(*, sports(*))');
     // Guards against a team whose competition/sport link is broken (a
     // stale or orphaned row) — such a team can't be linked to safely, so
     // it's excluded here rather than throwing and blanking the whole
     // page over one bad record.
-    var allTeams = (teamsRes.data || []).filter(function(t){ return t.competitions && t.competitions.sports; });
+    var allTeams = teamRows.filter(function(t){ return t.competitions && t.competitions.sports; });
     var teamMatches = allTeams.filter(function(t){
       return searchTextMatches(t.name, term);
     }).sort(function(a,b){ return a.name.localeCompare(b.name); });
 
-    var res = await supabaseClient.from('jerseys').select('*, jersey_images(*), teams(*, competitions(*, sports(*)))');
-    if(res.error) throw res.error;
-    var matches = (res.data || []).filter(function(j){
+    var jerseyRows = await fetchAllRows('jerseys', '*, jersey_images(*), teams(*, competitions(*, sports(*)))');
+    var matches = jerseyRows.filter(function(j){
       var t = j.teams, c = t && t.competitions;
       if(!t || !c || !c.sports) return false;
       return searchTextMatches(t.name, term) || searchTextMatches(c.name, term) ||
@@ -2685,9 +2705,11 @@
     try{
       var teamsCountRes = await supabaseClient.from('teams').select('id', {count:'exact', head:true});
       var compsCountRes = await supabaseClient.from('competitions').select('slug', {count:'exact', head:true});
-      var jerseysRes = await supabaseClient.from('jerseys').select('manufacturer, uploaded_by').eq('status', 'approved');
-      if(teamsCountRes.error || compsCountRes.error || jerseysRes.error) return;
-      var jerseys = jerseysRes.data || [];
+      if(teamsCountRes.error || compsCountRes.error) return;
+      // head:true counts aren't capped by the row-return limit, but a
+      // plain row fetch is — paginated the same way as search so this
+      // doesn't quietly under-count once jerseys passes that limit too.
+      var jerseys = await fetchAllRows('jerseys', 'manufacturer, uploaded_by', function(q){ return q.eq('status', 'approved'); });
       var manufacturers = {}, contributors = {};
       jerseys.forEach(function(j){
         var m = (j.manufacturer || '').trim();
