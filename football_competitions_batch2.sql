@@ -41,6 +41,9 @@
 --   know to be wrong.
 -- ============================================================
 
+alter table teams add column if not exists is_upcoming boolean not null default false;
+alter table teams add column if not exists history_note text;
+
 insert into competitions (slug, sport_slug, name, tier) values
   ('nwsl','football','NWSL','top'),
   ('wsl','football','Women''s Super League','more'),
