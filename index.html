@@ -172,6 +172,8 @@
   .comp-card strong{font-size:13.5px;}
 
   .team-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;}
+  .gender-split-grid{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start;}
+  @media (max-width:680px){ .gender-split-grid{grid-template-columns:1fr;} }
   .team-card{display:flex;align-items:center;gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;text-decoration:none;color:var(--text);transition:border-color .15s ease,transform .15s ease;}
   .team-card:hover{border-color:var(--accent);transform:translateY(-2px);}
   .team-swatch{width:40px;height:40px;border-radius:10px;flex-shrink:0;position:relative;overflow:hidden;border:1px solid var(--line);}
@@ -331,7 +333,7 @@
 })();
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="config.js?v=46"></script>
-<script src="app.js?v=46"></script>
+<script src="config.js?v=47"></script>
+<script src="app.js?v=47"></script>
 </body>
 </html>

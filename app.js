@@ -405,7 +405,8 @@
 
     function teamCard(t){
       var note = (t.is_upcoming && t.history_note) ? '<span class="upcoming-note">'+esc(t.history_note)+'</span>' : '';
-      return '<a class="team-card" href="#/sport/'+sportSlug+'/'+compSlug+'/team/'+t.slug+'">'+teamSwatch(t)+'<div class="team-info"><h3>'+esc(t.name)+'</h3>'+note+'</div></a>';
+      var formatsAttr = t.formats && t.formats.length ? ' data-formats="'+esc(t.formats.join(','))+'"' : '';
+      return '<a class="team-card" href="#/sport/'+sportSlug+'/'+compSlug+'/team/'+t.slug+'"'+formatsAttr+'>'+teamSwatch(t)+'<div class="team-info"><h3>'+esc(t.name)+'</h3>'+note+'</div></a>';
     }
 
     // Season-by-season mini galleries underneath the team list, most recent
@@ -459,9 +460,10 @@
     // very different real-world status — every Test nation also plays
     // ODI/T20I, but plenty of countries are T20I-only, and a single
     // alphabetical grid buries the likes of the USA a long way from
-    // Australia. Where teams carry a `formats` tag, split the grid into
-    // one section per format instead (a team can appear in more than
-    // one); competitions without that tagging keep the plain grid.
+    // Australia. Where teams carry a `formats` tag: filter chips switch
+    // which formats show (a team can match more than one), and the grid
+    // splits into men's/women's columns. Competitions without that
+    // tagging keep the plain grid.
     var formatOrder = FORMATS_BY_SPORT[sportSlug] || [];
     var hasFormatTags = activeTeams.some(function(t){ return t.formats && t.formats.length; });
     var teamsGridHtml;
@@ -469,12 +471,18 @@
       var presentFormats = formatOrder.filter(function(f){
         return activeTeams.some(function(t){ return t.formats && t.formats.indexOf(f) > -1; });
       });
-      var untaggedTeams = activeTeams.filter(function(t){ return !t.formats || !t.formats.length; });
-      teamsGridHtml = presentFormats.map(function(f){
-        var group = activeTeams.filter(function(t){ return t.formats && t.formats.indexOf(f) > -1; });
-        return '<h4 class="extra-kits-label">'+esc(f)+' &middot; '+group.length+'</h4><div class="team-grid">'+group.map(teamCard).join('')+'</div>';
-      }).join('') +
-        (untaggedTeams.length ? '<h4 class="extra-kits-label">Other</h4><div class="team-grid">'+untaggedTeams.map(teamCard).join('')+'</div>' : '');
+      var menTeams = activeTeams.filter(function(t){ return !/\bwomen\b/i.test(t.name); });
+      var womenTeams = activeTeams.filter(function(t){ return /\bwomen\b/i.test(t.name); });
+      var formatChipsHtml = '<div class="filter-row" id="team-format-filter-row">' +
+          '<button class="chip team-format-filter-chip is-active" data-format="" type="button">All Formats</button>' +
+          presentFormats.map(function(f){ return '<button class="chip team-format-filter-chip" data-format="'+esc(f)+'" type="button">'+esc(f)+'</button>'; }).join('') +
+        '</div>';
+      teamsGridHtml = formatChipsHtml + (womenTeams.length
+        ? '<div class="gender-split-grid">' +
+            '<div><h4 class="extra-kits-label">Men&rsquo;s &middot; '+menTeams.length+'</h4><div class="team-grid">'+menTeams.map(teamCard).join('')+'</div></div>' +
+            '<div><h4 class="extra-kits-label">Women&rsquo;s &middot; '+womenTeams.length+'</h4><div class="team-grid">'+womenTeams.map(teamCard).join('')+'</div></div>' +
+          '</div>'
+        : '<div class="team-grid">'+menTeams.map(teamCard).join('')+'</div>');
     } else {
       teamsGridHtml = '<div class="team-grid">'+activeTeams.map(teamCard).join('')+'</div>';
     }
@@ -1406,6 +1414,20 @@
           document.querySelectorAll('.season-group').forEach(function(group){
             var cards = group.querySelectorAll('.jersey-card');
             group.hidden = cards.length > 0 && Array.prototype.every.call(cards, function(c){ return c.hidden; });
+          });
+        });
+      });
+    }
+    var teamFormatFilterRow = document.getElementById('team-format-filter-row');
+    if(teamFormatFilterRow){
+      teamFormatFilterRow.querySelectorAll('.team-format-filter-chip').forEach(function(chip){
+        chip.addEventListener('click', function(){
+          teamFormatFilterRow.querySelectorAll('.team-format-filter-chip').forEach(function(c){ c.classList.remove('is-active'); });
+          chip.classList.add('is-active');
+          var wanted = chip.dataset.format;
+          document.querySelectorAll('.team-grid .team-card').forEach(function(card){
+            var formats = card.dataset.formats ? card.dataset.formats.split(',') : [];
+            card.hidden = !!wanted && formats.indexOf(wanted) === -1;
           });
         });
       });
