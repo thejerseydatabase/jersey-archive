@@ -27,10 +27,33 @@
   // after (Test/First Class, ODI/One Day, T20I/T20, T10I/T10) — the "I"
   // suffix always means international.
   var FORMATS_BY_SPORT = { cricket: ['Test','First Class','ODI','One Day','T20I','T20','T10I','T10'] };
-  var CURATED_TYPES = ['Home','Away','Third','Alternate','Indigenous','Heritage','Training'];
-  // Fixed lead-in, most-used-globally kits — after these, the upload form
-  // fills in with whatever's actually used most in the selected sport.
-  var PRIORITY_MANUFACTURERS = ['Adidas','Nike','Puma','Umbro','Macron','Dynasty Sport','Asics','Classic Sportswear'];
+  // Every sport gets these; sports in the per-slug lists below also get
+  // those on top. Indigenous jerseys are a rugby league/union/AFL/netball
+  // thing (and a few others) — not something football, cricket etc. have,
+  // so it's opt-in per sport rather than shown everywhere (a one-off
+  // special jersey can still be typed in via "+ Add a new one…").
+  var CURATED_TYPES = ['Home','Away','Third','Alternate','Heritage','Training'];
+  var EXTRA_TYPES_BY_SPORT = {
+    'rugby-league': ['Indigenous'],
+    'rugby-union': ['Indigenous'],
+    afl: ['Indigenous'],
+    netball: ['Indigenous'],
+    cricket: ['Indigenous'],
+    'field-hockey': ['Indigenous']
+  };
+  // Fixed lead-in, well-known kit makers across every sport on the site —
+  // shown up front regardless of whether they've been used yet, so an
+  // already-real brand doesn't get re-added as "new" just because nobody's
+  // uploaded that sport/brand combo before. After these, the form fills in
+  // with whatever's actually used most in the selected sport, then anything
+  // else already used anywhere else on the site.
+  var PRIORITY_MANUFACTURERS = [
+    'Adidas','Nike','Puma','Umbro','Kappa','Macron','Under Armour','New Balance',
+    'Joma','Hummel','Errea','Uhlsport','Mizuno','Asics','Canterbury','BLK','ISC',
+    'Classic Sportswear','Dynasty Sport','O\'Neills','Castore','Kukri',
+    'Le Coq Sportif','Diadora','Lotto','Legea','Fanatics','Majestic','New Era',
+    'CCM','Bauer','Champion'
+  ];
 
   // Reputation tiers by upload points — adjust thresholds/colors/labels here.
   var TIERS = [
@@ -51,6 +74,11 @@
   }
 
   var currentUser = null, currentProfile = null, pendingCount = 0;
+  // Remembers which sport pages had "More competitions" expanded, so
+  // navigating back to one (e.g. after clicking into a team from the
+  // expanded list) shows it already open instead of re-collapsing —
+  // a fresh visit still starts collapsed and needs the click.
+  var expandedSportComps = {};
 
   /* ================= helpers ================= */
   function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -389,9 +417,10 @@
     } else {
       var top = comps.filter(function(c){ return c.tier === 'top'; });
       var more = comps.filter(function(c){ return c.tier !== 'top'; });
+      var isExpanded = !!expandedSportComps[sportSlug];
       compsHtml = '<div class="comp-grid">'+top.map(compCard).join('')+'</div>' +
-        (more.length ? '<button class="chip more-toggle" id="more-comps-btn" type="button">More competitions ↓</button>' +
-          '<div class="comp-grid" id="more-comps" hidden style="margin-top:12px;">'+more.map(compCard).join('')+'</div>' : '');
+        (more.length ? '<button class="chip more-toggle" id="more-comps-btn" type="button">'+(isExpanded ? 'Show fewer ↑' : 'More competitions ↓')+'</button>' +
+          '<div class="comp-grid" id="more-comps"'+(isExpanded ? '' : ' hidden')+' style="margin-top:12px;">'+more.map(compCard).join('')+'</div>' : '');
     }
 
     var recentHtml = comps.length ? await recentJerseysHtml(comps.map(function(c){ return c.slug; })) : '';
@@ -1778,6 +1807,11 @@
         var panel = document.getElementById('more-comps');
         panel.hidden = !panel.hidden;
         moreBtn.textContent = panel.hidden ? 'More competitions ↓' : 'Show fewer ↑';
+        var parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
+        if(parts[0]==='sport' && parts[1]){
+          if(panel.hidden) delete expandedSportComps[parts[1]];
+          else expandedSportComps[parts[1]] = true;
+        }
       });
     }
     var thumbsWrap = document.getElementById('gallery-thumbs');
@@ -2550,22 +2584,46 @@
       });
       return counts;
     }
+    // Every manufacturer ever used on the site, any sport — fetched once
+    // per form load and cached, so it's cheap to fall back to for "already
+    // in the system somewhere, just not this sport yet" brands.
+    var globalMfrListCache = null;
+    async function getGlobalManufacturers(){
+      if(globalMfrListCache) return globalMfrListCache;
+      var rows = await fetchAllRows('jerseys', 'manufacturer', function(q){ return q.eq('status', 'approved'); });
+      var seen = {};
+      rows.forEach(function(r){
+        var v = (r.manufacturer || '').toString().trim();
+        if(v) seen[v] = true;
+      });
+      globalMfrListCache = Object.keys(seen);
+      return globalMfrListCache;
+    }
     async function refreshMfrTypeOptions(){
       var sportSlug = sportSel.value;
       var typeCounts = await usageCounts('type', sportSlug);
       var mfrCounts = await usageCounts('manufacturer', sportSlug);
+      var globalMfrs = await getGlobalManufacturers();
 
-      var typeExtra = Object.keys(typeCounts).filter(function(t){ return CURATED_TYPES.indexOf(t) === -1; })
+      var curatedTypes = CURATED_TYPES.concat(EXTRA_TYPES_BY_SPORT[sportSlug] || []);
+      var typeExtra = Object.keys(typeCounts).filter(function(t){ return curatedTypes.indexOf(t) === -1; })
         .sort(function(a,b){ return typeCounts[b] - typeCounts[a]; });
       typeSelect.innerHTML = '<option value="">Select a type</option>' +
-        CURATED_TYPES.concat(typeExtra).map(function(t){ return '<option value="'+esc(t)+'">'+esc(t)+'</option>'; }).join('') +
+        curatedTypes.concat(typeExtra).map(function(t){ return '<option value="'+esc(t)+'">'+esc(t)+'</option>'; }).join('') +
         '<option value="__new__">+ Add a new one…</option>';
       typeSelect.hidden = false; typeNewRow.hidden = true; typeNew.value = ''; typeNew.required = false;
 
+      // Priority brands first, then whatever's actually popular in this
+      // sport, then everything else already used ANYWHERE on the site
+      // (alphabetical) so a brand added for one sport doesn't look "new"
+      // again just because this is its first time in a different sport.
       var mfrExtra = Object.keys(mfrCounts).filter(function(m){ return PRIORITY_MANUFACTURERS.indexOf(m) === -1; })
         .sort(function(a,b){ return mfrCounts[b] - mfrCounts[a]; });
+      var listedSoFar = {};
+      PRIORITY_MANUFACTURERS.concat(mfrExtra).forEach(function(m){ listedSoFar[m] = true; });
+      var mfrRest = globalMfrs.filter(function(m){ return !listedSoFar[m]; }).sort();
       mfrSelect.innerHTML = '<option value="">&mdash; Unlisted &mdash;</option>' +
-        PRIORITY_MANUFACTURERS.concat(mfrExtra).map(function(m){ return '<option value="'+esc(m)+'">'+esc(m)+'</option>'; }).join('') +
+        PRIORITY_MANUFACTURERS.concat(mfrExtra).concat(mfrRest).map(function(m){ return '<option value="'+esc(m)+'">'+esc(m)+'</option>'; }).join('') +
         '<option value="__new__">+ Add a new one…</option>';
       mfrSelect.hidden = false; mfrNewRow.hidden = true; mfrNew.value = ''; mfrNew.required = false;
     }
