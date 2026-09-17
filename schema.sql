@@ -33,7 +33,7 @@ create policy "profiles are publicly readable"
   on profiles for select using (true);
 
 create policy "users can update their own profile"
-  on profiles for update using (auth.uid() = id);
+  on profiles for update using ((select auth.uid()) = id);
 
 -- Every security definer function below pins search_path = public.
 -- Without it, a security definer function resolves unqualified table
@@ -102,8 +102,8 @@ create policy "authenticated users can add competitions"
   on competitions for insert to authenticated with check (true);
 create policy "admins can edit competitions"
   on competitions for update
-  using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin))
-  with check (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+  using (exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin))
+  with check (exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin));
 
 
 -- ============ teams ============
@@ -145,8 +145,8 @@ create policy "authenticated users can add teams"
   on teams for insert to authenticated with check (true);
 create policy "admins can edit teams"
   on teams for update
-  using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin))
-  with check (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+  using (exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin))
+  with check (exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin));
 
 
 -- ============ jerseys ============
@@ -181,23 +181,28 @@ alter table jerseys enable row level security;
 create policy "visible jerseys are readable"
   on jerseys for select using (
     status = 'approved'
-    or uploaded_by = auth.uid()
-    or exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin)
+    or uploaded_by = (select auth.uid())
+    or exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin)
   );
 create policy "authenticated users can upload jerseys"
-  on jerseys for insert to authenticated with check (auth.uid() = uploaded_by);
--- you can edit your own jersey while it's pending, but can't approve yourself
-create policy "users can edit their own pending jerseys"
+  on jerseys for insert to authenticated with check ((select auth.uid()) = uploaded_by);
+-- you can edit your own jersey while it's pending (but can't approve
+-- yourself), or an admin can moderate any jersey — combined into one
+-- policy (rather than two separate permissive UPDATE policies) so
+-- Postgres only has to evaluate one OR'd check per row instead of two.
+create policy "users can edit their own jerseys, admins can moderate any"
   on jerseys for update
-  using (auth.uid() = uploaded_by)
-  with check (auth.uid() = uploaded_by and status = 'pending');
-create policy "admins can moderate jerseys"
-  on jerseys for update
-  using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin))
-  with check (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+  using (
+    uploaded_by = (select auth.uid())
+    or exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin)
+  )
+  with check (
+    (uploaded_by = (select auth.uid()) and status = 'pending')
+    or exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin)
+  );
 create policy "admins can delete jerseys"
   on jerseys for delete
-  using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+  using (exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin));
 
 -- award an upload point once a submission is actually approved, not on raw submission
 create function award_upload_point()
@@ -235,28 +240,31 @@ create table jersey_images (
 alter table jersey_images enable row level security;
 create policy "images of visible jerseys are readable"
   on jersey_images for select using (
-    (status = 'approved' or uploaded_by = auth.uid() or exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin))
+    (status = 'approved' or uploaded_by = (select auth.uid()) or exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin))
     and exists (select 1 from jerseys j where j.id = jersey_id and (
-      j.status = 'approved' or j.uploaded_by = auth.uid()
-      or exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin)
+      j.status = 'approved' or j.uploaded_by = (select auth.uid())
+      or exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin)
     ))
   );
-create policy "authenticated users can add images to their own jerseys"
+-- covers both a fresh jersey's own photos and a later-proposed extra
+-- photo on an already-approved jersey — combined into one policy
+-- (rather than two separate permissive INSERT policies for the same
+-- role) so Postgres only evaluates one OR'd check per row.
+create policy "authenticated users can add or propose jersey photos"
   on jersey_images for insert to authenticated with check (
-    exists (select 1 from jerseys where jerseys.id = jersey_id and jerseys.uploaded_by = auth.uid())
-  );
-create policy "authenticated users can propose extra photos"
-  on jersey_images for insert to authenticated with check (
-    uploaded_by = auth.uid() and status = 'pending'
-    and exists (select 1 from jerseys j where j.id = jersey_id and j.status = 'approved')
+    exists (select 1 from jerseys where jerseys.id = jersey_id and jerseys.uploaded_by = (select auth.uid()))
+    or (
+      uploaded_by = (select auth.uid()) and status = 'pending'
+      and exists (select 1 from jerseys j where j.id = jersey_id and j.status = 'approved')
+    )
   );
 create policy "admins can moderate jersey photos"
   on jersey_images for update
-  using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin))
-  with check (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+  using (exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin))
+  with check (exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin));
 create policy "admins can delete jersey image rows"
   on jersey_images for delete
-  using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+  using (exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin));
 
 
 -- ============ jersey_competitions ============
@@ -279,13 +287,13 @@ create policy "jersey_competitions are publicly readable"
   on jersey_competitions for select using (true);
 create policy "jersey owner can tag extra competitions while pending"
   on jersey_competitions for insert to authenticated with check (
-    exists (select 1 from jerseys j where j.id = jersey_id and j.uploaded_by = auth.uid() and j.status = 'pending')
-    or exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin)
+    exists (select 1 from jerseys j where j.id = jersey_id and j.uploaded_by = (select auth.uid()) and j.status = 'pending')
+    or exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin)
   );
 create policy "jersey owner can untag extra competitions while pending"
   on jersey_competitions for delete using (
-    exists (select 1 from jerseys j where j.id = jersey_id and j.uploaded_by = auth.uid() and j.status = 'pending')
-    or exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin)
+    exists (select 1 from jerseys j where j.id = jersey_id and j.uploaded_by = (select auth.uid()) and j.status = 'pending')
+    or exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin)
   );
 
 
@@ -301,9 +309,9 @@ create table ratings (
 alter table ratings enable row level security;
 create policy "ratings are publicly readable" on ratings for select using (true);
 create policy "authenticated users can rate"
-  on ratings for insert to authenticated with check (auth.uid() = user_id);
+  on ratings for insert to authenticated with check ((select auth.uid()) = user_id);
 create policy "users can change their own rating"
-  on ratings for update using (auth.uid() = user_id);
+  on ratings for update using ((select auth.uid()) = user_id);
 
 -- a view that does the average-rating math so the app never has to
 -- security_invoker: runs with the querying user's own RLS/permissions
@@ -337,11 +345,11 @@ create table reports (
 alter table reports enable row level security;
 create policy "anyone can submit a report" on reports for insert with check (true);
 create policy "admins can read reports"
-  on reports for select using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+  on reports for select using (exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin));
 create policy "admins can resolve reports"
   on reports for update
-  using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin))
-  with check (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+  using (exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin))
+  with check (exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin));
 
 -- reports allow anonymous submission by design; attachments follow the same
 -- rule. Needs a "report-attachments" Storage bucket (Public bucket ON).
@@ -391,17 +399,17 @@ alter table team_logo_proposals enable row level security;
 -- same as an approved jersey), otherwise only the proposer and admins
 create policy "logo proposals are readable once approved, or by proposer/admins"
   on team_logo_proposals for select using (
-    status = 'approved' or proposed_by = auth.uid() or exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin)
+    status = 'approved' or proposed_by = (select auth.uid()) or exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin)
   );
 create policy "authenticated users can propose a team logo"
-  on team_logo_proposals for insert to authenticated with check (proposed_by = auth.uid());
+  on team_logo_proposals for insert to authenticated with check (proposed_by = (select auth.uid()));
 create policy "admins can moderate logo proposals"
   on team_logo_proposals for update
-  using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin))
-  with check (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+  using (exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin))
+  with check (exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin));
 create policy "admins can delete logo proposals"
   on team_logo_proposals for delete
-  using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+  using (exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin));
 
 -- award an upload point once a proposed logo is actually approved, same as
 -- jerseys — before-update so it can flip point_awarded on the same row and
@@ -442,11 +450,11 @@ alter table team_logos enable row level security;
 create policy "team logo history is publicly readable" on team_logos for select using (true);
 create policy "admins can add to team logo history"
   on team_logos for insert to authenticated
-  with check (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+  with check (exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin));
 create policy "admins can update team logo history"
   on team_logos for update
-  using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin))
-  with check (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+  using (exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin))
+  with check (exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin));
 
 
 -- ============ competition logos ============
@@ -467,17 +475,17 @@ create table competition_logo_proposals (
 alter table competition_logo_proposals enable row level security;
 create policy "comp logo proposals are readable once approved, or by proposer/admins"
   on competition_logo_proposals for select using (
-    status = 'approved' or proposed_by = auth.uid() or exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin)
+    status = 'approved' or proposed_by = (select auth.uid()) or exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin)
   );
 create policy "authenticated users can propose a competition logo"
-  on competition_logo_proposals for insert to authenticated with check (proposed_by = auth.uid());
+  on competition_logo_proposals for insert to authenticated with check (proposed_by = (select auth.uid()));
 create policy "admins can moderate comp logo proposals"
   on competition_logo_proposals for update
-  using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin))
-  with check (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+  using (exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin))
+  with check (exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin));
 create policy "admins can delete comp logo proposals"
   on competition_logo_proposals for delete
-  using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+  using (exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin));
 
 create function award_comp_logo_point()
 returns trigger as $$
@@ -509,11 +517,11 @@ alter table competition_logos enable row level security;
 create policy "competition logo history is publicly readable" on competition_logos for select using (true);
 create policy "admins can add to competition logo history"
   on competition_logos for insert to authenticated
-  with check (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+  with check (exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin));
 create policy "admins can update competition logo history"
   on competition_logos for update
-  using (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin))
-  with check (exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin));
+  using (exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin))
+  with check (exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin));
 
 
 -- ============ basic spam protection ============
