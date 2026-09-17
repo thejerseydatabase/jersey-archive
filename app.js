@@ -5,7 +5,10 @@
   var ICON_PHOTO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="26" height="26"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M3 17l5-4 4 3 3-2 6 5"/><path d="M17 3v4M15 5h4"/></svg>';
   var ICON_PENCIL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>';
   var ICON_FLAG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22V3"/></svg>';
-  var FORMATS_BY_SPORT = { cricket: ['Test','T20','T20I','ODI','One Day','First Class'] };
+  // International formats paired with their domestic equivalent right
+  // after (Test/First Class, ODI/One Day, T20I/T20, T10I/T10) — the "I"
+  // suffix always means international.
+  var FORMATS_BY_SPORT = { cricket: ['Test','First Class','ODI','One Day','T20I','T20','T10I','T10'] };
   var CURATED_TYPES = ['Home','Away','Third','Alternate','Indigenous','Heritage','Training'];
   // Fixed lead-in, most-used-globally kits — after these, the upload form
   // fills in with whatever's actually used most in the selected sport.
@@ -55,8 +58,13 @@
   // seasons still used Home/Away/Alternate/Heritage). Each entry is a
   // priority slot; a jersey whose type isn't recognised for that sport
   // just falls in after all named slots, in upload order.
+  // "Road" is the major-USA-sports term for an away jersey (NFL/NHL/MLB/
+  // classic-era NBA); international/other sports don't use it, so it's
+  // only added as an "away" synonym on those specific lists (and the
+  // generic fallback, which is what classic-era NBA/NBL/WNBL and non-NHL
+  // ice hockey fall back to).
   var GENERIC_TYPE_ORDER = [
-    ['home','primary'], ['away'], ['third'], ['alternate'],
+    ['home','primary'], ['away','road'], ['third'], ['alternate'],
     ['indigenous','first nations'], ['heritage']
   ];
   var SPORT_TYPE_ORDERS = {
@@ -64,11 +72,11 @@
     'rugby-league': [['home','primary'], ['away'], ['indigenous','first nations'], ['alternate'], ['heritage']],
     'rugby-union': [['home','primary'], ['away','alternate']],
     afl: [['home','primary'], ['away'], ['clash']],
-    'american-football': [['home','primary'], ['away'], ['throwback','heritage'], ['alternate']],
-    baseball: [['home','primary'], ['away'], ['third'], ['fourth'], ['alternate'], ['city connect']]
+    'american-football': [['home','primary'], ['away','road'], ['throwback','heritage'], ['alternate']],
+    baseball: [['home','primary'], ['away','road'], ['third'], ['fourth'], ['alternate'], ['city connect']]
   };
   var NBA_MODERN_TYPE_ORDER = [['association'], ['icon'], ['statement'], ['classic'], ['city']];
-  var NHL_TYPE_ORDER = [['home','primary'], ['away'], ['third'], ['alternate'], ['heritage classic'], ['reverse retro']];
+  var NHL_TYPE_ORDER = [['home','primary'], ['away','road'], ['third'], ['alternate'], ['heritage classic'], ['reverse retro']];
   function typeOrderGroupsFor(sportSlug, compSlug, seasonLabel){
     if(sportSlug === 'basketball' && compSlug === 'nba' && seasonSortKey(seasonLabel) >= 2017) return NBA_MODERN_TYPE_ORDER;
     if(compSlug === 'nhl') return NHL_TYPE_ORDER;
@@ -169,7 +177,7 @@
     var secondary = opts.showTeam ? yearType : (jersey.manufacturer || 'Unlisted');
     var pendingBadge = jersey.status === 'rejected' ? '<span class="pending-badge is-rejected">Rejected</span>'
       : (jersey.status && jersey.status !== 'approved' ? '<span class="pending-badge">Pending</span>' : '');
-    return '<a class="jersey-card" href="#/jersey/'+jersey.id+'">' + pendingBadge +
+    return '<a class="jersey-card" href="#/jersey/'+jersey.id+'" data-format="'+esc(jersey.format || '')+'">' + pendingBadge +
       '<div class="jersey-thumb">'+jerseyThumb(jersey, team)+'</div>' +
       '<div class="jersey-label"><strong>'+esc(primary)+'</strong><span>'+esc(secondary)+'</span></div>' +
     '</a>';
@@ -503,6 +511,21 @@
         }).join(' &middot; ') + '</p>'
       : '';
 
+    // Cricket (and anything else with a Format field) can have a team's
+    // jerseys spread across several formats — Test, ODI, T20I and so on
+    // all live on this same page, so a quick filter jumps between them
+    // instead of needing separate pages per format.
+    var sportFormats = FORMATS_BY_SPORT[sportSlug];
+    var formatsPresent = sportFormats
+      ? sportFormats.filter(function(f){ return jerseys.some(function(j){ return j.format === f; }); })
+      : [];
+    var formatFilterHtml = formatsPresent.length > 1
+      ? '<div class="filter-row" id="format-filter-row">' +
+          '<button class="chip format-filter-chip is-active" data-format="" type="button">All formats</button>' +
+          formatsPresent.map(function(f){ return '<button class="chip format-filter-chip" data-format="'+esc(f)+'" type="button">'+esc(f)+'</button>'; }).join('') +
+        '</div>'
+      : '';
+
     var isAdmin = currentProfile && currentProfile.is_admin;
     var isActiveTeam = team.is_active !== false;
     var statusBadge = team.is_upcoming
@@ -554,6 +577,7 @@
       siblingsHtml +
       historyHtml +
       logoBlock +
+      formatFilterHtml +
       (groups || '<div class="empty-note">No jerseys logged yet.</div>') +
       renderReportButton('team', team.id, team.name) +
       adminSettingsBlock;
@@ -1332,6 +1356,24 @@
         var q = teamFilter.value.toLowerCase();
         document.querySelectorAll('#team-grid .team-card').forEach(function(card){
           card.hidden = card.querySelector('h3').textContent.toLowerCase().indexOf(q) === -1;
+        });
+      });
+    }
+    var formatFilterRow = document.getElementById('format-filter-row');
+    if(formatFilterRow){
+      formatFilterRow.querySelectorAll('.format-filter-chip').forEach(function(chip){
+        chip.addEventListener('click', function(){
+          formatFilterRow.querySelectorAll('.format-filter-chip').forEach(function(c){ c.classList.remove('is-active'); });
+          chip.classList.add('is-active');
+          var wanted = chip.dataset.format;
+          document.querySelectorAll('.jersey-card[data-format]').forEach(function(card){
+            card.hidden = !!wanted && card.dataset.format !== wanted;
+          });
+          // hide a whole season group if every card in it just got hidden
+          document.querySelectorAll('.season-group').forEach(function(group){
+            var cards = group.querySelectorAll('.jersey-card');
+            group.hidden = cards.length > 0 && Array.prototype.every.call(cards, function(c){ return c.hidden; });
+          });
         });
       });
     }
