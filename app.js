@@ -455,12 +455,36 @@
         '</div>'
       : '';
 
+    // Some competitions (international cricket especially) mix teams with
+    // very different real-world status — every Test nation also plays
+    // ODI/T20I, but plenty of countries are T20I-only, and a single
+    // alphabetical grid buries the likes of the USA a long way from
+    // Australia. Where teams carry a `formats` tag, split the grid into
+    // one section per format instead (a team can appear in more than
+    // one); competitions without that tagging keep the plain grid.
+    var formatOrder = FORMATS_BY_SPORT[sportSlug] || [];
+    var hasFormatTags = activeTeams.some(function(t){ return t.formats && t.formats.length; });
+    var teamsGridHtml;
+    if(hasFormatTags){
+      var presentFormats = formatOrder.filter(function(f){
+        return activeTeams.some(function(t){ return t.formats && t.formats.indexOf(f) > -1; });
+      });
+      var untaggedTeams = activeTeams.filter(function(t){ return !t.formats || !t.formats.length; });
+      teamsGridHtml = presentFormats.map(function(f){
+        var group = activeTeams.filter(function(t){ return t.formats && t.formats.indexOf(f) > -1; });
+        return '<h4 class="extra-kits-label">'+esc(f)+' &middot; '+group.length+'</h4><div class="team-grid">'+group.map(teamCard).join('')+'</div>';
+      }).join('') +
+        (untaggedTeams.length ? '<h4 class="extra-kits-label">Other</h4><div class="team-grid">'+untaggedTeams.map(teamCard).join('')+'</div>' : '');
+    } else {
+      teamsGridHtml = '<div class="team-grid">'+activeTeams.map(teamCard).join('')+'</div>';
+    }
+
     return '<div class="section-head" style="align-items:center;">' +
         '<div style="display:flex;align-items:center;gap:2px;">'+compLogoSwatch(comp, {large:true})+'<h2 style="margin-left:2px;">'+esc(comp.name)+'</h2></div>' +
         '<span class="count">'+activeTeams.length+' teams</span>' +
       '</div>' +
       compLogoBlock +
-      (activeTeams.length ? '<div class="filter-row"><input type="text" id="team-filter" placeholder="Filter teams..."></div><div class="team-grid" id="team-grid">'+activeTeams.map(teamCard).join('')+'</div>'
+      (activeTeams.length ? '<div class="filter-row"><input type="text" id="team-filter" placeholder="Filter teams..."></div>'+teamsGridHtml
         : '<div class="empty-note">No teams logged in '+esc(comp.name)+' yet.</div>') +
       (upcomingTeams.length
         ? '<div class="section-head" style="margin-top:34px;"><h2>New expansion teams</h2><span class="count">'+upcomingTeams.length+'</span></div><div class="team-grid">'+upcomingTeams.map(teamCard).join('')+'</div>'
@@ -1354,8 +1378,17 @@
     if(teamFilter){
       teamFilter.addEventListener('input', function(){
         var q = teamFilter.value.toLowerCase();
-        document.querySelectorAll('#team-grid .team-card').forEach(function(card){
+        document.querySelectorAll('.team-grid .team-card').forEach(function(card){
           card.hidden = card.querySelector('h3').textContent.toLowerCase().indexOf(q) === -1;
+        });
+        // hide a format group's heading (and empty grid) once every team in it is filtered out
+        document.querySelectorAll('.extra-kits-label').forEach(function(heading){
+          var grid = heading.nextElementSibling;
+          if(!grid || !grid.classList.contains('team-grid')) return;
+          var cards = grid.querySelectorAll('.team-card');
+          var allHidden = cards.length > 0 && Array.prototype.every.call(cards, function(c){ return c.hidden; });
+          heading.hidden = allHidden;
+          grid.hidden = allHidden;
         });
       });
     }

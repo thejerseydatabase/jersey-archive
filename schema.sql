@@ -121,6 +121,10 @@ create table teams (
   -- promoted away and back (e.g. "Merged with Balmain Tigers in 1999 to
   -- form the Wests Tigers").
   history_note text,
+  -- which real-world formats this team competes in (used by international
+  -- cricket to split the team grid into Test/ODI/T20I sections) — null
+  -- for a team where that split doesn't apply.
+  formats text[],
   created_by uuid references auth.users(id),
   created_at timestamptz not null default now(),
   unique (competition_slug, slug)
