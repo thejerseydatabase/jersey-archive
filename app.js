@@ -782,9 +782,19 @@
 
   async function viewSearch(term){
     setCrumbs([{label:'Home', href:'#/'},{label:'Search: '+term, href:'#'}]);
+    var q = term.toLowerCase();
+
+    // Matched by name so a team with nothing uploaded yet still shows up
+    // and can be clicked into (and uploaded to) instead of the search
+    // looking like a dead end just because it has zero jerseys so far.
+    var teamsRes = await supabaseClient.from('teams').select('*, competitions(*, sports(*))');
+    if(teamsRes.error) throw teamsRes.error;
+    var teamMatches = (teamsRes.data || []).filter(function(t){
+      return t.name.toLowerCase().indexOf(q) > -1;
+    }).sort(function(a,b){ return a.name.localeCompare(b.name); });
+
     var res = await supabaseClient.from('jerseys').select('*, jersey_images(*), teams(*, competitions(*, sports(*)))');
     if(res.error) throw res.error;
-    var q = term.toLowerCase();
     var matches = (res.data || []).filter(function(j){
       var t = j.teams, c = t.competitions;
       return t.name.toLowerCase().indexOf(q) > -1 || c.name.toLowerCase().indexOf(q) > -1 ||
@@ -792,10 +802,30 @@
         (j.manufacturer||'').toLowerCase().indexOf(q) > -1;
     });
 
-    if(!matches.length){
-      return '<div class="section-head"><h2>Results for &ldquo;'+esc(term)+'&rdquo;</h2><span class="count">0 jerseys</span></div><div class="empty-note">Nothing matches yet.</div>';
+    if(!matches.length && !teamMatches.length){
+      return '<div class="section-head"><h2>Results for &ldquo;'+esc(term)+'&rdquo;</h2><span class="count">0 results</span></div><div class="empty-note">Nothing matches yet.</div>';
     }
-    return '<div class="section-head"><h2>Results for &ldquo;'+esc(term)+'&rdquo;</h2><span class="count">'+matches.length+' jerseys</span></div>'+renderGroupedBySport(matches);
+
+    var teamsHtml = '';
+    if(teamMatches.length){
+      var teamIds = teamMatches.map(function(t){ return t.id; });
+      var countsRes = await supabaseClient.from('jerseys').select('team_id').in('team_id', teamIds);
+      var countByTeam = {};
+      (countsRes.data || []).forEach(function(j){ countByTeam[j.team_id] = (countByTeam[j.team_id] || 0) + 1; });
+      var teamCards = teamMatches.map(function(t){
+        var c = t.competitions, sport = c.sports;
+        var count = countByTeam[t.id] || 0;
+        var countHtml = '<span class="team-jersey-count">'+(count ? count+' jersey'+(count===1?'':'s') : 'No jerseys yet')+'</span>';
+        return '<a class="team-card" href="#/sport/'+sport.slug+'/'+c.slug+'/team/'+t.slug+'">'+teamSwatch(t)+'<div class="team-info"><h3>'+esc(t.name)+'</h3><span class="team-context">'+esc(sport.name)+' &middot; '+esc(c.name)+'</span>'+countHtml+'</div></a>';
+      }).join('');
+      teamsHtml = '<div class="section-head"><h2>Teams</h2><span class="count">'+teamMatches.length+'</span></div><div class="team-grid">'+teamCards+'</div>';
+    }
+
+    var jerseysHtml = matches.length
+      ? '<div class="section-head" style="margin-top:'+(teamsHtml ? '34px' : '0')+';"><h2>Jerseys</h2><span class="count">'+matches.length+'</span></div>'+renderGroupedBySport(matches)
+      : '';
+
+    return '<div class="section-head"><h2>Results for &ldquo;'+esc(term)+'&rdquo;</h2></div>' + teamsHtml + jerseysHtml;
   }
 
   async function viewManufacturers(){
