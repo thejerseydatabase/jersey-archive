@@ -92,6 +92,12 @@ create table competitions (
   -- (e.g. cricket's International/IPL/BBL/Australia Domestic ordering).
   sort_order integer not null default 999,
   logo_path text,
+  -- true only for a global tournament (FIFA World Cup, Rugby League World
+  -- Cup...) that exists purely to be TAGGED onto a jersey whose real home
+  -- is elsewhere (a country's International kit) — deliberately has no
+  -- teams of its own, so it's excluded from "pick a primary competition"
+  -- pickers and only offered in the extra-competition tag field.
+  tag_only boolean not null default false,
   created_by uuid references auth.users(id),
   created_at timestamptz not null default now()
 );

@@ -1161,6 +1161,11 @@
           '<li>Submit. After it&rsquo;s approved, the sport/competition/team/season/manufacturer stay filled in so you can upload the next kit for the same team (say, the away or alternate jersey) without retyping everything &mdash; just swap the photo and jersey type.</li>' +
         '</ol>' +
 
+        '<div class="section-head" style="margin-top:30px;"><h2>A jersey worn in more than one competition</h2></div>' +
+        '<p>Some jerseys aren&rsquo;t just worn in one place &mdash; a country&rsquo;s regular kit might also be what they wore at a World Cup, or a club&rsquo;s league kit might also have been worn in a cup competition. Rather than uploading the same photos twice under two different teams, tick &ldquo;Was this jersey also worn in another competition?&rdquo; on the upload form and pick the extra one (or add it if it&rsquo;s not listed &mdash; this is also how to log a jersey worn only in something like a trial match). The jersey still lives under its real team and competition, but now shows up on both competitions&rsquo; pages too.</p>' +
+        '<p>This is also why competitions like the FIFA World Cup, Rugby League World Cup, and other major tournaments aren&rsquo;t options in the main Competition field &mdash; they only exist to be tagged on this way, keeping a country&rsquo;s full jersey history together under its real International team instead of splitting it across two pages.</p>' +
+        '<p>Already uploaded something that should have this tag? Open the jersey and use &ldquo;Report a problem&rdquo;, or if you&rsquo;re still pending, admins can add it for you from the moderation queue.</p>' +
+
         '<div class="section-head" style="margin-top:30px;"><h2>What makes a good photo</h2></div>' +
         '<p>We&rsquo;re after the best photo you can find — the main (front) image especially should be clear and in focus, showing the whole jersey with nothing cropped off or blocking the design. A clean promo photo from an online store is ideal, but a good clear photo taken at a game works well too.</p>' +
         '<p>We understand a great photo isn&rsquo;t always out there, especially for older or obscure jerseys — do your best with what you can find. Blurry, cropped, or otherwise low-quality photos may be rejected, or replaced later if someone turns up a better one for the same jersey.</p>' +
@@ -1325,7 +1330,10 @@
     var newPanel = document.getElementById(prefix+'-comp-new');
     if(!select || !btn) return;
     var sportSlug = select.dataset.sportSlug, currentCompSlug = select.dataset.current;
-    var res = await supabaseClient.from('competitions').select('*').eq('sport_slug', sportSlug).order('name');
+    // Excludes tag_only competitions (World Cup etc.) — those aren't a
+    // real home for a team, only something a jersey gets tagged onto
+    // separately; see the note on competitionsForSport in the upload form.
+    var res = await supabaseClient.from('competitions').select('*').eq('sport_slug', sportSlug).eq('tag_only', false).order('name');
     var comps = res.error ? [] : (res.data || []);
     select.innerHTML = comps.map(function(c){
       return '<option value="'+esc(c.slug)+'"'+(c.slug===currentCompSlug?' selected':'')+'>'+esc(c.name)+'</option>';
@@ -1393,7 +1401,7 @@
     sportSel.innerHTML = sports.map(function(s){ return '<option value="'+esc(s.slug)+'"'+(s.slug===currentSportSlug?' selected':'')+'>'+esc(s.name)+'</option>'; }).join('');
 
     async function refreshComps(){
-      var r = await supabaseClient.from('competitions').select('*').eq('sport_slug', sportSel.value).order('name');
+      var r = await supabaseClient.from('competitions').select('*').eq('sport_slug', sportSel.value).eq('tag_only', false).order('name');
       var comps = r.data || [];
       compSel.innerHTML = comps.map(function(c){ return '<option value="'+esc(c.slug)+'">'+esc(c.name)+'</option>'; }).join('');
       await refreshTeams();
@@ -2480,13 +2488,23 @@
       if(e.dataTransfer && e.dataTransfer.files) addPhotoFiles(e.dataTransfer.files);
     });
 
-    async function competitionsForSport(sportSlug){
+    // tag_only competitions (FIFA World Cup, Rugby League World Cup, etc.)
+    // exist purely so a jersey can be TAGGED onto them via the "also used
+    // in another competition" field — they deliberately have no teams of
+    // their own, so making one of them the PRIMARY competition would
+    // create a stray duplicate team instead of using the country's real
+    // International (etc.) roster. Excluded here by default; only the
+    // extra-competition picker (which is exactly what they're for) opts
+    // back in via includeTagOnly.
+    async function competitionsForSport(sportSlug, opts){
+      opts = opts || {};
       // Top-tier competitions (the ones actually shown without a "more"
       // click on the site — NRL, Super League, etc.) first since they're
       // what most uploads will actually be, then alphabetical within each
       // group rather than one long A-Z list burying the popular ones.
-      var r = await supabaseClient.from('competitions').select('*').eq('sport_slug', sportSlug)
-        .order('tier', {ascending:false}).order('name');
+      var q = supabaseClient.from('competitions').select('*').eq('sport_slug', sportSlug);
+      if(!opts.includeTagOnly) q = q.eq('tag_only', false);
+      var r = await q.order('tier', {ascending:false}).order('name');
       if(r.error) throw r.error;
       return r.data || [];
     }
@@ -2525,7 +2543,7 @@
     // picked above is excluded — that's set via the Competition field,
     // not here). Keeps whatever was already picked when re-rendered.
     async function refreshExtraComps(){
-      var comps = await competitionsForSport(sportSel.value);
+      var comps = await competitionsForSport(sportSel.value, {includeTagOnly: true});
       var primaryVal = compSelect.value.toLowerCase();
       var others = comps.filter(function(c){ return c.name.toLowerCase() !== primaryVal; });
       var prevValue = extraCompSel.value;
