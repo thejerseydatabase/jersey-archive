@@ -765,7 +765,7 @@
             {table:'competitions', matchCol:'slug', matchVal:comp.slug, field:'name', current:comp.name}) +
           specItem('Team', '<a class="spec-link" href="#/sport/'+sport.slug+'/'+comp.slug+'/team/'+team.slug+'">'+esc(team.name)+'</a>', {table:'teams', matchCol:'id', matchVal:team.id, field:'name', current:team.name}) +
           specItem('Season', '<a class="spec-link" href="#/sport/'+sport.slug+'/'+comp.slug+'/season/'+j.season+'">'+j.season+'</a>', {table:'jerseys', matchCol:'id', matchVal:j.id, field:'season', current:j.season}) +
-          specItem('Jersey type', '<a class="spec-link" href="#/type/'+encodeURIComponent(j.type)+'">'+esc(j.type)+'</a>', {table:'jerseys', matchCol:'id', matchVal:j.id, field:'type', current:j.type}) +
+          specItem('Jersey type', '<a class="spec-link" href="#/type/'+encodeURIComponent(j.type)+'/'+encodeURIComponent(sport.slug)+'/'+encodeURIComponent(comp.slug)+'">'+esc(j.type)+'</a>', {table:'jerseys', matchCol:'id', matchVal:j.id, field:'type', current:j.type}) +
           specItem('Manufacturer', j.manufacturer ? '<a class="spec-link" href="#/manufacturer/'+encodeURIComponent(j.manufacturer)+'">'+esc(j.manufacturer)+'</a>' : 'Unlisted', {table:'jerseys', matchCol:'id', matchVal:j.id, field:'manufacturer', current:j.manufacturer || ''}) +
           (j.format ? specItem('Format', esc(j.format), {table:'jerseys', matchCol:'id', matchVal:j.id, field:'format', current:j.format}) : '') +
         '</div>' +
@@ -837,17 +837,48 @@
     });
   }
 
-  function renderGroupedBySport(jerseys){
+  // A competition's card grid, capped so a type/manufacturer page that
+  // cuts across every team on the site doesn't turn into one giant
+  // unscannable wall once there are thousands of jerseys — first batch
+  // shown, the rest sits hidden behind a "Show more" button (wired via
+  // the global .show-more-btn click delegate) rather than paging out to
+  // another URL, so it stays in place.
+  var JERSEY_GRID_PAGE_SIZE = 12;
+  function limitedJerseyGrid(cards){
+    if(cards.length <= JERSEY_GRID_PAGE_SIZE) return '<div class="jersey-grid">'+cards.join('')+'</div>';
+    var visible = cards.slice(0, JERSEY_GRID_PAGE_SIZE).join('');
+    var rest = cards.slice(JERSEY_GRID_PAGE_SIZE);
+    return '<div class="jersey-grid">'+visible+'</div>' +
+      '<div class="jersey-grid" hidden>'+rest.join('')+'</div>' +
+      '<button class="btn btn-secondary show-more-btn" type="button">Show '+rest.length+' more</button>';
+  }
+  // prioritySportSlug/priorityCompSlug: when someone reaches this list by
+  // clicking a jersey type/manufacturer FROM a specific jersey, that
+  // jersey's own sport (and within it, its own competition) is shown
+  // first, with everything else following underneath — more useful than
+  // a flat alphabetical dump when you clicked through wanting "more like
+  // this one" specifically.
+  function renderGroupedBySport(jerseys, prioritySportSlug, priorityCompSlug){
     var bySport = {};
     jerseys.forEach(function(j){ var s=j.teams.competitions.sports; (bySport[s.slug]=bySport[s.slug]||{sport:s,jerseys:[]}).jerseys.push(j); });
-    return Object.keys(bySport).map(function(slug){
+    var sportOrder = Object.keys(bySport).sort(function(a,b){
+      if(prioritySportSlug && a === prioritySportSlug) return -1;
+      if(prioritySportSlug && b === prioritySportSlug) return 1;
+      return bySport[a].sport.name.localeCompare(bySport[b].sport.name);
+    });
+    return sportOrder.map(function(slug){
       var entry = bySport[slug];
       var byComp = {};
       entry.jerseys.forEach(function(j){ var c=j.teams.competitions; (byComp[c.slug]=byComp[c.slug]||{comp:c,jerseys:[]}).jerseys.push(j); });
-      var compBlocks = Object.keys(byComp).map(function(cslug){
+      var compOrder = Object.keys(byComp).sort(function(a,b){
+        if(priorityCompSlug && a === priorityCompSlug) return -1;
+        if(priorityCompSlug && b === priorityCompSlug) return 1;
+        return byComp[a].comp.name.localeCompare(byComp[b].comp.name);
+      });
+      var compBlocks = compOrder.map(function(cslug){
         var centry = byComp[cslug];
-        var cards = centry.jerseys.sort(function(a,b){return seasonSortKey(b.season)-seasonSortKey(a.season);}).map(function(j){ return jerseyCard(j, j.teams, {showTeam:true}); }).join('');
-        return '<div class="season-group"><h3><a class="spec-link" href="#/sport/'+entry.sport.slug+'/'+cslug+'">'+esc(centry.comp.name)+'</a></h3><div class="jersey-grid">'+cards+'</div></div>';
+        var cards = centry.jerseys.sort(function(a,b){return seasonSortKey(b.season)-seasonSortKey(a.season);}).map(function(j){ return jerseyCard(j, j.teams, {showTeam:true}); });
+        return '<div class="season-group"><h3><a class="spec-link" href="#/sport/'+entry.sport.slug+'/'+cslug+'">'+esc(centry.comp.name)+'</a></h3>'+limitedJerseyGrid(cards)+'</div>';
       }).join('');
       return '<section class="block"><div class="section-head"><h2><a class="spec-link" href="#/sport/'+slug+'">'+esc(entry.sport.name)+'</a></h2></div>'+compBlocks+'</section>';
     }).join('');
@@ -1016,10 +1047,9 @@
 
   async function viewManufacturers(){
     setCrumbs([{label:'Home', href:'#/'},{label:'Manufacturers', href:'#/manufacturers'}]);
-    var res = await supabaseClient.from('jerseys').select('manufacturer');
-    if(res.error) throw res.error;
+    var rows = await fetchAllRows('jerseys', 'manufacturer');
     var counts = {};
-    (res.data || []).forEach(function(j){
+    rows.forEach(function(j){
       var m = (j.manufacturer || '').trim();
       if(!m) return;
       counts[m] = (counts[m] || 0) + 1;
@@ -1034,24 +1064,33 @@
 
   async function viewManufacturer(name){
     setCrumbs([{label:'Home', href:'#/'},{label:'Manufacturers', href:'#/manufacturers'},{label:name, href:'#'}]);
-    var res = await supabaseClient.from('jerseys').select('*, jersey_images(*), teams(*, competitions(*, sports(*)))').eq('manufacturer', name);
-    if(res.error) throw res.error;
-    var jerseys = res.data || [];
+    var jerseys = await fetchAllRows('jerseys', '*, jersey_images(*), teams(*, competitions(*, sports(*)))', function(q){ return q.eq('manufacturer', name); });
     if(!jerseys.length){
       return '<div class="section-head"><h2>'+esc(name)+'</h2><span class="count">0 jerseys</span></div><div class="empty-note">Nothing matches yet.</div>';
     }
     return '<div class="section-head"><h2>'+esc(name)+'</h2><span class="count">'+jerseys.length+' jersey'+(jerseys.length===1?'':'s')+'</span></div>'+renderGroupedBySport(jerseys);
   }
 
+  // "Home V1"/"Home V2" (a different sponsor/badge era of the same base
+  // kit) and "GK"/"GK 1"/"GK 2" all collapse to one family ("Home", "GK")
+  // for browsing purposes — clicking any one of them shows every jersey
+  // in that family, not just the exact string clicked. Falls back to the
+  // original string if stripping the suffix would leave nothing.
+  function baseJerseyType(t){
+    var s = String(t || '');
+    var stripped = s.replace(/\s+(v\.?\s*\d+|\d+)$/i, '').trim();
+    return stripped || s;
+  }
+
   async function viewTypes(){
     setCrumbs([{label:'Home', href:'#/'},{label:'Types', href:'#/types'}]);
-    var res = await supabaseClient.from('jerseys').select('type');
-    if(res.error) throw res.error;
+    var rows = await fetchAllRows('jerseys', 'type');
     var counts = {};
-    (res.data || []).forEach(function(j){
+    rows.forEach(function(j){
       var t = (j.type || '').trim();
       if(!t) return;
-      counts[t] = (counts[t] || 0) + 1;
+      var base = baseJerseyType(t);
+      counts[base] = (counts[base] || 0) + 1;
     });
     var names = Object.keys(counts).sort(function(a,b){ return counts[b]-counts[a] || a.localeCompare(b); });
     var chips = names.map(function(t){
@@ -1061,15 +1100,15 @@
       (chips ? '<div class="chip-row">'+chips+'</div>' : '<div class="empty-note">No jersey types logged yet.</div>');
   }
 
-  async function viewType(name){
+  async function viewType(name, originSportSlug, originCompSlug){
     setCrumbs([{label:'Home', href:'#/'},{label:'Types', href:'#/types'},{label:name, href:'#'}]);
-    var res = await supabaseClient.from('jerseys').select('*, jersey_images(*), teams(*, competitions(*, sports(*)))').eq('type', name);
-    if(res.error) throw res.error;
-    var jerseys = res.data || [];
+    var targetBase = baseJerseyType(name);
+    var allJerseys = await fetchAllRows('jerseys', '*, jersey_images(*), teams(*, competitions(*, sports(*)))');
+    var jerseys = allJerseys.filter(function(j){ return baseJerseyType(j.type) === targetBase; });
     if(!jerseys.length){
-      return '<div class="section-head"><h2>'+esc(name)+'</h2><span class="count">0 jerseys</span></div><div class="empty-note">Nothing matches yet.</div>';
+      return '<div class="section-head"><h2>'+esc(targetBase)+'</h2><span class="count">0 jerseys</span></div><div class="empty-note">Nothing matches yet.</div>';
     }
-    return '<div class="section-head"><h2>'+esc(name)+'</h2><span class="count">'+jerseys.length+' jersey'+(jerseys.length===1?'':'s')+'</span></div>'+renderGroupedBySport(jerseys);
+    return '<div class="section-head"><h2>'+esc(targetBase)+'</h2><span class="count">'+jerseys.length+' jersey'+(jerseys.length===1?'':'s')+'</span></div>'+renderGroupedBySport(jerseys, originSportSlug, originCompSlug);
   }
 
   function viewHelp(){
@@ -1662,7 +1701,7 @@
       else if(parts[0]==='manufacturers' && parts.length===1){ html = await viewManufacturers(); }
       else if(parts[0]==='manufacturer' && parts[1]){ html = await viewManufacturer(parts[1]); }
       else if(parts[0]==='types' && parts.length===1){ html = await viewTypes(); }
-      else if(parts[0]==='type' && parts[1]){ html = await viewType(parts[1]); }
+      else if(parts[0]==='type' && parts[1]){ html = await viewType(parts[1], parts[2], parts[3]); }
       else if(parts[0]==='upload'){ html = await viewUpload(); }
       else if(parts[0]==='help'){ html = viewHelp(); }
       else if(parts[0]==='moderate'){ html = await viewModerate(); }
@@ -2889,6 +2928,12 @@
       return;
     }
     if(e.target === lightbox) closeLightbox();
+    var showMoreBtn = e.target.closest('.show-more-btn');
+    if(showMoreBtn){
+      var hiddenGrid = showMoreBtn.previousElementSibling;
+      if(hiddenGrid) hiddenGrid.hidden = false;
+      showMoreBtn.remove();
+    }
   });
   document.getElementById('lightbox-close-btn').addEventListener('click', closeLightbox);
   lightboxPrevBtn.addEventListener('click', function(e){ e.stopPropagation(); lightboxStep(-1); });
