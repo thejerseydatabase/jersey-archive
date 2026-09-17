@@ -35,6 +35,14 @@ create policy "profiles are publicly readable"
 create policy "users can update their own profile"
   on profiles for update using (auth.uid() = id);
 
+-- Every security definer function below pins search_path = public.
+-- Without it, a security definer function resolves unqualified table
+-- names using whatever search_path the CALLING session has set, not a
+-- fixed one — so a caller who can create an object earlier in their own
+-- search_path (e.g. a same-named table in a schema they control) could
+-- get the function to operate on that instead of the real table. Costs
+-- nothing to pin and closes off that entire class of attack.
+
 -- auto-create a profile row whenever someone signs up, with a guaranteed-
 -- unique starting username (the email prefix alone can collide across two
 -- different email providers, e.g. john@gmail.com and john@yahoo.com — that
@@ -55,7 +63,7 @@ begin
   insert into public.profiles (id, username) values (new.id, candidate);
   return new;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = public;
 
 create trigger on_auth_user_created
   after insert on auth.users
@@ -200,7 +208,7 @@ begin
   end if;
   return new;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = public;
 
 create trigger on_jersey_approved
   after update of status on jerseys
@@ -407,7 +415,7 @@ begin
   end if;
   return new;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = public;
 
 create trigger on_logo_approved
   before update of status on team_logo_proposals
@@ -480,7 +488,7 @@ begin
   end if;
   return new;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = public;
 
 create trigger on_comp_logo_approved
   before update of status on competition_logo_proposals
@@ -533,7 +541,7 @@ begin
   end if;
   return new;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = public;
 
 create trigger rate_limit_jerseys
   before insert on jerseys
@@ -570,7 +578,7 @@ begin
   end if;
   return new;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = public;
 
 create trigger rate_limit_reports
   before insert on reports
