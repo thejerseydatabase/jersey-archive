@@ -18,7 +18,9 @@
     football: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><circle cx="12" cy="12" r="9"/><path d="M12 7l3 2.2-1.1 3.6H10.1L9 9.2z"/><path d="M12 7V4M15 9.2l2.6-1.7M13.9 12.8l1.6 2.9M10.1 12.8l-1.6 2.9M9 9.2 6.4 7.5"/></svg>',
     baseball: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><circle cx="12" cy="12" r="9"/><path d="M6 6c3 2 3 10 0 12M18 6c-3 2-3 10 0 12"/></svg>',
     afl: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M5 21V5M19 21V5M3 5h4M17 5h4"/></svg>',
-    netball: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><ellipse cx="12" cy="6" rx="5" ry="1.6"/><circle cx="12" cy="16" r="5"/></svg>'
+    netball: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><ellipse cx="12" cy="6" rx="5" ry="1.6"/><circle cx="12" cy="16" r="5"/></svg>',
+    volleyball: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><circle cx="12" cy="8" r="5"/><path d="M12 3c-2 2-2 8 0 10M8.5 4.5c1.5 2 6 2 7 0M8.5 11.5c1.5-2 6-2 7 0"/><path d="M3 20h18M3 20v-3M21 20v-3"/></svg>',
+    'field-hockey': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M15 3v13c0 2-1.5 3-3 3s-2.5-1-2.5-2.2c0-1.3 1-2 2.2-2"/><circle cx="6" cy="20" r="1.6" fill="currentColor" stroke="none"/></svg>'
   };
   function sportIcon(sportSlug){ return SPORT_ICONS[sportSlug] || ICON_SHIRT; }
   // International formats paired with their domestic equivalent right
