@@ -851,9 +851,9 @@
         var c = t.competitions, sport = c.sports;
         var count = countByTeam[t.id] || 0;
         var countHtml = '<span class="team-jersey-count">'+(count ? count+' jersey'+(count===1?'':'s') : 'No jerseys yet')+'</span>';
-        return '<a class="team-card" href="#/sport/'+sport.slug+'/'+c.slug+'/team/'+t.slug+'">'+teamSwatch(t)+'<div class="team-info"><h3>'+esc(t.name)+'</h3><span class="team-context">'+esc(c.name)+'</span>'+countHtml+'</div></a>';
+        return '<a class="team-card compact" href="#/sport/'+sport.slug+'/'+c.slug+'/team/'+t.slug+'">'+teamSwatch(t)+'<div class="team-info"><h3>'+esc(t.name)+'</h3><span class="team-context">'+esc(c.name)+'</span>'+countHtml+'</div></a>';
       }).join('');
-      return '<div class="season-group"><h3>'+esc(entry.sport.name)+'</h3><div class="team-grid">'+cards+'</div></div>';
+      return '<div class="season-group"><h3>'+esc(entry.sport.name)+'</h3><div class="team-grid compact">'+cards+'</div></div>';
     }).join('');
   }
 
