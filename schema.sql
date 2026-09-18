@@ -614,19 +614,19 @@ $$ language plpgsql security definer set search_path = public;
 
 create trigger rate_limit_jerseys
   before insert on jerseys
-  for each row execute function enforce_upload_rate_limit('uploaded_by', 120, 60);
+  for each row execute function enforce_upload_rate_limit('uploaded_by', 100, 60);
 
 create trigger rate_limit_jersey_images
   before insert on jersey_images
-  for each row execute function enforce_upload_rate_limit('uploaded_by', 20, 60);
+  for each row execute function enforce_upload_rate_limit('uploaded_by', 100, 60);
 
 create trigger rate_limit_logo_proposals
   before insert on team_logo_proposals
-  for each row execute function enforce_upload_rate_limit('proposed_by', 120, 60);
+  for each row execute function enforce_upload_rate_limit('proposed_by', 100, 60);
 
 create trigger rate_limit_comp_logo_proposals
   before insert on competition_logo_proposals
-  for each row execute function enforce_upload_rate_limit('proposed_by', 120, 60);
+  for each row execute function enforce_upload_rate_limit('proposed_by', 100, 60);
 
 create function enforce_report_rate_limit()
 returns trigger as $$
