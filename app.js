@@ -1115,8 +1115,7 @@
   var SEARCH_ALIASES = {
     'ny':'new york', 'nyc':'new york', 'la':'los angeles', 'sf':'san francisco',
     'gb':'green bay', 'kc':'kansas city', 'philly':'philadelphia',
-    'utd':'united', 'intl':'international', 'int':'international',
-    'koln':'cologne'
+    'utd':'united', 'intl':'international', 'int':'international'
   };
   // A few German club names are now shown shorter than their official
   // name (Bundesliga/2. Bundesliga — "FC Bayern Munich" is just "Bayern
