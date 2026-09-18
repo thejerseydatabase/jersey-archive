@@ -643,20 +643,42 @@
     var bySeason = {};
     jerseys.forEach(function(j){ (bySeason[j.season] = bySeason[j.season] || []).push(j); });
     var years = Object.keys(bySeason).sort(function(a,b){ return seasonSortKey(b) - seasonSortKey(a); });
-    // Same split as footballkitarchive: main kits up top, training/pre-match
-    // kept as a smaller section underneath each season rather than mixed in.
-    var TRAINING_TYPES = ['training','pre-season','warm-up','pre-match'];
-    function isTrainingType(t){ return TRAINING_TYPES.indexOf(String(t||'').toLowerCase()) > -1; }
-    var groups = years.map(function(y){
-      var main = bySeason[y].filter(function(j){ return !isTrainingType(j.type); });
-      var extra = bySeason[y].filter(function(j){ return isTrainingType(j.type); });
-      main = sortJerseysByType(main, sportSlug, compSlug, y);
-      var mainHtml = main.length ? '<div class="jersey-grid">'+main.map(function(j){ return jerseyCard(j, team); }).join('')+'</div>' : '';
-      var extraHtml = extra.length
-        ? '<h4 class="extra-kits-label">Training &amp; other</h4><div class="jersey-grid">'+extra.map(function(j){ return jerseyCard(j, team); }).join('')+'</div>'
-        : '';
-      return '<div class="season-group"><h3><a class="spec-link" href="#/sport/'+sportSlug+'/'+compSlug+'/season/'+y+'">'+y+'</a></h3>'+mainHtml+extraHtml+'</div>';
-    }).join('');
+    // Match jerseys and training/pre-match kits are kept in separate tabs
+    // rather than mixed into every season group — a team that brings out
+    // one or two training tops a season is fine either way, but some
+    // clubs log 10-20 of them, which buries the actual match kits in a
+    // wall of cards if they're inline. "Training & other" only appears
+    // as a tab at all when the team has at least one.
+    var TRAINING_TYPES_BASE = ['training','pre-season','warm-up','pre-match'];
+    function isTrainingType(t){ return TRAINING_TYPES_BASE.indexOf(baseJerseyType(t).toLowerCase()) > -1; }
+    var mainJerseys = jerseys.filter(function(j){ return !isTrainingType(j.type); });
+    var trainingJerseys = jerseys.filter(function(j){ return isTrainingType(j.type); });
+    function seasonGroups(list, showSeasonLink){
+      var by = {};
+      list.forEach(function(j){ (by[j.season] = by[j.season] || []).push(j); });
+      var ys = Object.keys(by).sort(function(a,b){ return seasonSortKey(b) - seasonSortKey(a); });
+      return ys.map(function(y){
+        var sorted = showSeasonLink ? sortJerseysByType(by[y], sportSlug, compSlug, y) : by[y];
+        var cards = sorted.map(function(j){ return jerseyCard(j, team); }).join('');
+        var heading = showSeasonLink
+          ? '<a class="spec-link" href="#/sport/'+sportSlug+'/'+compSlug+'/season/'+y+'">'+y+'</a>'
+          : y;
+        return '<div class="season-group"><h3>'+heading+'</h3><div class="jersey-grid">'+cards+'</div></div>';
+      }).join('');
+    }
+    var mainGroupsRaw = seasonGroups(mainJerseys, true);
+    // Only falls back to a fallback string when a training tab exists
+    // (so it reads as "no match kits yet, but see the Training tab")
+    // — with no training jerseys either, an empty string here correctly
+    // falls through to the page's own "No jerseys logged yet" below.
+    var groups = trainingJerseys.length
+      ? '<div class="jersey-tabs" id="team-jersey-tabs">' +
+          '<button class="chip is-active" data-tab="team-tab-main" type="button">Match jerseys <span class="count">'+mainJerseys.length+'</span></button>' +
+          '<button class="chip" data-tab="team-tab-training" type="button">Training &amp; other <span class="count">'+trainingJerseys.length+'</span></button>' +
+        '</div>' +
+        '<div id="team-tab-main">'+(mainGroupsRaw || '<div class="empty-note">No match jerseys logged yet.</div>')+'</div>' +
+        '<div id="team-tab-training" hidden>'+seasonGroups(trainingJerseys, false)+'</div>'
+      : mainGroupsRaw;
 
     var normalizedTeamName = normalizeTeamName(team.name);
     var siblingRes = await supabaseClient.from('teams').select('*, competitions(*)').ilike('name', normalizedTeamName+'%').neq('id', team.id);
@@ -1822,6 +1844,19 @@
           var allHidden = cards.length > 0 && Array.prototype.every.call(cards, function(c){ return c.hidden; });
           heading.hidden = allHidden;
           grid.hidden = allHidden;
+        });
+      });
+    }
+    var jerseyTabs = document.getElementById('team-jersey-tabs');
+    if(jerseyTabs){
+      jerseyTabs.querySelectorAll('.chip').forEach(function(chip){
+        chip.addEventListener('click', function(){
+          jerseyTabs.querySelectorAll('.chip').forEach(function(c){ c.classList.remove('is-active'); });
+          chip.classList.add('is-active');
+          ['team-tab-main','team-tab-training'].forEach(function(id){
+            var panel = document.getElementById(id);
+            if(panel) panel.hidden = id !== chip.dataset.tab;
+          });
         });
       });
     }
