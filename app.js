@@ -38,8 +38,15 @@
     'rugby-union': ['Indigenous'],
     afl: ['Indigenous'],
     netball: ['Indigenous'],
-    cricket: ['Indigenous'],
     'field-hockey': ['Indigenous']
+  };
+  // A sport listed here replaces the global CURATED_TYPES list entirely
+  // instead of just adding to it — cricket doesn't use Heritage/Third/
+  // Training the way other sports do, and has Charity that others don't.
+  // A one-off type outside this list is still addable via "+ Add a new
+  // one…" on the upload form, same as anywhere else.
+  var CURATED_TYPES_OVERRIDE_BY_SPORT = {
+    cricket: ['Home','Away','Charity','Indigenous','Alternate']
   };
   // Picking "Training" reveals a second field for which kind, so
   // "pre-match", "warm up", "captain's run" etc. don't fragment into
@@ -240,7 +247,17 @@
     var secondary = opts.showTeam ? yearType : (jersey.manufacturer || 'Unlisted');
     var pendingBadge = jersey.status === 'rejected' ? '<span class="pending-badge is-rejected">Rejected</span>'
       : (jersey.status && jersey.status !== 'approved' ? '<span class="pending-badge">Pending</span>' : '');
-    return '<a class="jersey-card" href="#/jersey/'+jersey.id+'" data-format="'+esc(jersey.format || '')+'">' + pendingBadge +
+    // Surfaces an extra-competition tag (a World Cup jersey filed under
+    // a country's normal International team, say) right on the card —
+    // otherwise there's no visual difference on a season/search grid
+    // between a jersey worn only domestically and one also worn at a
+    // major tournament; only shows up when the query fetching this
+    // jersey actually joined jersey_competitions.
+    var tags = (jersey.jersey_competitions || []).map(function(t){ return t.competitions && t.competitions.name; }).filter(Boolean);
+    var tagBadge = tags.length
+      ? '<span class="tag-badge" title="Also worn in: '+esc(tags.join(', '))+'">'+esc(tags[0])+(tags.length>1 ? ' +'+(tags.length-1) : '')+'</span>'
+      : '';
+    return '<a class="jersey-card" href="#/jersey/'+jersey.id+'" data-format="'+esc(jersey.format || '')+'">' + pendingBadge + tagBadge +
       '<div class="jersey-thumb">'+jerseyThumb(jersey, team)+'</div>' +
       '<div class="jersey-label"><strong>'+esc(primary)+'</strong><span>'+esc(secondary)+'</span></div>' +
     '</a>';
@@ -374,7 +391,7 @@
   // that sport's competitions) to show a small "just uploaded" gallery —
   // mixes in newly-approved team logos alongside jerseys, most recent first.
   async function recentJerseysHtml(compSlugs){
-    var jq = supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*)').order('created_at', {ascending:false}).limit(6);
+    var jq = supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*), jersey_competitions(competitions(name))').order('created_at', {ascending:false}).limit(6);
     var lq = supabaseClient.from('team_logos').select('*, teams!inner(*, competitions!inner(sport_slug))').eq('is_current', true).order('approved_at', {ascending:false}).limit(6);
     var cq = supabaseClient.from('competition_logos').select('*, competitions!inner(*)').eq('is_current', true).order('approved_at', {ascending:false}).limit(6);
     if(compSlugs){ jq = jq.in('teams.competition_slug', compSlugs); lq = lq.in('teams.competition_slug', compSlugs); cq = cq.in('competition_slug', compSlugs); }
@@ -480,7 +497,7 @@
   // World Cup). Competition/season pages need both sources merged.
   async function fetchCompetitionJerseys(compSlug, opts){
     opts = opts || {};
-    var directQ = supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*)')
+    var directQ = supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*), jersey_competitions(competitions(name))')
       .eq('teams.competition_slug', compSlug).order('created_at', {ascending:true});
     if(opts.season) directQ = directQ.eq('season', opts.season);
     var directRes = await directQ;
@@ -495,7 +512,7 @@
 
     var extra = [];
     if(extraIds.length){
-      var extraQ = supabaseClient.from('jerseys').select('*, jersey_images(*), teams(*)')
+      var extraQ = supabaseClient.from('jerseys').select('*, jersey_images(*), teams(*), jersey_competitions(competitions(name))')
         .in('id', extraIds).order('created_at', {ascending:true});
       if(opts.season) extraQ = extraQ.eq('season', opts.season);
       var extraRes = await extraQ;
@@ -642,7 +659,7 @@
     var team = teamRes.data, comp = team.competitions, sport = comp.sports;
     setCrumbs([{label:'Home', href:'#/'},{label:sport.name, href:'#/sport/'+sportSlug},{label:comp.name, href:'#/sport/'+sportSlug+'/'+compSlug},{label:team.name, href:'#'}]);
 
-    var jRes = await supabaseClient.from('jerseys').select('*, jersey_images(*)').eq('team_id', team.id).order('season', {ascending:false}).order('created_at', {ascending:true});
+    var jRes = await supabaseClient.from('jerseys').select('*, jersey_images(*), jersey_competitions(competitions(name))').eq('team_id', team.id).order('season', {ascending:false}).order('created_at', {ascending:true});
     if(jRes.error) throw jRes.error;
     var jerseys = jRes.data || [];
     var bySeason = {};
@@ -1151,7 +1168,7 @@
       return searchTextMatches(t.name, term) || searchTextMatches(t.competitions.name, term);
     }).sort(function(a,b){ return a.name.localeCompare(b.name); });
 
-    var jerseyRows = await fetchAllRows('jerseys', '*, jersey_images(*), teams(*, competitions(*, sports(*)))');
+    var jerseyRows = await fetchAllRows('jerseys', '*, jersey_images(*), teams(*, competitions(*, sports(*))), jersey_competitions(competitions(name))');
     var matches = jerseyRows.filter(function(j){
       var t = j.teams, c = t && t.competitions;
       if(!t || !c || !c.sports) return false;
@@ -1208,7 +1225,7 @@
 
   async function viewManufacturer(name){
     setCrumbs([{label:'Home', href:'#/'},{label:'Manufacturers', href:'#/manufacturers'},{label:name, href:'#'}]);
-    var jerseys = await fetchAllRows('jerseys', '*, jersey_images(*), teams(*, competitions(*, sports(*)))', function(q){ return q.eq('manufacturer', name); });
+    var jerseys = await fetchAllRows('jerseys', '*, jersey_images(*), teams(*, competitions(*, sports(*))), jersey_competitions(competitions(name))', function(q){ return q.eq('manufacturer', name); });
     if(!jerseys.length){
       return '<div class="section-head"><h2>'+esc(name)+'</h2><span class="count">0 jerseys</span></div><div class="empty-note">Nothing matches yet.</div>';
     }
@@ -1247,7 +1264,7 @@
   async function viewType(name, originSportSlug, originCompSlug){
     setCrumbs([{label:'Home', href:'#/'},{label:'Types', href:'#/types'},{label:name, href:'#'}]);
     var targetBase = baseJerseyType(name);
-    var allJerseys = await fetchAllRows('jerseys', '*, jersey_images(*), teams(*, competitions(*, sports(*)))');
+    var allJerseys = await fetchAllRows('jerseys', '*, jersey_images(*), teams(*, competitions(*, sports(*))), jersey_competitions(competitions(name))');
     var jerseys = allJerseys.filter(function(j){ return baseJerseyType(j.type) === targetBase; });
     if(!jerseys.length){
       return '<div class="section-head"><h2>'+esc(targetBase)+'</h2><span class="count">0 jerseys</span></div><div class="empty-note">Nothing matches yet.</div>';
@@ -1271,13 +1288,13 @@
         '<ol>' +
           '<li>Sign in with your email at the top right &mdash; it&rsquo;s a magic link, no password to remember.</li>' +
           '<li>Go to <a class="spec-link" href="#/upload">Upload</a> and pick the sport, then the competition and team (or use &ldquo;+ Add a new one&hellip;&rdquo; if yours isn&rsquo;t listed yet).</li>' +
-          '<li>Fill in the season (a single year like 2024, or a split year like 2024-25 for competitions that span two calendar years &mdash; use a dash, not a slash: 2024-25, not 2024/25), jersey type, and manufacturer if known.</li>' +
+          '<li>Fill in the season (a single year like 2024, or a split year like 2024-25 for competitions that span two calendar years &mdash; use a dash, not a slash: 2024-25, not 2024/25) and jersey type. Manufacturer is required too &mdash; pick &ldquo;Unknown&rdquo; if you genuinely can&rsquo;t tell, but most current jerseys are easy to identify, so it&rsquo;s worth a proper look first.</li>' +
           '<li>Attach at least one photo &mdash; front, back, and any other angle all help, and you can label each one.</li>' +
           '<li>Submit. After it&rsquo;s approved, the sport/competition/team/season/manufacturer stay filled in so you can upload the next kit for the same team (say, the away or alternate jersey) without retyping everything &mdash; just swap the photo and jersey type.</li>' +
         '</ol>' +
 
         '<div class="section-head" style="margin-top:30px;"><h2>A jersey worn in more than one competition</h2></div>' +
-        '<p>Some jerseys aren&rsquo;t just worn in one place &mdash; a country&rsquo;s regular kit might also be what they wore at a World Cup, or a club&rsquo;s league kit might also have been worn in a cup competition. Rather than uploading the same photos twice under two different teams, tick &ldquo;Was this jersey also worn in another competition?&rdquo; on the upload form and pick the extra one (or add it if it&rsquo;s not listed &mdash; this is also how to log a jersey worn only in something like a trial match). The jersey still lives under its real team and competition, but now shows up on both competitions&rsquo; pages too.</p>' +
+        '<p>Some jerseys aren&rsquo;t just worn in one place &mdash; a country&rsquo;s regular kit might also be what they wore at a World Cup, or a club&rsquo;s league kit might also have been worn in a cup competition. Rather than uploading the same photos twice under two different teams, tick &ldquo;Was this jersey also worn in another competition?&rdquo; on the upload form and pick the extra one (or add it if it&rsquo;s not listed &mdash; this is also how to log a jersey worn only in something like a trial match). The jersey still lives under its real team and competition, but now shows up on both competitions&rsquo; pages too, and a small badge naming the extra competition appears on its card wherever it&rsquo;s shown &mdash; so you can tell it apart from a jersey worn only domestically at a glance, not just by opening it.</p>' +
         '<p>This is also why competitions like the FIFA World Cup, Rugby League World Cup, and other major tournaments aren&rsquo;t options in the main Competition field &mdash; they only exist to be tagged on this way, keeping a country&rsquo;s full jersey history together under its real International team instead of splitting it across two pages.</p>' +
         '<p>Already uploaded something that should have this tag? Open the jersey and use &ldquo;Report a problem&rdquo;, or if you&rsquo;re still pending, admins can add it for you from the moderation queue.</p>' +
 
@@ -1322,7 +1339,8 @@
     var typeOptions = '<option value="">Select a type</option>' +
       CURATED_TYPES.map(function(t){ return '<option value="'+t+'">'+t+'</option>'; }).join('') +
       '<option value="__new__">+ Add a new one…</option>';
-    var mfrOptions = '<option value="">&mdash; Unlisted &mdash;</option>' +
+    var mfrOptions = '<option value="" disabled selected>Select a manufacturer&hellip;</option>' +
+      '<option value="Unknown">Unknown</option>' +
       PRIORITY_MANUFACTURERS.map(function(m){ return '<option value="'+esc(m)+'">'+esc(m)+'</option>'; }).join('') +
       '<option value="__new__">+ Add a new one…</option>';
     var thisYear = new Date().getFullYear();
@@ -1365,8 +1383,8 @@
               '<input type="text" id="f-type-sub-new" placeholder="New training type">' +
               '<button type="button" class="new-value-cancel" id="f-type-sub-new-cancel" aria-label="Back to list">&#10005;</button>' +
             '</div></div>' +
-          '<div class="field"><label for="f-mfr-select">Manufacturer <small>optional &mdash; click the dropdown or click it and start typing to jump to it; add it below if it&rsquo;s not there</small></label>' +
-            '<select id="f-mfr-select">'+mfrOptions+'</select>' +
+          '<div class="field"><label for="f-mfr-select">Manufacturer * <small>don&rsquo;t know it? pick &ldquo;Unknown&rdquo; &mdash; click the dropdown or click it and start typing to jump to a brand; add it below if it&rsquo;s not there</small></label>' +
+            '<select id="f-mfr-select" required>'+mfrOptions+'</select>' +
             '<div class="new-value-row" id="f-mfr-new-row" hidden>' +
               '<input type="text" id="f-mfr-new" placeholder="New manufacturer">' +
               '<button type="button" class="new-value-cancel" id="f-mfr-new-cancel" aria-label="Back to list">&#10005;</button>' +
@@ -2841,7 +2859,9 @@
       var mfrCounts = await usageCounts('manufacturer', sportSlug);
       var globalMfrs = await getGlobalManufacturers();
 
-      var curatedTypes = CURATED_TYPES.concat(EXTRA_TYPES_BY_SPORT[sportSlug] || []);
+      var curatedTypes = CURATED_TYPES_OVERRIDE_BY_SPORT[sportSlug]
+        ? CURATED_TYPES_OVERRIDE_BY_SPORT[sportSlug].slice()
+        : CURATED_TYPES.concat(EXTRA_TYPES_BY_SPORT[sportSlug] || []);
       var typeExtra = Object.keys(typeCounts).filter(function(t){ return curatedTypes.indexOf(t) === -1; })
         .sort(function(a,b){ return typeCounts[b] - typeCounts[a]; });
       typeSelect.innerHTML = '<option value="">Select a type</option>' +
@@ -2859,9 +2879,17 @@
       var listedSoFar = {};
       PRIORITY_MANUFACTURERS.concat(mfrExtra).forEach(function(m){ listedSoFar[m] = true; });
       var mfrRest = globalMfrs.filter(function(m){ return !listedSoFar[m]; }).sort();
-      mfrSelect.innerHTML = '<option value="">&mdash; Unlisted &mdash;</option>' +
+      // Required, with "Unknown" as an explicit, real option — the old
+      // blank/"Unlisted" default made it too easy to click straight past
+      // this field without thinking about it, which meant a lot of
+      // well-known-brand jerseys were going up with no manufacturer
+      // logged at all. "Unknown" is still there for the genuinely
+      // unidentifiable older jerseys; it just has to be a deliberate pick.
+      mfrSelect.innerHTML = '<option value="" disabled selected>Select a manufacturer&hellip;</option>' +
+        '<option value="Unknown">Unknown</option>' +
         PRIORITY_MANUFACTURERS.concat(mfrExtra).concat(mfrRest).map(function(m){ return '<option value="'+esc(m)+'">'+esc(m)+'</option>'; }).join('') +
         '<option value="__new__">+ Add a new one…</option>';
+      mfrSelect.required = true;
       mfrSelect.hidden = false; mfrNewRow.hidden = true; mfrNew.value = ''; mfrNew.required = false;
     }
 
@@ -2870,7 +2898,7 @@
     teamSelect.addEventListener('change', function(){ syncNewVisibility(teamSelect, teamNewRow, teamNew, true); checkTeamAlsoSee(); saveDraft(); });
     typeSelect.addEventListener('change', function(){ syncNewVisibility(typeSelect, typeNewRow, typeNew, true); refreshTypeSubVisibility(); saveDraft(); });
     typeSubSelect.addEventListener('change', function(){ syncNewVisibility(typeSubSelect, typeSubNewRow, typeSubNew, false); saveDraft(); });
-    mfrSelect.addEventListener('change', function(){ syncNewVisibility(mfrSelect, mfrNewRow, mfrNew, false); saveDraft(); });
+    mfrSelect.addEventListener('change', function(){ syncNewVisibility(mfrSelect, mfrNewRow, mfrNew, true); saveDraft(); });
     extraCompToggle.addEventListener('change', function(){
       extraCompRow.hidden = !extraCompToggle.checked;
       if(!extraCompToggle.checked){
@@ -2884,7 +2912,7 @@
     wireNewCancel(teamSelect, teamNewRow, teamNew, true);
     wireNewCancel(typeSelect, typeNewRow, typeNew, true);
     wireNewCancel(typeSubSelect, typeSubNewRow, typeSubNew, false);
-    wireNewCancel(mfrSelect, mfrNewRow, mfrNew, false);
+    wireNewCancel(mfrSelect, mfrNewRow, mfrNew, true);
     wireNewCancel(extraCompSel, extraCompNewRow, extraCompNew, false);
     [compNew, teamNew, seasonInput, typeNew, typeSubNew, mfrNew, extraCompNew, document.getElementById('f-notes')].forEach(function(el){
       el.addEventListener('input', saveDraft);
@@ -2923,7 +2951,7 @@
         }
         if(restoredDraft.mfr){
           mfrSelect.value = restoredDraft.mfr.v || '';
-          syncNewVisibility(mfrSelect, mfrNewRow, mfrNew, false);
+          syncNewVisibility(mfrSelect, mfrNewRow, mfrNew, true);
           mfrNew.value = restoredDraft.mfr.n || '';
         }
         if(restoredDraft.notes) document.getElementById('f-notes').value = restoredDraft.notes;
