@@ -88,7 +88,7 @@
     {min:25,   label:'Reserve',      color:'#5FA8D9'},
     {min:50,   label:'Squad Player', color:'#3FC7D1'},
     {min:100,  label:'Starter',      color:'#3FD1A8'},
-    {min:251,  label:'Specialist',   color:'#A8D14A'},
+    {min:250,  label:'Specialist',   color:'#A8D14A'},
     {min:500,  label:'Captain',      color:'#F0B429'},
     {min:1000, label:'All-Star',     color:'#F0914B'},
     {min:2000, label:'Veteran',      color:'#E4645C'},
