@@ -1115,11 +1115,32 @@
   var SEARCH_ALIASES = {
     'ny':'new york', 'nyc':'new york', 'la':'los angeles', 'sf':'san francisco',
     'gb':'green bay', 'kc':'kansas city', 'philly':'philadelphia',
-    'utd':'united', 'intl':'international', 'int':'international'
+    'utd':'united', 'intl':'international', 'int':'international',
+    'koln':'cologne'
   };
+  // A few German club names are now shown shorter than their official
+  // name (Bundesliga/2. Bundesliga — "FC Bayern Munich" is just "Bayern
+  // Munich" on the site now), so a search for the old/official form
+  // needs a full-phrase mapping rather than the word-by-word aliases
+  // above — those only swap one word for another, they can't also drop
+  // an extra word like "FC" or "1." that the shortened name no longer has.
   var SEARCH_PHRASE_ALIASES = {
     'man utd':'manchester united', 'man city':'manchester city', 'psg':'paris saint germain',
-    'hull kr':'hull kingston rovers'
+    'hull kr':'hull kingston rovers',
+    'fc bayern munich':'bayern munich', 'fc bayern munchen':'bayern munich', 'bayern munchen':'bayern munich',
+    '1 fsv mainz 05':'fsv mainz', 'fsv mainz 05':'fsv mainz',
+    'sv werder bremen':'werder bremen',
+    'fc schalke 04':'schalke 04',
+    'tsg 1899 hoffenheim':'tsg hoffenheim',
+    '1 fc union berlin':'union berlin', 'fc union berlin':'union berlin',
+    'hertha bsc':'hertha berlin',
+    'arminia bielefeld':'bielefeld',
+    'vfl bochum':'bochum',
+    'eintracht braunschweig':'braunschweig',
+    'darmstadt 98':'darmstadt',
+    '1 fc kaiserslautern':'kaiserslautern', 'fc kaiserslautern':'kaiserslautern',
+    '1 fc magdeburg':'magdeburg', 'fc magdeburg':'magdeburg',
+    '1 fc nurnberg':'fc nurnberg'
   };
   function normalizeSearchText(s){
     return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
