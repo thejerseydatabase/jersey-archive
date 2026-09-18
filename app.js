@@ -564,12 +564,30 @@
     // click, especially useful on the huge international rosters where
     // most teams currently have nothing uploaded.
     var jerseyCountByTeam = {};
-    function teamCard(t){
+    function teamCard(t, startHidden){
       var note = (t.is_upcoming && t.history_note) ? '<span class="upcoming-note">'+esc(t.history_note)+'</span>' : '';
       var formatsAttr = t.formats && t.formats.length ? ' data-formats="'+esc(t.formats.join(','))+'"' : '';
+      var hideAttr = startHidden ? ' hidden data-paginated-overflow' : '';
       var count = jerseyCountByTeam[t.id] || 0;
       var countHtml = '<span class="team-jersey-count">'+(count ? count+' jersey'+(count===1?'':'s') : 'No jerseys yet')+'</span>';
-      return '<a class="team-card" href="#/sport/'+sportSlug+'/'+compSlug+'/team/'+t.slug+'"'+formatsAttr+'>'+teamSwatch(t)+'<div class="team-info"><h3>'+esc(t.name)+'</h3>'+note+countHtml+'</div></a>';
+      return '<a class="team-card" href="#/sport/'+sportSlug+'/'+compSlug+'/team/'+t.slug+'"'+formatsAttr+hideAttr+'>'+teamSwatch(t)+'<div class="team-info"><h3>'+esc(t.name)+'</h3>'+note+countHtml+'</div></a>';
+    }
+    // A competition with a huge team list (the ~100+ countries under an
+    // International comp) is a long scroll to a flat grid — past this
+    // size, only the first batch renders visible and the rest sit
+    // behind a "Show all" button. Small/mid comps (NFL, MLB and the
+    // like, usually 30-40ish teams) stay exactly as they were, one flat
+    // grid, no button.
+    var TEAM_GRID_PAGE_SIZE = 20, TEAM_GRID_PAGE_THRESHOLD = 40;
+    function teamGridHtml(list, gridId){
+      var idAttr = gridId ? ' id="'+gridId+'"' : '';
+      if(list.length <= TEAM_GRID_PAGE_THRESHOLD){
+        return '<div class="team-grid"'+idAttr+'>'+list.map(function(t){ return teamCard(t); }).join('')+'</div>';
+      }
+      var cards = list.slice(0, TEAM_GRID_PAGE_SIZE).map(function(t){ return teamCard(t); }).join('') +
+        list.slice(TEAM_GRID_PAGE_SIZE).map(function(t){ return teamCard(t, true); }).join('');
+      return '<div class="team-grid"'+idAttr+'>'+cards+'</div>' +
+        '<button class="btn btn-secondary show-all-teams-btn" type="button" style="margin-top:12px;">Show all '+list.length+' teams</button>';
     }
 
     // Season-by-season mini galleries underneath the team list, most recent
@@ -661,7 +679,7 @@
       });
       return groupNames.map(function(g){
         var sorted = groups[g].slice().sort(function(a,b){ return a.name.localeCompare(b.name); });
-        return '<div class="conference-group"><h4 class="extra-kits-label">'+esc(g)+(g==='Other'?'':' Conference')+'</h4><div class="team-grid">'+sorted.map(teamCard).join('')+'</div></div>';
+        return '<div class="conference-group"><h4 class="extra-kits-label">'+esc(g)+(g==='Other'?'':' Conference')+'</h4>'+teamGridHtml(sorted)+'</div>';
       }).join('');
     }
     var hasConferences = activeTeams.some(function(t){ return t.conference; });
@@ -669,10 +687,10 @@
       ? teamsByConference(activeTeams)
       : (womenTeams.length
         ? '<div class="gender-split-grid">' +
-            '<div><h4 class="extra-kits-label">Men&rsquo;s &middot; <span id="men-count">'+menTeams.length+'</span></h4><div class="team-grid" id="men-team-grid">'+menTeams.map(teamCard).join('')+'</div></div>' +
-            '<div><h4 class="extra-kits-label">Women&rsquo;s &middot; <span id="women-count">'+womenTeams.length+'</span></h4><div class="team-grid" id="women-team-grid">'+womenTeams.map(teamCard).join('')+'</div></div>' +
+            '<div><h4 class="extra-kits-label">Men&rsquo;s &middot; <span id="men-count">'+menTeams.length+'</span></h4>'+teamGridHtml(menTeams, 'men-team-grid')+'</div>' +
+            '<div><h4 class="extra-kits-label">Women&rsquo;s &middot; <span id="women-count">'+womenTeams.length+'</span></h4>'+teamGridHtml(womenTeams, 'women-team-grid')+'</div>' +
           '</div>'
-        : '<div class="team-grid">'+menTeams.map(teamCard).join('')+'</div>'));
+        : teamGridHtml(menTeams)));
 
     return '<div class="section-head" style="align-items:center;">' +
         '<div style="display:flex;align-items:center;gap:2px;">'+compLogoSwatch(comp, {large:true})+'<h2 style="margin-left:2px;">'+esc(comp.name)+'</h2></div>' +
@@ -1439,6 +1457,7 @@
               '<input type="text" id="f-mfr-new" placeholder="New manufacturer">' +
               '<button type="button" class="new-value-cancel" id="f-mfr-new-cancel" aria-label="Back to list">&#10005;</button>' +
             '</div></div>' +
+          '<div class="field field-full"><p class="field-hint is-match" id="f-duplicate-hint" hidden></p></div>' +
           '<div class="field field-full">' +
             '<label style="text-transform:none;letter-spacing:normal;"><input type="checkbox" id="f-extra-comp-toggle" style="width:auto;margin-right:8px;">Was this jersey also worn in another competition? <small>e.g. a World Cup, on top of the competition above</small></label>' +
             '<div id="f-extra-comp-row" style="margin-top:8px;" hidden>' +
@@ -1978,7 +1997,12 @@
       teamFilter.addEventListener('input', function(){
         var q = teamFilter.value.toLowerCase();
         document.querySelectorAll('.team-grid .team-card').forEach(function(card){
-          card.hidden = card.querySelector('h3').textContent.toLowerCase().indexOf(q) === -1;
+          // an empty query means "no active search" — restore whatever the
+          // pagination state was (still collapsed unless "Show all" was
+          // already clicked) rather than force-revealing every card
+          card.hidden = q
+            ? card.querySelector('h3').textContent.toLowerCase().indexOf(q) === -1
+            : card.hasAttribute('data-paginated-overflow');
         });
         // hide a format group's heading (and empty grid) once every team in it is filtered out
         document.querySelectorAll('.extra-kits-label').forEach(function(heading){
@@ -1991,6 +2015,16 @@
         });
       });
     }
+    document.querySelectorAll('.show-all-teams-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var grid = btn.previousElementSibling;
+        if(grid) grid.querySelectorAll('[data-paginated-overflow]').forEach(function(card){
+          card.hidden = false;
+          card.removeAttribute('data-paginated-overflow');
+        });
+        btn.remove();
+      });
+    });
     var jerseyTabs = document.getElementById('team-jersey-tabs');
     if(jerseyTabs){
       jerseyTabs.querySelectorAll('.chip').forEach(function(chip){
@@ -2883,6 +2917,32 @@
       hintEl.hidden = false;
       hintEl.textContent = '"'+teamName+'" also has a row under '+names.join(', ')+' — double check this is the season/era-correct competition for this jersey.';
     }
+    // Flags a likely duplicate before it's submitted — same team, same
+    // season, same jersey type already logged (and not rejected). RLS
+    // means this can only ever see an approved jersey or one of the
+    // current user's own, which is fine: those are exactly the cases
+    // where a "didn't realise this was already here" duplicate happens.
+    async function checkDuplicateJersey(){
+      var hintEl = document.getElementById('f-duplicate-hint');
+      if(!hintEl) return;
+      var teamName = teamSelect.value;
+      var seasonVal = seasonInput.value.trim();
+      var typeVal = fieldValue(typeSelect, typeNew);
+      if(!teamName || teamName === '__new__' || !seasonVal || !typeVal){ hintEl.hidden = true; return; }
+      if(typeVal === 'Training'){
+        var typeSub = fieldValue(typeSubSelect, typeSubNew);
+        if(typeSub) typeVal = 'Training - ' + typeSub;
+      }
+      var comps = await competitionsForSport(sportSel.value);
+      var comp = comps.filter(function(c){ return c.name.toLowerCase() === compSelect.value.toLowerCase(); })[0];
+      if(!comp){ hintEl.hidden = true; return; }
+      var teamRes = await supabaseClient.from('teams').select('id').eq('competition_slug', comp.slug).eq('slug', slugify(teamName)).maybeSingle();
+      if(teamRes.error || !teamRes.data){ hintEl.hidden = true; return; }
+      var res = await supabaseClient.from('jerseys').select('id, status').eq('team_id', teamRes.data.id).eq('season', seasonVal).eq('type', typeVal).neq('status', 'rejected').limit(1);
+      if(res.error || !res.data || !res.data.length){ hintEl.hidden = true; return; }
+      hintEl.hidden = false;
+      hintEl.innerHTML = 'Looks like this team already has a <a class="spec-link" href="#/jersey/'+res.data[0].id+'" target="_blank" rel="noopener">'+esc(seasonVal)+' '+esc(typeVal)+'</a> logged &mdash; please double check this isn&rsquo;t a duplicate before submitting.';
+    }
     // One optional extra competition in the same sport (the primary one
     // picked above is excluded — that's set via the Competition field,
     // not here). Keeps whatever was already picked when re-rendered.
@@ -3002,9 +3062,12 @@
 
     sportSel.addEventListener('change', function(){ refreshComps(); refreshFormat(); refreshMfrTypeOptions(); saveDraft(); });
     compSelect.addEventListener('change', function(){ syncNewVisibility(compSelect, compNewRow, compNew, true); refreshTeams(); refreshExtraComps(); saveDraft(); });
-    teamSelect.addEventListener('change', function(){ syncNewVisibility(teamSelect, teamNewRow, teamNew, true); checkTeamAlsoSee(); saveDraft(); });
-    typeSelect.addEventListener('change', function(){ syncNewVisibility(typeSelect, typeNewRow, typeNew, true); refreshTypeSubVisibility(); saveDraft(); });
-    typeSubSelect.addEventListener('change', function(){ syncNewVisibility(typeSubSelect, typeSubNewRow, typeSubNew, false); saveDraft(); });
+    teamSelect.addEventListener('change', function(){ syncNewVisibility(teamSelect, teamNewRow, teamNew, true); checkTeamAlsoSee(); checkDuplicateJersey(); saveDraft(); });
+    typeSelect.addEventListener('change', function(){ syncNewVisibility(typeSelect, typeNewRow, typeNew, true); refreshTypeSubVisibility(); checkDuplicateJersey(); saveDraft(); });
+    typeSubSelect.addEventListener('change', function(){ syncNewVisibility(typeSubSelect, typeSubNewRow, typeSubNew, false); checkDuplicateJersey(); saveDraft(); });
+    seasonInput.addEventListener('input', checkDuplicateJersey);
+    typeNew.addEventListener('input', checkDuplicateJersey);
+    typeSubNew.addEventListener('input', checkDuplicateJersey);
     mfrSelect.addEventListener('change', function(){ syncNewVisibility(mfrSelect, mfrNewRow, mfrNew, true); saveDraft(); });
     extraCompToggle.addEventListener('change', function(){
       extraCompRow.hidden = !extraCompToggle.checked;
@@ -3056,6 +3119,7 @@
           syncNewVisibility(typeSubSelect, typeSubNewRow, typeSubNew, false);
           typeSubNew.value = restoredDraft.typeSub.n || '';
         }
+        checkDuplicateJersey();
         if(restoredDraft.mfr){
           mfrSelect.value = restoredDraft.mfr.v || '';
           syncNewVisibility(mfrSelect, mfrNewRow, mfrNew, true);
