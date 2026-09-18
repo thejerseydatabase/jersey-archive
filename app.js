@@ -1005,7 +1005,7 @@
         var c = t.competitions, sport = c.sports;
         return '<a class="team-row-compact" href="#/sport/'+sport.slug+'/'+c.slug+'/team/'+t.slug+'">'+teamSwatch(t)+'<span class="team-row-name">'+esc(t.name)+'</span><span class="team-row-comp">'+esc(c.name)+'</span></a>';
       }).join('');
-      return '<div class="season-group"><h3>'+esc(entry.sport.name)+'</h3><div class="team-list-compact">'+rows+'</div></div>';
+      return '<div class="season-group"><h3><a class="spec-link" href="#/sport/'+slug+'">'+esc(entry.sport.name)+'</a></h3><div class="team-list-compact">'+rows+'</div></div>';
     }).join('');
     // Two columns (sport 1 left, sport 2 right, sport 3 back on the
     // left, etc.) instead of stacking every sport in one long column —
