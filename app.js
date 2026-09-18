@@ -53,7 +53,7 @@
   // and to a later "add more photos" proposal on an already-approved
   // one — plenty of headroom for every real angle someone would
   // photograph, while stopping an accidental hundred-photo batch drop.
-  var MAX_UPLOAD_PHOTOS = 12;
+  var MAX_UPLOAD_PHOTOS = 6;
   // Fixed lead-in, well-known kit makers across every sport on the site —
   // shown up front regardless of whether they've been used yet, so an
   // already-real brand doesn't get re-added as "new" just because nobody's
@@ -1298,7 +1298,7 @@
         '</p>' +
 
         '<div class="section-head" style="margin-top:30px;"><h2>Upload limits</h2></div>' +
-        '<p>To keep things sane for everyone, there are hourly caps per account: up to 120 uploads per hour for either jerseys or team logos, plus 20 extra photos added to existing jerseys. That&rsquo;s far more than a normal upload session needs &mdash; it only kicks in to stop runaway/accidental spam. If you hit it, just wait a bit and carry on. Each jersey is also capped at 12 photos.</p>' +
+        '<p>To keep things sane for everyone, there are hourly caps per account: up to 120 uploads per hour for either jerseys or team logos, plus 20 extra photos added to existing jerseys. That&rsquo;s far more than a normal upload session needs &mdash; it only kicks in to stop runaway/accidental spam. If you hit it, just wait a bit and carry on. Each jersey is also capped at 6 photos.</p>' +
 
         '<div class="section-head" style="margin-top:30px;"><h2>Spotted a mistake?</h2></div>' +
         '<p>Every jersey, team, and competition page has a &ldquo;Report a problem&rdquo; button at the bottom &mdash; use it for anything wrong (wrong season, wrong team, bad photo) and it goes straight to moderation. You can also just <a class="spec-link" href="https://thejerseydatabase.com/contact.html" target="_blank" rel="noopener">get in touch</a> directly.</p>' +
