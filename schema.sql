@@ -32,8 +32,37 @@ alter table profiles enable row level security;
 create policy "profiles are publicly readable"
   on profiles for select using (true);
 
-create policy "users can update their own profile"
-  on profiles for update using ((select auth.uid()) = id);
+create policy "users can update their own profile, admins can update any"
+  on profiles for update
+  using (
+    id = (select auth.uid())
+    or exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin)
+  )
+  with check (
+    id = (select auth.uid())
+    or exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin)
+  );
+
+-- RLS only controls which ROWS a policy lets through, not which
+-- COLUMNS — without this, the update policy above would let any
+-- signed-in user set their own is_admin or points to anything via a
+-- direct API call. This resets those two columns back to their
+-- previous value whenever the person making the change isn't an
+-- admin, leaving the rest of the row edit intact.
+create function protect_profile_privileged_columns()
+returns trigger as $$
+begin
+  if not exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin) then
+    new.is_admin := old.is_admin;
+    new.points := old.points;
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+create trigger protect_profile_privileged_columns
+  before update on profiles
+  for each row execute function protect_profile_privileged_columns();
 
 -- Every security definer function below pins search_path = public.
 -- Without it, a security definer function resolves unqualified table

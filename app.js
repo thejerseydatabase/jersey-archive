@@ -1679,8 +1679,18 @@
       (profRes.data || []).forEach(function(p){ uploaderNames[p.id] = p.username; });
     }
 
+    // Search-and-toggle rather than a full user list — sites like this
+    // can end up with a lot of signed-up accounts, and this only ever
+    // needs to find the one or two people being promoted/demoted.
+    // Doesn't show for the empty-queue early return below on its own —
+    // it's appended to both return paths so it's always reachable.
+    var moderatorsPanelHtml = '<section class="block"><div class="section-head"><h2>Moderators</h2></div>' +
+      '<div class="filter-row"><input type="text" id="mod-user-search" placeholder="Search by username&hellip;"><button class="btn btn-secondary" id="mod-user-search-btn" type="button">Search</button></div>' +
+      '<div id="mod-user-results"></div>' +
+    '</section>';
+
     if(!pendingJerseys.length && !pendingPhotos.length && !openReports.length && !pendingLogos.length && !pendingCompLogos.length){
-      return '<div class="section-head"><h2>Moderation queue</h2></div><div class="empty-note">Nothing waiting for review.</div>';
+      return '<div class="section-head"><h2>Moderation queue</h2></div><div class="empty-note">Nothing waiting for review.</div>' + moderatorsPanelHtml;
     }
 
     var jerseyCards = pendingJerseys.map(function(j){
@@ -1853,7 +1863,8 @@
       '</section>' +
       '<section class="block"><div class="section-head"><h2>Reports</h2><span class="count">'+openReports.length+' open</span></div>' +
         (reportCards ? '<div class="mod-list">'+reportCards+'</div>' : '<div class="empty-note">None open.</div>') +
-      '</section>';
+      '</section>' +
+      moderatorsPanelHtml;
   }
 
   async function viewUserProfile(username){
@@ -2409,6 +2420,40 @@
   }
 
   function wireModerationActions(){
+    var modUserSearchBtn = document.getElementById('mod-user-search-btn');
+    if(modUserSearchBtn){
+      var modUserSearchInput = document.getElementById('mod-user-search');
+      var modUserResults = document.getElementById('mod-user-results');
+      async function runModUserSearch(){
+        var term = modUserSearchInput.value.trim();
+        if(!term){ modUserResults.innerHTML = ''; return; }
+        var res = await supabaseClient.from('profiles').select('id, username, is_admin').ilike('username', '%'+term+'%').order('username').limit(10);
+        if(res.error){ modUserResults.innerHTML = '<div class="empty-note">Error: '+esc(res.error.message)+'</div>'; return; }
+        var rows = res.data || [];
+        modUserResults.innerHTML = rows.length ? rows.map(function(p){
+          var isSelf = currentUser && p.id === currentUser.id;
+          return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);">' +
+            '<span style="display:flex;align-items:center;gap:8px;"><a class="spec-link" href="#/user/'+esc(p.username)+'">'+esc(p.username)+'</a>' +
+              (p.is_admin ? '<span class="chip is-active" style="pointer-events:none;padding:2px 8px;">Moderator</span>' : '') + '</span>' +
+            (isSelf
+              ? '<span class="field-hint">(you)</span>'
+              : '<button class="btn btn-secondary" data-user-id="'+p.id+'" data-admin="'+p.is_admin+'" type="button">'+(p.is_admin ? 'Remove moderator' : 'Make moderator')+'</button>') +
+          '</div>';
+        }).join('') : '<div class="empty-note">No users found.</div>';
+        modUserResults.querySelectorAll('button[data-user-id]').forEach(function(btn){
+          btn.addEventListener('click', async function(){
+            var makeAdmin = btn.dataset.admin !== 'true';
+            if(!confirm((makeAdmin ? 'Make' : 'Remove') + ' this user as a moderator?')) return;
+            btn.disabled = true;
+            var upd = await supabaseClient.from('profiles').update({is_admin: makeAdmin}).eq('id', btn.dataset.userId);
+            if(upd.error){ btn.disabled = false; alert('Error: ' + upd.error.message); return; }
+            runModUserSearch();
+          });
+        });
+      }
+      modUserSearchBtn.addEventListener('click', runModUserSearch);
+      modUserSearchInput.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); runModUserSearch(); } });
+    }
     document.querySelectorAll('.mod-card').forEach(function(card){
       wirePhotoLabelSwap(card.querySelectorAll('.photo-label-select'));
     });
