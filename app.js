@@ -46,7 +46,7 @@
   // A one-off type outside this list is still addable via "+ Add a new
   // one…" on the upload form, same as anywhere else.
   var CURATED_TYPES_OVERRIDE_BY_SPORT = {
-    cricket: ['Home','Away','Charity','Indigenous','Alternate']
+    cricket: ['Home','Away','Charity','Indigenous','Alternate','Training']
   };
   // Picking "Training" reveals a second field for which kind, so
   // "pre-match", "warm up", "captain's run" etc. don't fragment into
@@ -108,6 +108,17 @@
   function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function fmtDate(iso){ try{ return new Date(iso).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}); }catch(e){ return ''; } }
   function slugify(s){ return String(s).toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'') || 'x'; }
+  // Same idea as footballkitarchive's own file naming (e.g.
+  // "fc-augsburg-2026-27-third-kit") instead of an opaque
+  // "front-0-1789703338930" — readable if someone saves the image
+  // straight off the site. photoLabel/idx are only appended when
+  // needed to keep multiple photos of the same jersey from colliding.
+  function jerseyPhotoFileName(teamName, season, type, photoLabel, idx, ext){
+    var base = [slugify(teamName), slugify(season), slugify(type), 'kit'].join('-');
+    var suffix = photoLabel ? '-' + slugify(photoLabel) : '';
+    if(photoLabel === 'Other' && idx) suffix += '-' + idx;
+    return base + suffix + '.' + ext;
+  }
   function hashStr(s){ var h=0; for(var i=0;i<s.length;i++){ h=(h*31+s.charCodeAt(i))>>>0; } return h; }
   function hashColors(name){
     var h = hashStr(name), hue = h % 360, hue2 = (hue + 150) % 360;
@@ -2237,6 +2248,11 @@
     var dropzone = document.getElementById('ap-dropzone');
     var input = document.getElementById('ap-photos-input');
     var previewsEl = document.getElementById('ap-photo-previews');
+    // Fetched once up front (rather than re-fetched per file) purely for
+    // readable storage file names — see jerseyPhotoFileName.
+    var jerseyInfo = null;
+    supabaseClient.from('jerseys').select('season, type, teams(name)').eq('id', jerseyId).single()
+      .then(function(res){ if(!res.error) jerseyInfo = res.data; });
     function labelForIndex(i){ return i === 0 ? 'Front' : i === 1 ? 'Back' : 'Other'; }
     function renderPreviews(){
       previewsEl.innerHTML = selected.map(function(p, i){
@@ -2291,7 +2307,9 @@
         for(var i=0; i<selected.length; i++){
           var p = selected[i];
           var ext = (p.file.name.split('.').pop() || 'jpg').toLowerCase();
-          var path = jerseyId + '/proposed-' + slugify(p.label) + '-' + i + '-' + Date.now() + '.' + ext;
+          var path = jerseyId + '/proposed-' + (jerseyInfo
+            ? jerseyPhotoFileName(jerseyInfo.teams.name, jerseyInfo.season, jerseyInfo.type, p.label, i+1, ext)
+            : slugify(p.label) + '-' + (i+1) + '-' + Date.now() + '.' + ext);
           var up = await supabaseClient.storage.from('jersey-photos').upload(path, p.file);
           if(up.error) throw up.error;
           var ins = await supabaseClient.from('jersey_images').insert({
@@ -3025,7 +3043,7 @@
           for(var i=0; i<selectedPhotos.length; i++){
             var photo = selectedPhotos[i];
             var ext = (photo.file.name.split('.').pop() || 'jpg').toLowerCase();
-            var path = jersey.id + '/' + slugify(photo.label) + '-' + i + '-' + Date.now() + '.' + ext;
+            var path = jersey.id + '/' + jerseyPhotoFileName(team.name, season, type, photo.label, i+1, ext);
             var up = await supabaseClient.storage.from('jersey-photos').upload(path, photo.file);
             if(up.error) throw up.error;
             var imgIns = await supabaseClient.from('jersey_images').insert({jersey_id: jersey.id, storage_path: path, label: photo.label, sort_order: i});
