@@ -186,6 +186,10 @@ create table teams (
   -- promoted away and back (e.g. "Merged with Balmain Tigers in 1999 to
   -- form the Wests Tigers").
   history_note text,
+  -- which regional conference this team plays in, for a competition
+  -- that's itself split that way (NBL1's North/South/Central/West) —
+  -- null for every other competition, which just renders one flat grid.
+  conference text,
   -- which real-world formats this team competes in (used by international
   -- cricket to split the team grid into Test/ODI/T20I sections) — null
   -- for a team where that split doesn't apply.

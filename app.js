@@ -637,12 +637,37 @@
           presentFormats.map(function(f){ return '<button class="chip team-format-filter-chip" data-format="'+esc(f)+'" type="button">'+esc(f)+'</button>'; }).join('') +
         '</div>';
     }
-    var teamsGridHtml = formatChipsHtml + (womenTeams.length
-      ? '<div class="gender-split-grid">' +
-          '<div><h4 class="extra-kits-label">Men&rsquo;s &middot; <span id="men-count">'+menTeams.length+'</span></h4><div class="team-grid" id="men-team-grid">'+menTeams.map(teamCard).join('')+'</div></div>' +
-          '<div><h4 class="extra-kits-label">Women&rsquo;s &middot; <span id="women-count">'+womenTeams.length+'</span></h4><div class="team-grid" id="women-team-grid">'+womenTeams.map(teamCard).join('')+'</div></div>' +
-        '</div>'
-      : '<div class="team-grid">'+menTeams.map(teamCard).join('')+'</div>');
+    // Some competitions (NBL1's North/South/Central/West) run as
+    // separate regional conferences rather than one flat table — grouped
+    // the same way "more competitions" is grouped by country on a sport
+    // page, alphabetically, with any untagged team falling into its own
+    // "Other" bucket at the end so a partially-tagged competition still
+    // renders sensibly.
+    function teamsByConference(list){
+      var groups = {};
+      list.forEach(function(t){
+        var g = t.conference || 'Other';
+        (groups[g] = groups[g] || []).push(t);
+      });
+      var groupNames = Object.keys(groups).sort(function(a,b){
+        if(a==='Other') return 1;
+        if(b==='Other') return -1;
+        return a.localeCompare(b);
+      });
+      return groupNames.map(function(g){
+        var sorted = groups[g].slice().sort(function(a,b){ return a.name.localeCompare(b.name); });
+        return '<div class="conference-group"><h4 class="extra-kits-label">'+esc(g)+(g==='Other'?'':' Conference')+'</h4><div class="team-grid">'+sorted.map(teamCard).join('')+'</div></div>';
+      }).join('');
+    }
+    var hasConferences = activeTeams.some(function(t){ return t.conference; });
+    var teamsGridHtml = formatChipsHtml + (hasConferences
+      ? teamsByConference(activeTeams)
+      : (womenTeams.length
+        ? '<div class="gender-split-grid">' +
+            '<div><h4 class="extra-kits-label">Men&rsquo;s &middot; <span id="men-count">'+menTeams.length+'</span></h4><div class="team-grid" id="men-team-grid">'+menTeams.map(teamCard).join('')+'</div></div>' +
+            '<div><h4 class="extra-kits-label">Women&rsquo;s &middot; <span id="women-count">'+womenTeams.length+'</span></h4><div class="team-grid" id="women-team-grid">'+womenTeams.map(teamCard).join('')+'</div></div>' +
+          '</div>'
+        : '<div class="team-grid">'+menTeams.map(teamCard).join('')+'</div>'));
 
     return '<div class="section-head" style="align-items:center;">' +
         '<div style="display:flex;align-items:center;gap:2px;">'+compLogoSwatch(comp, {large:true})+'<h2 style="margin-left:2px;">'+esc(comp.name)+'</h2></div>' +
