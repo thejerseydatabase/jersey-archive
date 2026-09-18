@@ -259,11 +259,27 @@
     return '<div class="thumb-placeholder" style="background:linear-gradient(135deg,'+esc(team.primary_color)+','+esc(team.secondary_color)+')"><span>No photo yet</span></div>';
   }
 
+  // Short, human "how long ago" label for the Latest Updates page — falls
+  // back to a plain date once something's more than a week old, since
+  // "23d ago" stops being a useful way to picture when that was.
+  function relativeTimeLabel(iso){
+    var d = new Date(iso);
+    var mins = Math.floor((Date.now() - d.getTime()) / 60000);
+    if(mins < 1) return 'just now';
+    if(mins < 60) return mins + 'm ago';
+    var hours = Math.floor(mins / 60);
+    if(hours < 24) return hours + 'h ago';
+    var days = Math.floor(hours / 24);
+    if(days < 7) return days + 'd ago';
+    return d.toLocaleDateString(undefined, {year:'numeric', month:'short', day:'numeric'});
+  }
+
   function jerseyCard(jersey, team, opts){
     opts = opts || {};
     var yearType = jersey.season + ' · ' + jersey.type + (jersey.format ? ' · ' + jersey.format : '');
     var primary = opts.showTeam ? team.name : yearType;
     var secondary = opts.showTeam ? yearType : (jersey.manufacturer || 'Unlisted');
+    var dateHtml = opts.ts ? '<span>'+esc(relativeTimeLabel(opts.ts))+'</span>' : '';
     var pendingBadge = jersey.status === 'rejected' ? '<span class="pending-badge is-rejected">Rejected</span>'
       : (jersey.status && jersey.status !== 'approved' ? '<span class="pending-badge">Pending</span>' : '');
     // Surfaces an extra-competition tag (a World Cup jersey filed under
@@ -278,7 +294,7 @@
       : '';
     return '<a class="jersey-card" href="#/jersey/'+jersey.id+'" data-format="'+esc(jersey.format || '')+'">' + pendingBadge + tagBadge +
       '<div class="jersey-thumb">'+jerseyThumb(jersey, team)+'</div>' +
-      '<div class="jersey-label"><strong>'+esc(primary)+'</strong><span>'+esc(secondary)+'</span></div>' +
+      '<div class="jersey-label"><strong>'+esc(primary)+'</strong><span>'+esc(secondary)+'</span>'+dateHtml+'</div>' +
     '</a>';
   }
 
@@ -286,18 +302,20 @@
   // "Recently added" grid as jerseys instead of needing its own layout.
   function logoCard(logo, team, opts){
     var label = (opts && opts.label) || 'New logo';
+    var dateHtml = (opts && opts.ts) ? '<span>'+esc(relativeTimeLabel(opts.ts))+'</span>' : '';
     var sportSlug = team.competitions.sport_slug;
     return '<a class="jersey-card" href="#/sport/'+sportSlug+'/'+team.competition_slug+'/team/'+team.slug+'">' +
       '<div class="jersey-thumb"><img src="'+esc(publicLogoUrl(logo.storage_path))+'" alt=""></div>' +
-      '<div class="jersey-label"><strong>'+esc(team.name)+'</strong><span>'+esc(label)+'</span></div>' +
+      '<div class="jersey-label"><strong>'+esc(team.name)+'</strong><span>'+esc(label)+'</span>'+dateHtml+'</div>' +
     '</a>';
   }
 
   function compLogoCard(logo, comp, opts){
     var label = (opts && opts.label) || 'New logo';
+    var dateHtml = (opts && opts.ts) ? '<span>'+esc(relativeTimeLabel(opts.ts))+'</span>' : '';
     return '<a class="jersey-card" href="#/sport/'+comp.sport_slug+'/'+comp.slug+'">' +
       '<div class="jersey-thumb"><img src="'+esc(publicLogoUrl(logo.storage_path))+'" alt=""></div>' +
-      '<div class="jersey-label"><strong>'+esc(comp.name)+'</strong><span>'+esc(label)+'</span></div>' +
+      '<div class="jersey-label"><strong>'+esc(comp.name)+'</strong><span>'+esc(label)+'</span>'+dateHtml+'</div>' +
     '</a>';
   }
 
@@ -438,6 +456,13 @@
       '</a>';
     }).join('');
     var recentHtml = await recentJerseysHtml(null);
+    // Six items is enough to show the home page is alive without turning
+    // it into an endless feed — anyone who wants to see everything else
+    // that's gone up recently gets a dedicated page instead, same idea
+    // as FKA's "Latest Updates" button under its own recent grid.
+    var updatesButtonHtml = recentHtml
+      ? '<div style="text-align:center;margin-top:22px;"><a class="btn" href="#/updates">Latest Updates</a></div>'
+      : '';
     return '<header class="hero">' +
         '<p class="eyebrow">The Jersey Database &mdash; Archive</p>' +
         '<h1>Every jersey.<br>Filed by hand, found in three clicks.</h1>' +
@@ -445,7 +470,30 @@
       '</header>' +
       '<div class="section-head"><h2>Browse by sport</h2></div>' +
       '<div class="sport-grid">'+(cards || '<div class="empty-note">No sports found &mdash; has schema.sql been run?</div>')+'</div>' +
-      recentHtml;
+      recentHtml + updatesButtonHtml;
+  }
+
+  // Full "what's gone up recently" feed — jerseys and logos together,
+  // most recent first — for anyone who wants more than the home page's
+  // 6-item taster. Same source data as recentJerseysHtml, just a much
+  // higher cap and its own page instead of a small inline grid.
+  async function viewUpdates(){
+    setCrumbs([{label:'Home', href:'#/'},{label:'Latest Updates', href:'#'}]);
+    var LIMIT = 60;
+    var jq = supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*), jersey_competitions(competitions(name))').order('created_at', {ascending:false}).limit(LIMIT);
+    var lq = supabaseClient.from('team_logos').select('*, teams!inner(*, competitions!inner(sport_slug))').eq('is_current', true).order('approved_at', {ascending:false}).limit(LIMIT);
+    var cq = supabaseClient.from('competition_logos').select('*, competitions!inner(*)').eq('is_current', true).order('approved_at', {ascending:false}).limit(LIMIT);
+    var results = await Promise.all([jq, lq, cq]);
+    var jRes = results[0], lRes = results[1], cRes = results[2];
+    var items = (jRes.data || []).map(function(j){ return {ts: j.created_at, html: jerseyCard(j, j.teams, {showTeam:true, ts:j.created_at})}; })
+      .concat((lRes.data || []).map(function(l){ return {ts: l.approved_at, html: logoCard(l, l.teams, {ts:l.approved_at})}; }))
+      .concat((cRes.data || []).map(function(l){ return {ts: l.approved_at, html: compLogoCard(l, l.competitions, {ts:l.approved_at})}; }));
+    items.sort(function(a,b){ return new Date(b.ts) - new Date(a.ts); });
+    items = items.slice(0, LIMIT);
+    return '<div class="section-head"><h2>Latest Updates</h2><span class="count">'+items.length+'</span></div>' +
+      (items.length
+        ? '<div class="jersey-grid">'+items.map(function(i){ return i.html; }).join('')+'</div>'
+        : '<div class="empty-note">Nothing added yet.</div>');
   }
 
   async function viewSport(sportSlug){
@@ -1997,6 +2045,7 @@
       else if(parts[0]==='search' && parts[1]){ html = await viewSearch(parts[1]); }
       else if(parts[0]==='manufacturers' && parts.length===1){ html = await viewManufacturers(); }
       else if(parts[0]==='manufacturer' && parts[1]){ html = await viewManufacturer(parts[1]); }
+      else if(parts[0]==='updates' && parts.length===1){ html = await viewUpdates(); }
       else if(parts[0]==='types' && parts.length===1){ html = await viewTypes(); }
       else if(parts[0]==='type' && parts[1]){ html = await viewType(parts[1], parts[2], parts[3]); }
       else if(parts[0]==='upload'){ html = await viewUpload(); }
