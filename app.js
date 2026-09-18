@@ -49,6 +49,11 @@
   // isn't in here — that's a genuine match jersey, already covered by
   // the separate "Heritage" type.
   var TRAINING_SUBTYPES = ['Pre-match','Warm Up','Captain\'s Run','Travel'];
+  // Applies to a single upload (front/back/other angles for one jersey)
+  // and to a later "add more photos" proposal on an already-approved
+  // one — plenty of headroom for every real angle someone would
+  // photograph, while stopping an accidental hundred-photo batch drop.
+  var MAX_UPLOAD_PHOTOS = 12;
   // Fixed lead-in, well-known kit makers across every sport on the site —
   // shown up front regardless of whether they've been used yet, so an
   // already-real brand doesn't get re-added as "new" just because nobody's
@@ -873,18 +878,67 @@
     '</div>';
   }
 
+  // Keeps at most one photo labeled Front and one labeled Back within a
+  // set (used by both upload pickers, which hold photos in a local
+  // array before anything's saved) — picking Front on a second photo
+  // bumps whichever one already had it over to this photo's old label,
+  // instead of ending up with two "Front" photos and an ambiguous main
+  // image. "Other" has no such cap; any number of photos can share it.
+  function reassignPhotoLabel(list, idx, newLabel){
+    var oldLabel = list[idx].label;
+    if(newLabel !== oldLabel && (newLabel === 'Front' || newLabel === 'Back')){
+      var conflictIdx = list.findIndex(function(p, i){ return i !== idx && p.label === newLabel; });
+      if(conflictIdx > -1) list[conflictIdx].label = oldLabel;
+    }
+    list[idx].label = newLabel;
+  }
+  // Same swap, for editing an already-saved jersey's photos (moderation
+  // queue, jersey detail admin block) — two DB writes instead of a local
+  // mutation, scoped to whichever set of <select> elements is passed in
+  // (one jersey's photos) so it never swaps across two different jerseys.
+  function wirePhotoLabelSwap(selects, onSaved){
+    var arr = Array.prototype.slice.call(selects);
+    arr.forEach(function(sel){ sel.dataset.prev = sel.value; });
+    arr.forEach(function(sel){
+      sel.addEventListener('change', async function(){
+        var newLabel = sel.value, oldLabel = sel.dataset.prev;
+        if(newLabel === oldLabel) return;
+        var conflict = (newLabel === 'Front' || newLabel === 'Back')
+          ? arr.filter(function(o){ return o !== sel; }).find(function(o){ return o.value === newLabel; })
+          : null;
+        sel.disabled = true;
+        if(conflict) conflict.disabled = true;
+        var updates = [supabaseClient.from('jersey_images').update({label: newLabel}).eq('id', sel.dataset.imageId)];
+        if(conflict) updates.push(supabaseClient.from('jersey_images').update({label: oldLabel}).eq('id', conflict.dataset.imageId));
+        var results = await Promise.all(updates);
+        var err = results.filter(function(r){ return r.error; })[0];
+        if(err){
+          sel.disabled = false; if(conflict) conflict.disabled = false;
+          alert('Error: ' + err.error.message);
+          return;
+        }
+        (onSaved || render)();
+      });
+    });
+  }
+
   // Tucked away like the team page's own admin panel — fixes a mislabeled
   // front/back photo (which also fixes which one shows as the main image,
   // since that's always whichever is labeled "Front") and reassigns a
   // jersey to a different team/sport entirely, for the rare case one gets
   // approved under the wrong one and can't just be re-uploaded.
   function renderJerseyAdminBlock(j, images, sportSlug){
+    // Delete only shows once there's more than one photo, since a jersey
+    // always needs at least one — that's the same condition already
+    // gating whether this grid renders at all, so there's never a way
+    // to delete down to zero from here.
     var relabelHtml = (images && images.length > 1)
       ? '<label class="rate-label">Photo labels</label><div class="logo-history-grid lightbox-group">' + images.map(function(img){
           return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicImageUrl(img.storage_path))+'" alt="">' +
             '<select class="photo-label-select" data-image-id="'+img.id+'">' +
               ['Front','Back','Other'].map(function(l){ return '<option value="'+l+'"'+(img.label===l?' selected':'')+'>'+l+'</option>'; }).join('') +
             '</select>' +
+            '<button type="button" class="photo-delete-btn" data-image-id="'+img.id+'" title="Delete this photo">&#10005;</button>' +
           '</div>';
         }).join('') + '</div>'
       : '';
@@ -1244,7 +1298,7 @@
         '</p>' +
 
         '<div class="section-head" style="margin-top:30px;"><h2>Upload limits</h2></div>' +
-        '<p>To keep things sane for everyone, there are hourly caps per account: up to 120 uploads per hour for either jerseys or team logos, plus 20 extra photos added to existing jerseys. That&rsquo;s far more than a normal upload session needs &mdash; it only kicks in to stop runaway/accidental spam. If you hit it, just wait a bit and carry on.</p>' +
+        '<p>To keep things sane for everyone, there are hourly caps per account: up to 120 uploads per hour for either jerseys or team logos, plus 20 extra photos added to existing jerseys. That&rsquo;s far more than a normal upload session needs &mdash; it only kicks in to stop runaway/accidental spam. If you hit it, just wait a bit and carry on. Each jersey is also capped at 12 photos.</p>' +
 
         '<div class="section-head" style="margin-top:30px;"><h2>Spotted a mistake?</h2></div>' +
         '<p>Every jersey, team, and competition page has a &ldquo;Report a problem&rdquo; button at the bottom &mdash; use it for anything wrong (wrong season, wrong team, bad photo) and it goes straight to moderation. You can also just <a class="spec-link" href="https://thejerseydatabase.com/contact.html" target="_blank" rel="noopener">get in touch</a> directly.</p>' +
@@ -1602,13 +1656,18 @@
       // every one for wrong/bad images before approving, not just the
       // thumbnail. The label dropdown lets a mislabeled front/back get
       // fixed right here, which also fixes which one shows as the main
-      // image (that's always whichever one is labeled "Front").
+      // image (that's always whichever one is labeled "Front"). The
+      // delete button lets a bad photo be dropped from an otherwise-good
+      // submission instead of rejecting the whole jersey — only shows
+      // once there's more than one photo, so there's never a way to
+      // delete down to zero.
       var allPhotosHtml = images.length > 1
         ? '<div class="logo-history-grid lightbox-group" style="margin-top:8px;">' + images.map(function(img){
             return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicImageUrl(img.storage_path))+'" alt="">' +
               '<select class="photo-label-select" data-image-id="'+img.id+'">' +
                 ['Front','Back','Other'].map(function(l){ return '<option value="'+l+'"'+(img.label===l?' selected':'')+'>'+l+'</option>'; }).join('') +
               '</select>' +
+              '<button type="button" class="photo-delete-btn" data-image-id="'+img.id+'" title="Delete this photo">&#10005;</button>' +
             '</div>';
           }).join('') + '</div>'
         : '';
@@ -2025,12 +2084,13 @@
         if(!panel.dataset.wired){
           panel.dataset.wired = '1';
           panel.hidden = false;
-          panel.querySelectorAll('.photo-label-select').forEach(function(sel){
-            sel.addEventListener('change', async function(){
-              sel.disabled = true;
-              var upd = await supabaseClient.from('jersey_images').update({label: sel.value}).eq('id', sel.dataset.imageId);
-              sel.disabled = false;
-              if(upd.error){ alert('Error: ' + upd.error.message); return; }
+          wirePhotoLabelSwap(panel.querySelectorAll('.photo-label-select'));
+          panel.querySelectorAll('.photo-delete-btn').forEach(function(btn){
+            btn.addEventListener('click', async function(){
+              if(!confirm('Delete this photo? This can\'t be undone.')) return;
+              btn.disabled = true;
+              var res = await supabaseClient.from('jersey_images').delete().eq('id', btn.dataset.imageId);
+              if(res.error){ btn.disabled = false; alert('Error: ' + res.error.message); return; }
               render();
             });
           });
@@ -2171,7 +2231,7 @@
         '</div>';
       }).join('');
       previewsEl.querySelectorAll('.photo-label-select').forEach(function(sel){
-        sel.addEventListener('change', function(){ selected[Number(sel.dataset.idx)].label = sel.value; });
+        sel.addEventListener('change', function(){ reassignPhotoLabel(selected, Number(sel.dataset.idx), sel.value); renderPreviews(); });
       });
       previewsEl.querySelectorAll('.photo-remove-btn').forEach(function(btn){
         btn.addEventListener('click', function(){
@@ -2182,10 +2242,14 @@
       });
     }
     function addFiles(fileList){
-      Array.from(fileList).forEach(function(file){
-        if(!/^image\//.test(file.type)) return;
-        selected.push({file: file, label: labelForIndex(selected.length), url: URL.createObjectURL(file)});
-      });
+      var incoming = Array.from(fileList).filter(function(file){ return /^image\//.test(file.type); });
+      var room = MAX_UPLOAD_PHOTOS - selected.length;
+      if(room > 0){
+        incoming.slice(0, room).forEach(function(file){
+          selected.push({file: file, label: labelForIndex(selected.length), url: URL.createObjectURL(file)});
+        });
+      }
+      if(incoming.length > room) alert('A jersey can have up to '+MAX_UPLOAD_PHOTOS+' photos — added '+Math.max(room,0)+' of '+incoming.length+'.');
       renderPreviews();
     }
     dropzone.addEventListener('click', function(){ input.click(); });
@@ -2300,12 +2364,15 @@
   }
 
   function wireModerationActions(){
-    document.querySelectorAll('.mod-card .photo-label-select').forEach(function(sel){
-      sel.addEventListener('change', async function(){
-        sel.disabled = true;
-        var upd = await supabaseClient.from('jersey_images').update({label: sel.value}).eq('id', sel.dataset.imageId);
-        sel.disabled = false;
-        if(upd.error){ alert('Error: ' + upd.error.message); return; }
+    document.querySelectorAll('.mod-card').forEach(function(card){
+      wirePhotoLabelSwap(card.querySelectorAll('.photo-label-select'));
+    });
+    document.querySelectorAll('.mod-card .photo-delete-btn').forEach(function(btn){
+      btn.addEventListener('click', async function(){
+        if(!confirm('Delete this photo? This can\'t be undone.')) return;
+        btn.disabled = true;
+        var res = await supabaseClient.from('jersey_images').delete().eq('id', btn.dataset.imageId);
+        if(res.error){ btn.disabled = false; alert('Error: ' + res.error.message); return; }
         render();
       });
     });
@@ -2580,7 +2647,7 @@
         '</div>';
       }).join('');
       previewsEl.querySelectorAll('.photo-label-select').forEach(function(sel){
-        sel.addEventListener('change', function(){ selectedPhotos[Number(sel.dataset.idx)].label = sel.value; });
+        sel.addEventListener('change', function(){ reassignPhotoLabel(selectedPhotos, Number(sel.dataset.idx), sel.value); renderPhotoPreviews(); });
       });
       previewsEl.querySelectorAll('.photo-remove-btn').forEach(function(btn){
         btn.addEventListener('click', function(){
@@ -2591,10 +2658,14 @@
       });
     }
     function addPhotoFiles(fileList){
-      Array.from(fileList).forEach(function(file){
-        if(!/^image\//.test(file.type)) return;
-        selectedPhotos.push({file: file, label: labelForIndex(selectedPhotos.length), url: URL.createObjectURL(file)});
-      });
+      var incoming = Array.from(fileList).filter(function(file){ return /^image\//.test(file.type); });
+      var room = MAX_UPLOAD_PHOTOS - selectedPhotos.length;
+      if(room > 0){
+        incoming.slice(0, room).forEach(function(file){
+          selectedPhotos.push({file: file, label: labelForIndex(selectedPhotos.length), url: URL.createObjectURL(file)});
+        });
+      }
+      if(incoming.length > room) alert('A jersey can have up to '+MAX_UPLOAD_PHOTOS+' photos — added '+Math.max(room,0)+' of '+incoming.length+'.');
       renderPhotoPreviews();
     }
     dropzone.addEventListener('click', function(){ photosInput.click(); });
