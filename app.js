@@ -688,7 +688,10 @@
             '<label class="rate-label">Competition</label>' +
             renderCompetitionMoveControl('team-page', team.id, sportSlug, compSlug) +
             '<label class="rate-label" style="margin-top:14px;">Status</label>' +
-            '<button class="btn btn-secondary" id="toggle-active-btn" data-team-id="'+team.id+'" data-active="'+isActiveTeam+'" type="button">'+(isActiveTeam ? 'Mark as former team' : 'Mark as active team')+'</button>' +
+            '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+              (team.is_upcoming ? '<button class="btn btn-secondary" id="toggle-upcoming-btn" data-team-id="'+team.id+'" type="button">Move to active roster</button>' : '') +
+              '<button class="btn btn-secondary" id="toggle-active-btn" data-team-id="'+team.id+'" data-active="'+isActiveTeam+'" type="button">'+(isActiveTeam ? 'Mark as former team' : 'Mark as active team')+'</button>' +
+            '</div>' +
           '</div>' +
         '</div>'
       : '';
@@ -1915,6 +1918,20 @@
       toggleActiveBtn.addEventListener('click', async function(){
         var newActive = toggleActiveBtn.dataset.active !== 'true';
         var res = await supabaseClient.from('teams').update({is_active: newActive}).eq('id', toggleActiveBtn.dataset.teamId);
+        if(res.error){ alert('Error: ' + res.error.message); return; }
+        render();
+      });
+    }
+    // Flips an announced-but-not-yet-playing expansion team (Perth Bears,
+    // Tasmania Devils) into the normal active roster once it actually
+    // starts playing — a one-way move off the "New expansion teams"
+    // section, permanent (no "move back to upcoming" button, since that
+    // shouldn't ever need to happen once a club has taken the field).
+    var toggleUpcomingBtn = document.getElementById('toggle-upcoming-btn');
+    if(toggleUpcomingBtn){
+      toggleUpcomingBtn.addEventListener('click', async function(){
+        if(!confirm('Move this team into the active roster? This can\'t be undone from here.')) return;
+        var res = await supabaseClient.from('teams').update({is_upcoming: false}).eq('id', toggleUpcomingBtn.dataset.teamId);
         if(res.error){ alert('Error: ' + res.error.message); return; }
         render();
       });
