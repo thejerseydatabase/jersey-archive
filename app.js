@@ -27,26 +27,29 @@
   // after (Test/First Class, ODI/One Day, T20I/T20, T10I/T10) — the "I"
   // suffix always means international.
   var FORMATS_BY_SPORT = { cricket: ['Test','First Class','ODI','One Day','T20I','T20','T10I','T10'] };
-  // Every sport gets these; sports in the per-slug lists below also get
-  // those on top. Indigenous jerseys are a rugby league/union/AFL/netball
-  // thing (and a few others) — not something football, cricket etc. have,
-  // so it's opt-in per sport rather than shown everywhere (a one-off
-  // special jersey can still be typed in via "+ Add a new one…").
-  var CURATED_TYPES = ['Home','Away','Third','Alternate','Heritage','Training'];
+  // Every sport gets these (Training always last — see below); sports in
+  // the per-slug list also get those on top, before Training. Indigenous
+  // jerseys are a rugby league/union/AFL/netball thing (and a few others)
+  // — not something football, cricket etc. have, so it's opt-in per
+  // sport rather than shown everywhere (a one-off special jersey can
+  // still be typed in via "+ Add a new one…"). Same story for ANZAC.
+  var CURATED_TYPES_BASE = ['Home','Away','Third','Alternate','Heritage'];
+  var CURATED_TYPES = CURATED_TYPES_BASE.concat(['Training']); // pre-mount placeholder only, see viewUpload
   var EXTRA_TYPES_BY_SPORT = {
-    'rugby-league': ['Indigenous'],
-    'rugby-union': ['Indigenous'],
-    afl: ['Indigenous'],
+    'rugby-league': ['Indigenous','ANZAC'],
+    'rugby-union': ['Indigenous','ANZAC'],
+    afl: ['Indigenous','ANZAC'],
     netball: ['Indigenous'],
     'field-hockey': ['Indigenous']
   };
-  // A sport listed here replaces the global CURATED_TYPES list entirely
-  // instead of just adding to it — cricket doesn't use Heritage/Third/
-  // Training the way other sports do, and has Charity that others don't.
-  // A one-off type outside this list is still addable via "+ Add a new
-  // one…" on the upload form, same as anywhere else.
+  // A sport listed here replaces the global CURATED_TYPES_BASE list
+  // entirely instead of just adding to it — cricket doesn't use
+  // Heritage/Third the way other sports do, and has Charity that others
+  // don't. Training is appended after these, same as everywhere else. A
+  // one-off type outside this list is still addable via "+ Add a new
+  // one…" on the upload form.
   var CURATED_TYPES_OVERRIDE_BY_SPORT = {
-    cricket: ['Home','Away','Charity','Indigenous','Alternate','Training']
+    cricket: ['Home','Away','Charity','Indigenous','Alternate']
   };
   // Picking "Training" reveals a second field for which kind, so
   // "pre-match", "warm up", "captain's run" etc. don't fragment into
@@ -1383,17 +1386,23 @@
             '<div class="new-value-row" id="f-type-new-row" hidden>' +
               '<input type="text" id="f-type-new" placeholder="New jersey type">' +
               '<button type="button" class="new-value-cancel" id="f-type-new-cancel" aria-label="Back to list">&#10005;</button>' +
-            '</div></div>' +
-          '<div class="field" id="f-type-sub-field" hidden><label for="f-type-sub-select">Training type <small>optional &mdash; e.g. warm up, captain&rsquo;s run</small></label>' +
-            '<select id="f-type-sub-select">' +
-              '<option value="">&mdash; Just &ldquo;Training&rdquo; &mdash;</option>' +
-              TRAINING_SUBTYPES.map(function(t){ return '<option value="'+t+'">'+t+'</option>'; }).join('') +
-              '<option value="__new__">+ Add a new one&hellip;</option>' +
-            '</select>' +
-            '<div class="new-value-row" id="f-type-sub-new-row" hidden>' +
-              '<input type="text" id="f-type-sub-new" placeholder="New training type">' +
-              '<button type="button" class="new-value-cancel" id="f-type-sub-new-cancel" aria-label="Back to list">&#10005;</button>' +
-            '</div></div>' +
+            '</div>' +
+            // Nested inside the Jersey type field itself (not a sibling
+            // grid cell) so revealing it just grows this one box downward
+            // instead of pushing every field after it — Manufacturer in
+            // particular — into a different grid slot.
+            '<div id="f-type-sub-field" class="field" hidden style="margin-top:10px;"><label for="f-type-sub-select">Training type <small>optional &mdash; e.g. warm up, captain&rsquo;s run</small></label>' +
+              '<select id="f-type-sub-select">' +
+                '<option value="">&mdash; Just &ldquo;Training&rdquo; &mdash;</option>' +
+                TRAINING_SUBTYPES.map(function(t){ return '<option value="'+t+'">'+t+'</option>'; }).join('') +
+                '<option value="__new__">+ Add a new one&hellip;</option>' +
+              '</select>' +
+              '<div class="new-value-row" id="f-type-sub-new-row" hidden>' +
+                '<input type="text" id="f-type-sub-new" placeholder="New training type">' +
+                '<button type="button" class="new-value-cancel" id="f-type-sub-new-cancel" aria-label="Back to list">&#10005;</button>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
           '<div class="field"><label for="f-mfr-select">Manufacturer * <small>don&rsquo;t know it? pick &ldquo;Unknown&rdquo; &mdash; click the dropdown or click it and start typing to jump to a brand; add it below if it&rsquo;s not there</small></label>' +
             '<select id="f-mfr-select" required>'+mfrOptions+'</select>' +
             '<div class="new-value-row" id="f-mfr-new-row" hidden>' +
@@ -2877,9 +2886,8 @@
       var mfrCounts = await usageCounts('manufacturer', sportSlug);
       var globalMfrs = await getGlobalManufacturers();
 
-      var curatedTypes = CURATED_TYPES_OVERRIDE_BY_SPORT[sportSlug]
-        ? CURATED_TYPES_OVERRIDE_BY_SPORT[sportSlug].slice()
-        : CURATED_TYPES.concat(EXTRA_TYPES_BY_SPORT[sportSlug] || []);
+      var curatedTypes = (CURATED_TYPES_OVERRIDE_BY_SPORT[sportSlug] || CURATED_TYPES_BASE.concat(EXTRA_TYPES_BY_SPORT[sportSlug] || []))
+        .concat(['Training']);
       var typeExtra = Object.keys(typeCounts).filter(function(t){ return curatedTypes.indexOf(t) === -1; })
         .sort(function(a,b){ return typeCounts[b] - typeCounts[a]; });
       typeSelect.innerHTML = '<option value="">Select a type</option>' +
