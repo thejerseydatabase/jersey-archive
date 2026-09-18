@@ -98,6 +98,10 @@ create table competitions (
   -- teams of its own, so it's excluded from "pick a primary competition"
   -- pickers and only offered in the extra-competition tag field.
   tag_only boolean not null default false,
+  -- groups "more"-tier competitions on the sport page (by country, e.g.
+  -- "Germany", "Norway") so a long tail of domestic leagues doesn't sit
+  -- in one flat alphabetical list; null falls into an "Other" bucket.
+  region_group text,
   created_by uuid references auth.users(id),
   created_at timestamptz not null default now()
 );

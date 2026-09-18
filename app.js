@@ -420,6 +420,30 @@
     function compCard(c){
       return '<a class="comp-card" href="#/sport/'+sportSlug+'/'+c.slug+'"><strong>'+esc(c.name)+'</strong></a>';
     }
+    // Once there are enough "more" competitions that a general visitor
+    // wouldn't recognise most of them by name alone (a country's own
+    // domestic league, say), grouping them by country — alphabetised,
+    // with an "Other" bucket last for anything not yet tagged — beats
+    // one long alphabetical wall mixing NRL-adjacent stuff in with
+    // Norway's or Nigeria's competitions. Competitions with no
+    // region_group set just fall into "Other", so this degrades
+    // gracefully for sports that haven't been tagged yet.
+    function moreCompsByRegion(list){
+      var groups = {};
+      list.forEach(function(c){
+        var g = c.region_group || 'Other';
+        (groups[g] = groups[g] || []).push(c);
+      });
+      var groupNames = Object.keys(groups).sort(function(a,b){
+        if(a==='Other') return 1;
+        if(b==='Other') return -1;
+        return a.localeCompare(b);
+      });
+      return groupNames.map(function(g){
+        var sorted = groups[g].slice().sort(function(a,b){ return a.name.localeCompare(b.name); });
+        return '<div class="region-comp-group"><h4 class="extra-kits-label">'+esc(g)+'</h4><div class="comp-grid">'+sorted.map(compCard).join('')+'</div></div>';
+      }).join('');
+    }
     // With only a handful of competitions the top/more split just adds an
     // extra click for no reason — only bother hiding anything once there
     // are enough to actually need it.
@@ -432,7 +456,7 @@
       var isExpanded = !!expandedSportComps[sportSlug];
       compsHtml = '<div class="comp-grid">'+top.map(compCard).join('')+'</div>' +
         (more.length ? '<button class="chip more-toggle" id="more-comps-btn" type="button">'+(isExpanded ? 'Show fewer ↑' : 'More competitions ↓')+'</button>' +
-          '<div class="comp-grid" id="more-comps"'+(isExpanded ? '' : ' hidden')+' style="margin-top:12px;">'+more.map(compCard).join('')+'</div>' : '');
+          '<div id="more-comps"'+(isExpanded ? '' : ' hidden')+' style="margin-top:12px;">'+moreCompsByRegion(more)+'</div>' : '');
     }
 
     var recentHtml = comps.length ? await recentJerseysHtml(comps.map(function(c){ return c.slug; })) : '';
