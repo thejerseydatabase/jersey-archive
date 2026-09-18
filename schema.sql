@@ -23,7 +23,13 @@ create table profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   username text unique,
   points integer not null default 0,
+  -- moderator: approves jerseys/reports, edits teams/comps.
   is_admin boolean not null default false,
+  -- owner: the only tier that can grant/revoke is_admin (the Moderators
+  -- panel in the moderation queue only shows for an owner, and the RLS
+  -- policy + trigger below enforce it isn't reachable any other way
+  -- even via a direct API call). Never set from the app — direct SQL only.
+  is_owner boolean not null default false,
   created_at timestamptz not null default now()
 );
 
@@ -32,28 +38,34 @@ alter table profiles enable row level security;
 create policy "profiles are publicly readable"
   on profiles for select using (true);
 
-create policy "users can update their own profile, admins can update any"
+create policy "users can update their own profile, owners can update any"
   on profiles for update
   using (
     id = (select auth.uid())
-    or exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin)
+    or exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_owner)
   )
   with check (
     id = (select auth.uid())
-    or exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_admin)
+    or exists (select 1 from profiles p where p.id = (select auth.uid()) and p.is_owner)
   );
 
 -- RLS only controls which ROWS a policy lets through, not which
 -- COLUMNS — without this, the update policy above would let any
--- signed-in user set their own is_admin or points to anything via a
--- direct API call. This resets those two columns back to their
--- previous value whenever the person making the change isn't an
--- admin, leaving the rest of the row edit intact.
+-- signed-in user set their own is_admin/points/is_owner to anything via
+-- a direct API call, and would let a plain moderator (is_admin but not
+-- is_owner) grant themselves or anyone else moderator status when
+-- updating someone else's row. is_owner is never settable through the
+-- app at all; is_admin requires the acting session to already be an
+-- owner; points keeps its existing rule (any admin, since that's how
+-- the approval-point triggers legitimately update it).
 create function protect_profile_privileged_columns()
 returns trigger as $$
 begin
-  if not exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin) then
+  new.is_owner := old.is_owner;
+  if not exists (select 1 from profiles p where p.id = auth.uid() and p.is_owner) then
     new.is_admin := old.is_admin;
+  end if;
+  if not exists (select 1 from profiles p where p.id = auth.uid() and p.is_admin) then
     new.points := old.points;
   end if;
   return new;
@@ -98,6 +110,12 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function handle_new_user();
 
+-- On a fresh install this account becomes the site owner as soon as it
+-- signs up (the trigger above only runs going forward, so this update
+-- is a no-op until then — harmless to leave in on a re-run either way).
+update profiles set is_owner = true
+where id = (select id from auth.users where email = 'rugbyleaguejerseys@gmail.com');
+
 
 -- ============ sports ============
 create table sports (
@@ -131,7 +149,7 @@ create table competitions (
   -- "Germany", "Norway") so a long tail of domestic leagues doesn't sit
   -- in one flat alphabetical list; null falls into an "Other" bucket.
   region_group text,
-  created_by uuid references auth.users(id),
+  created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now()
 );
 
@@ -172,7 +190,7 @@ create table teams (
   -- cricket to split the team grid into Test/ODI/T20I sections) — null
   -- for a team where that split doesn't apply.
   formats text[],
-  created_by uuid references auth.users(id),
+  created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now(),
   unique (competition_slug, slug)
 );
@@ -199,7 +217,7 @@ create table jerseys (
   manufacturer text,
   format text,                      -- cricket only: Test / T20 / T20I / ODI / One Day / First Class
   notes text,
-  uploaded_by uuid references auth.users(id),
+  uploaded_by uuid references auth.users(id) on delete set null,
   views integer not null default 0,
   status text not null default 'pending' check (status in ('pending','approved','rejected')),
   -- shown back to the uploader on a rejected submission's own page
@@ -272,7 +290,7 @@ create table jersey_images (
   -- jersey default to 'approved' since the parent jersey's own pending
   -- status already hides them until the jersey itself is approved.
   status text not null default 'approved' check (status in ('pending','approved','rejected')),
-  uploaded_by uuid references auth.users(id),
+  uploaded_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now()
 );
 
@@ -375,7 +393,7 @@ create table reports (
   page_label text,
   message text not null,
   attachment_path text,
-  reported_by uuid references auth.users(id),
+  reported_by uuid references auth.users(id) on delete set null,
   client_token text,
   status text not null default 'open' check (status in ('open','resolved')),
   created_at timestamptz not null default now()
@@ -426,7 +444,7 @@ create table team_logo_proposals (
   id uuid primary key default gen_random_uuid(),
   team_id uuid not null references teams(id) on delete cascade,
   storage_path text not null,
-  proposed_by uuid references auth.users(id),
+  proposed_by uuid references auth.users(id) on delete set null,
   status text not null default 'pending' check (status in ('pending','approved','rejected')),
   -- guards against ever awarding the upload point twice for the same row
   point_awarded boolean not null default false,
@@ -505,7 +523,7 @@ create table competition_logo_proposals (
   id uuid primary key default gen_random_uuid(),
   competition_slug text not null references competitions(slug) on delete cascade,
   storage_path text not null,
-  proposed_by uuid references auth.users(id),
+  proposed_by uuid references auth.users(id) on delete set null,
   status text not null default 'pending' check (status in ('pending','approved','rejected')),
   point_awarded boolean not null default false,
   created_at timestamptz not null default now()

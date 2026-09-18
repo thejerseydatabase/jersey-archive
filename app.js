@@ -1684,10 +1684,16 @@
     // needs to find the one or two people being promoted/demoted.
     // Doesn't show for the empty-queue early return below on its own —
     // it's appended to both return paths so it's always reachable.
-    var moderatorsPanelHtml = '<section class="block"><div class="section-head"><h2>Moderators</h2></div>' +
+    // Owner-only: who can grant/revoke moderator access is a decision
+    // that stays with the account that runs the site, not every
+    // moderator — enforced here (hides the panel) and again server-side
+    // (the profiles UPDATE policy/trigger reject a non-owner's attempt
+    // regardless of what the UI shows).
+    var moderatorsPanelHtml = currentProfile.is_owner ? (
+      '<section class="block"><div class="section-head"><h2>Moderators</h2></div>' +
       '<div class="filter-row"><input type="text" id="mod-user-search" placeholder="Search by username&hellip;"><button class="btn btn-secondary" id="mod-user-search-btn" type="button">Search</button></div>' +
       '<div id="mod-user-results"></div>' +
-    '</section>';
+    '</section>') : '';
 
     if(!pendingJerseys.length && !pendingPhotos.length && !openReports.length && !pendingLogos.length && !pendingCompLogos.length){
       return '<div class="section-head"><h2>Moderation queue</h2></div><div class="empty-note">Nothing waiting for review.</div>' + moderatorsPanelHtml;
