@@ -1195,7 +1195,7 @@
         '<ol>' +
           '<li>Sign in with your email at the top right &mdash; it&rsquo;s a magic link, no password to remember.</li>' +
           '<li>Go to <a class="spec-link" href="#/upload">Upload</a> and pick the sport, then the competition and team (or use &ldquo;+ Add a new one&hellip;&rdquo; if yours isn&rsquo;t listed yet).</li>' +
-          '<li>Fill in the season (a single year like 2024, or a split year like 2024-25 for competitions that span two calendar years), jersey type, and manufacturer if known.</li>' +
+          '<li>Fill in the season (a single year like 2024, or a split year like 2024-25 for competitions that span two calendar years &mdash; use a dash, not a slash: 2024-25, not 2024/25), jersey type, and manufacturer if known.</li>' +
           '<li>Attach at least one photo &mdash; front, back, and any other angle all help, and you can label each one.</li>' +
           '<li>Submit. After it&rsquo;s approved, the sport/competition/team/season/manufacturer stay filled in so you can upload the next kit for the same team (say, the away or alternate jersey) without retyping everything &mdash; just swap the photo and jersey type.</li>' +
         '</ol>' +
@@ -1204,6 +1204,10 @@
         '<p>Some jerseys aren&rsquo;t just worn in one place &mdash; a country&rsquo;s regular kit might also be what they wore at a World Cup, or a club&rsquo;s league kit might also have been worn in a cup competition. Rather than uploading the same photos twice under two different teams, tick &ldquo;Was this jersey also worn in another competition?&rdquo; on the upload form and pick the extra one (or add it if it&rsquo;s not listed &mdash; this is also how to log a jersey worn only in something like a trial match). The jersey still lives under its real team and competition, but now shows up on both competitions&rsquo; pages too.</p>' +
         '<p>This is also why competitions like the FIFA World Cup, Rugby League World Cup, and other major tournaments aren&rsquo;t options in the main Competition field &mdash; they only exist to be tagged on this way, keeping a country&rsquo;s full jersey history together under its real International team instead of splitting it across two pages.</p>' +
         '<p>Already uploaded something that should have this tag? Open the jersey and use &ldquo;Report a problem&rdquo;, or if you&rsquo;re still pending, admins can add it for you from the moderation queue.</p>' +
+
+        '<div class="section-head" style="margin-top:30px;"><h2>Same team, different era</h2></div>' +
+        '<p>Some clubs have played under the same name across more than one competition as the sport itself got restructured over time &mdash; the NRL replaced the ARL in 1998, for example, but a club like Newcastle or Penrith existed in both. Rather than filing every era of a club&rsquo;s history under today&rsquo;s competition, each era gets its own team entry in its own (often historical) competition, and the site links them together with an &ldquo;Also see&rdquo; note on the team page.</p>' +
+        '<p>If you pick a team on the upload form that has a row in more than one competition, a hint appears under the Team field naming the others &mdash; use it to double-check you&rsquo;ve picked the competition that was actually running the season your jersey is from, rather than defaulting to whichever one is biggest or most familiar today.</p>' +
 
         '<div class="section-head" style="margin-top:30px;"><h2>What makes a good photo</h2></div>' +
         '<p>We&rsquo;re after the best photo you can find — the main (front) image especially should be clear and in focus, showing the whole jersey with nothing cropped off or blocking the design. A clean promo photo from an online store is ideal, but a good clear photo taken at a game works well too.</p>' +
@@ -1264,7 +1268,9 @@
             '<div class="new-value-row" id="f-team-new-row" hidden>' +
               '<input type="text" id="f-team-new" placeholder="New team name">' +
               '<button type="button" class="new-value-cancel" id="f-team-new-cancel" aria-label="Back to list">&#10005;</button>' +
-            '</div></div>' +
+            '</div>' +
+            '<p class="field-hint is-match" id="f-team-also-see-hint" hidden></p>' +
+          '</div>' +
           '<div class="field"><label for="f-season">Season * <small>a single year, or a range for split-year comps</small></label>' +
             '<input type="text" id="f-season" placeholder="e.g. '+thisYear+' or '+thisYear+'-'+String(thisYear+1).slice(-2)+'" required></div>' +
           '<div class="field"><label for="f-type-select">Jersey type *</label>' +
@@ -2597,6 +2603,8 @@
       await refreshExtraComps();
     }
     async function refreshTeams(){
+      var alsoSeeHint = document.getElementById('f-team-also-see-hint');
+      if(alsoSeeHint) alsoSeeHint.hidden = true;
       var val = compSelect.value;
       if(!val){
         teamSelect.innerHTML = '<option value="">Select a competition first</option>';
@@ -2617,6 +2625,31 @@
         teams.map(function(t){ return '<option value="'+esc(t.name)+'">'+esc(t.name)+'</option>'; }).join('') +
         '<option value="__new__">+ Add a new team…</option>';
       teamSelect.hidden = false; teamNewRow.hidden = true; teamNew.value = ''; teamNew.required = false;
+    }
+    // Warns when the picked team also has a row under another
+    // competition in the same sport (Penrith Panthers exists under both
+    // NRL and ARL, say) — an old jersey is easy to file under today's
+    // big obvious competition out of habit instead of the season-correct
+    // historical one, and nothing else on the form flags that. Skipped
+    // for "+ Add a new team…", since a brand new team can't have a
+    // sibling yet.
+    async function checkTeamAlsoSee(){
+      var hintEl = document.getElementById('f-team-also-see-hint');
+      if(!hintEl) return;
+      var teamName = teamSelect.value;
+      if(!teamName || teamName === '__new__'){ hintEl.hidden = true; return; }
+      var comps = await competitionsForSport(sportSel.value);
+      var comp = comps.filter(function(c){ return c.name.toLowerCase() === compSelect.value.toLowerCase(); })[0];
+      if(!comp){ hintEl.hidden = true; return; }
+      var normalized = normalizeTeamName(teamName).toLowerCase();
+      var res = await supabaseClient.from('teams').select('name, competition_slug, competitions!inner(name, sport_slug)')
+        .eq('competitions.sport_slug', sportSel.value).neq('competition_slug', comp.slug)
+        .ilike('name', normalizeTeamName(teamName) + '%');
+      var siblings = (res.error ? [] : res.data || []).filter(function(t){ return normalizeTeamName(t.name).toLowerCase() === normalized; });
+      if(!siblings.length){ hintEl.hidden = true; return; }
+      var names = siblings.map(function(t){ return t.competitions.name; }).filter(function(n, i, arr){ return arr.indexOf(n) === i; });
+      hintEl.hidden = false;
+      hintEl.textContent = '"'+teamName+'" also has a row under '+names.join(', ')+' — double check this is the season/era-correct competition for this jersey.';
     }
     // One optional extra competition in the same sport (the primary one
     // picked above is excluded — that's set via the Competition field,
@@ -2728,7 +2761,7 @@
 
     sportSel.addEventListener('change', function(){ refreshComps(); refreshFormat(); refreshMfrTypeOptions(); saveDraft(); });
     compSelect.addEventListener('change', function(){ syncNewVisibility(compSelect, compNewRow, compNew, true); refreshTeams(); refreshExtraComps(); saveDraft(); });
-    teamSelect.addEventListener('change', function(){ syncNewVisibility(teamSelect, teamNewRow, teamNew, true); saveDraft(); });
+    teamSelect.addEventListener('change', function(){ syncNewVisibility(teamSelect, teamNewRow, teamNew, true); checkTeamAlsoSee(); saveDraft(); });
     typeSelect.addEventListener('change', function(){ syncNewVisibility(typeSelect, typeNewRow, typeNew, true); refreshTypeSubVisibility(); saveDraft(); });
     typeSubSelect.addEventListener('change', function(){ syncNewVisibility(typeSubSelect, typeSubNewRow, typeSubNew, false); saveDraft(); });
     mfrSelect.addEventListener('change', function(){ syncNewVisibility(mfrSelect, mfrNewRow, mfrNew, false); saveDraft(); });
@@ -2768,6 +2801,7 @@
           teamSelect.value = restoredDraft.team.v || '';
           syncNewVisibility(teamSelect, teamNewRow, teamNew, true);
           teamNew.value = restoredDraft.team.n || '';
+          checkTeamAlsoSee();
         }
         if(restoredDraft.season) seasonInput.value = restoredDraft.season;
         if(restoredDraft.type){
@@ -2796,7 +2830,14 @@
 
       var seasonVal = seasonInput.value.trim();
       if(!/^\d{4}(-\d{2})?$/.test(seasonVal)){
-        seasonInput.setCustomValidity('Enter a year (e.g. 2024) or a split-year season (e.g. 2024-25)');
+        // A slash instead of a dash (2026/27) is by far the most common
+        // slip — call it out specifically rather than just the generic
+        // format message, since "invalid" alone doesn't tell you what
+        // to fix.
+        var slashMatch = seasonVal.match(/^(\d{4})\s*\/\s*(\d{2,4})$/);
+        seasonInput.setCustomValidity(slashMatch
+          ? 'Use a dash, not a slash — e.g. '+slashMatch[1]+'-'+slashMatch[2].slice(-2)+', not '+seasonVal+'.'
+          : 'Enter a year (e.g. 2024) or a split-year season (e.g. 2024-25)');
         seasonInput.reportValidity();
         seasonInput.addEventListener('input', function clear(){ seasonInput.setCustomValidity(''); seasonInput.removeEventListener('input', clear); });
         return;
