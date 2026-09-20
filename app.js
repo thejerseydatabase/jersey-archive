@@ -753,10 +753,10 @@
         // genuinely has neither.
         : (seasonJerseys.length ? '' : '<div class="empty-note">No teams logged in '+esc(comp.name)+' yet.</div>')) +
       (upcomingTeams.length
-        ? '<div class="section-head" style="margin-top:34px;"><h2>New expansion teams</h2><span class="count">'+upcomingTeams.length+'</span></div><div class="team-grid">'+upcomingTeams.map(teamCard).join('')+'</div>'
+        ? '<div class="section-head" style="margin-top:34px;"><h2>New expansion teams</h2><span class="count">'+upcomingTeams.length+'</span></div><div class="team-grid">'+upcomingTeams.map(function(t){ return teamCard(t); }).join('')+'</div>'
         : '') +
       (formerTeams.length
-        ? '<div class="section-head" style="margin-top:34px;"><h2>Former teams</h2><span class="count">'+formerTeams.length+'</span></div><div class="team-grid">'+formerTeams.map(teamCard).join('')+'</div>'
+        ? '<div class="section-head" style="margin-top:34px;"><h2>Former teams</h2><span class="count">'+formerTeams.length+'</span></div><div class="team-grid">'+formerTeams.map(function(t){ return teamCard(t); }).join('')+'</div>'
         : '') +
       seasonGalleriesHtml +
       topRatedHtml +
