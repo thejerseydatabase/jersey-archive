@@ -1123,12 +1123,22 @@
       '<div class="jersey-grid" hidden>'+rest.join('')+'</div>' +
       '<button class="btn btn-secondary show-more-btn" type="button">Show '+rest.length+' more</button>';
   }
+  // A whole sport's jerseys collapsed to a small flat gallery (most
+  // recent first) with a "View all" that expands to the complete list
+  // grouped by season — used on type/manufacturer pages (and search)
+  // where one sport section could otherwise be hundreds or thousands of
+  // jerseys deep before a visitor sees anything else. Each season
+  // group's own grid still goes through limitedJerseyGrid, in case a
+  // single season alone has a huge count.
+  var SPORT_GALLERY_PREVIEW = 5;
   // prioritySportSlug/priorityCompSlug: when someone reaches this list by
   // clicking a jersey type/manufacturer FROM a specific jersey, that
-  // jersey's own sport (and within it, its own competition) is shown
-  // first, with everything else following underneath — more useful than
-  // a flat alphabetical dump when you clicked through wanting "more like
-  // this one" specifically.
+  // jersey's own sport is shown first, with everything else following
+  // underneath — more useful than a flat alphabetical dump when you
+  // clicked through wanting "more like this one" specifically.
+  // priorityCompSlug no longer changes the grouping itself (sport
+  // sections are no longer split by competition), but is still accepted
+  // so existing call sites don't need updating.
   function renderGroupedBySport(jerseys, prioritySportSlug, priorityCompSlug){
     var bySport = {};
     jerseys.forEach(function(j){ var s=j.teams.competitions.sports; (bySport[s.slug]=bySport[s.slug]||{sport:s,jerseys:[]}).jerseys.push(j); });
@@ -1137,22 +1147,36 @@
       if(prioritySportSlug && b === prioritySportSlug) return 1;
       return bySport[a].sport.name.localeCompare(bySport[b].sport.name);
     });
-    return sportOrder.map(function(slug){
+    // A jump-to-section nav across the top once there's more than one
+    // sport in the results — otherwise finding (say) Rugby Union means
+    // scrolling past every other sport's jerseys first. Scrolls in
+    // place via JS (wired through .anchor-nav-btn) rather than a real
+    // #hash link, since a hash change would trigger the router and
+    // re-render the whole page out from under it.
+    var anchorNav = sportOrder.length > 1
+      ? '<div class="anchor-nav">'+sportOrder.map(function(slug){
+          return '<button class="chip anchor-nav-btn" type="button" data-scroll-target="sport-block-'+slug+'">'+esc(bySport[slug].sport.name)+'</button>';
+        }).join('')+'</div>'
+      : '';
+    var blocks = sportOrder.map(function(slug){
       var entry = bySport[slug];
-      var byComp = {};
-      entry.jerseys.forEach(function(j){ var c=j.teams.competitions; (byComp[c.slug]=byComp[c.slug]||{comp:c,jerseys:[]}).jerseys.push(j); });
-      var compOrder = Object.keys(byComp).sort(function(a,b){
-        if(priorityCompSlug && a === priorityCompSlug) return -1;
-        if(priorityCompSlug && b === priorityCompSlug) return 1;
-        return byComp[a].comp.name.localeCompare(byComp[b].comp.name);
-      });
-      var compBlocks = compOrder.map(function(cslug){
-        var centry = byComp[cslug];
-        var cards = centry.jerseys.sort(function(a,b){return seasonSortKey(b.season)-seasonSortKey(a.season);}).map(function(j){ return jerseyCard(j, j.teams, {showTeam:true}); });
-        return '<div class="season-group"><h3><a class="spec-link" href="#/sport/'+entry.sport.slug+'/'+cslug+'">'+esc(centry.comp.name)+'</a></h3>'+limitedJerseyGrid(cards)+'</div>';
-      }).join('');
-      return '<section class="block"><div class="section-head"><h2><a class="spec-link" href="#/sport/'+slug+'">'+esc(entry.sport.name)+'</a></h2></div>'+compBlocks+'</section>';
+      var sorted = entry.jerseys.slice().sort(function(a,b){ return seasonSortKey(b.season)-seasonSortKey(a.season); });
+      var previewHtml = '<div class="jersey-grid sport-preview-grid">'+sorted.slice(0, SPORT_GALLERY_PREVIEW).map(function(j){ return jerseyCard(j, j.teams, {showTeam:true}); }).join('')+'</div>';
+      var expandedHtml = '';
+      if(sorted.length > SPORT_GALLERY_PREVIEW){
+        var bySeason = {};
+        sorted.forEach(function(j){ (bySeason[j.season] = bySeason[j.season] || []).push(j); });
+        var seasons = Object.keys(bySeason).sort(function(a,b){ return seasonSortKey(b)-seasonSortKey(a); });
+        var seasonGroupsHtml = seasons.map(function(y){
+          var cards = bySeason[y].map(function(j){ return jerseyCard(j, j.teams, {showTeam:true}); });
+          return '<div class="season-group"><h3>'+esc(y)+'</h3>'+limitedJerseyGrid(cards)+'</div>';
+        }).join('');
+        expandedHtml = '<div class="sport-full-list" hidden>'+seasonGroupsHtml+'</div>' +
+          '<button class="btn btn-secondary show-sport-all-btn" type="button">View all '+sorted.length+'</button>';
+      }
+      return '<section class="block" id="sport-block-'+slug+'"><div class="section-head"><h2><a class="spec-link" href="#/sport/'+slug+'">'+esc(entry.sport.name)+'</a></h2><span class="count">'+sorted.length+'</span></div>'+previewHtml+expandedHtml+'</section>';
     }).join('');
+    return anchorNav + blocks;
   }
 
   // Search matching: strips accents/diacritics (so typing "sao tome"
@@ -3518,6 +3542,24 @@
       if(hiddenGrid) hiddenGrid.hidden = false;
       showMoreBtn.remove();
     }
+    // Swaps a sport's 5-jersey preview gallery for its full season-by-season
+    // list — see renderGroupedBySport().
+    var showSportAllBtn = e.target.closest('.show-sport-all-btn');
+    if(showSportAllBtn){
+      var fullList = showSportAllBtn.previousElementSibling;
+      var preview = fullList && fullList.previousElementSibling;
+      if(fullList) fullList.hidden = false;
+      if(preview && preview.classList.contains('sport-preview-grid')) preview.hidden = true;
+      showSportAllBtn.remove();
+    }
+    // Jump-to-section nav (see renderGroupedBySport()) — scrolls in place
+    // rather than using a real #hash link, which would trigger the
+    // router and re-render the whole page out from under it.
+    var anchorBtn = e.target.closest('.anchor-nav-btn');
+    if(anchorBtn){
+      var scrollTarget = document.getElementById(anchorBtn.dataset.scrollTarget);
+      if(scrollTarget) scrollTarget.scrollIntoView({behavior:'smooth', block:'start'});
+    }
   });
   document.getElementById('lightbox-close-btn').addEventListener('click', closeLightbox);
   lightboxPrevBtn.addEventListener('click', function(e){ e.stopPropagation(); lightboxStep(-1); });
@@ -3563,6 +3605,22 @@
         (userCount ? ' and submitted by ' + userCount.toLocaleString() + ' contributor' + (userCount===1?'':'s') : '') + '.';
       el.hidden = false;
     } catch(e){ /* footer stats are decorative — fail silently */ }
+  }
+
+  // Floating "scroll to top" button — global chrome, not tied to any one
+  // page, so it's wired once here rather than in wireViewEvents (which
+  // reruns on every render and would otherwise pile up duplicate
+  // listeners). Shows once the page has scrolled past roughly one
+  // screen's worth, which is about where a long jersey/season list
+  // starts making "scroll all the way back up" actually annoying.
+  var scrollTopBtn = document.getElementById('scroll-top-btn');
+  if(scrollTopBtn){
+    window.addEventListener('scroll', function(){
+      scrollTopBtn.hidden = window.scrollY < 600;
+    }, {passive:true});
+    scrollTopBtn.addEventListener('click', function(){
+      window.scrollTo({top:0, behavior:'smooth'});
+    });
   }
 
   refreshAuthUI();
