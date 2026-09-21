@@ -699,8 +699,14 @@
     // into men's/women's columns side by side.
     var formatOrder = FORMATS_BY_SPORT[sportSlug] || [];
     var hasFormatTags = activeTeams.some(function(t){ return t.formats && t.formats.length; });
-    var menTeams = activeTeams.filter(function(t){ return !/\bwomen\b/i.test(t.name); });
-    var womenTeams = activeTeams.filter(function(t){ return /\bwomen\b/i.test(t.name); });
+    // A competition whose own name/slug already says "Women" is entirely
+    // women's teams by definition - without this, a club whose own name
+    // doesn't happen to include the word "Women" (Canberra United FC,
+    // unlike its A-League Women siblings) would wrongly land in a bogus
+    // "Men's" column below purely because its name doesn't match.
+    var compIsWomensOnly = /\bwomen\b/i.test(comp.name) || /-women\b/.test(comp.slug);
+    var menTeams = compIsWomensOnly ? [] : activeTeams.filter(function(t){ return !/\bwomen\b/i.test(t.name); });
+    var womenTeams = compIsWomensOnly ? activeTeams : activeTeams.filter(function(t){ return /\bwomen\b/i.test(t.name); });
     var formatChipsHtml = '';
     if(hasFormatTags){
       var presentFormats = formatOrder.filter(function(f){
@@ -734,14 +740,15 @@
       }).join('');
     }
     var hasConferences = activeTeams.some(function(t){ return t.conference; });
+    var showGenderSplit = menTeams.length && womenTeams.length;
     var teamsGridHtml = formatChipsHtml + (hasConferences
       ? teamsByConference(activeTeams)
-      : (womenTeams.length
+      : (showGenderSplit
         ? '<div class="gender-split-grid">' +
             '<div><h4 class="extra-kits-label">Men&rsquo;s &middot; <span id="men-count">'+menTeams.length+'</span></h4>'+teamGridHtml(menTeams, 'men-team-grid')+'</div>' +
             '<div><h4 class="extra-kits-label">Women&rsquo;s &middot; <span id="women-count">'+womenTeams.length+'</span></h4>'+teamGridHtml(womenTeams, 'women-team-grid')+'</div>' +
           '</div>'
-        : teamGridHtml(menTeams)));
+        : teamGridHtml(activeTeams)));
 
     return '<div class="section-head" style="align-items:center;">' +
         '<div style="display:flex;align-items:center;gap:2px;">'+compLogoSwatch(comp, {large:true})+'<h2 style="margin-left:2px;">'+esc(comp.name)+'</h2></div>' +
