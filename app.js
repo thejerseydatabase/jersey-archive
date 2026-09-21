@@ -3123,12 +3123,17 @@
       extraCompSel.value = '';
       await refreshExtraComps();
     }
+    // Training kit isn't tied to a match format — a squad wears the same
+    // training top whether they're about to play a Test or a T20 — so the
+    // format field only applies once a non-training type is picked, even
+    // for sports (cricket) where every match jersey needs one.
     function refreshFormat(preferredValue){
       var formats = FORMATS_BY_SPORT[sportSel.value];
-      formatField.hidden = !formats;
-      formatSel.required = !!formats;
+      var applies = !!formats && baseJerseyType(typeSelect.value).toLowerCase() !== 'training';
+      formatField.hidden = !applies;
+      formatSel.required = applies;
       formatSel.innerHTML = formats ? formats.map(function(f){ return '<option>'+f+'</option>'; }).join('') : '';
-      if(formats && preferredValue && formats.indexOf(preferredValue) > -1) formatSel.value = preferredValue;
+      if(applies && preferredValue && formats.indexOf(preferredValue) > -1) formatSel.value = preferredValue;
     }
 
     // Counts how often each value of `field` (manufacturer/type) shows up
@@ -3203,10 +3208,10 @@
       mfrSelect.hidden = false; mfrNewRow.hidden = true; mfrNew.value = ''; mfrNew.required = false;
     }
 
-    sportSel.addEventListener('change', function(){ refreshComps(); refreshFormat(); refreshMfrTypeOptions(); saveDraft(); });
+    sportSel.addEventListener('change', function(){ refreshComps(); refreshMfrTypeOptions().then(refreshFormat); saveDraft(); });
     compSelect.addEventListener('change', function(){ syncNewVisibility(compSelect, compNewRow, compNew, true); refreshTeams(); refreshExtraComps(); saveDraft(); });
     teamSelect.addEventListener('change', function(){ syncNewVisibility(teamSelect, teamNewRow, teamNew, true); checkTeamAlsoSee(); checkDuplicateJersey(); saveDraft(); });
-    typeSelect.addEventListener('change', function(){ syncNewVisibility(typeSelect, typeNewRow, typeNew, true); refreshTypeSubVisibility(); checkDuplicateJersey(); saveDraft(); });
+    typeSelect.addEventListener('change', function(){ syncNewVisibility(typeSelect, typeNewRow, typeNew, true); refreshTypeSubVisibility(); refreshFormat(); checkDuplicateJersey(); saveDraft(); });
     typeSubSelect.addEventListener('change', function(){ syncNewVisibility(typeSubSelect, typeSubNewRow, typeSubNew, false); checkDuplicateJersey(); saveDraft(); });
     seasonInput.addEventListener('input', checkDuplicateJersey);
     typeNew.addEventListener('input', checkDuplicateJersey);
@@ -3236,8 +3241,8 @@
     (async function init(){
       if(restoredDraft && restoredDraft.sport) sportSel.value = restoredDraft.sport;
       await refreshComps();
-      refreshFormat(restoredDraft && restoredDraft.format);
       await refreshMfrTypeOptions();
+      refreshFormat();
       if(restoredDraft){
         if(restoredDraft.comp){
           compSelect.value = restoredDraft.comp.v || '';
@@ -3263,6 +3268,7 @@
           syncNewVisibility(typeSubSelect, typeSubNewRow, typeSubNew, false);
           typeSubNew.value = restoredDraft.typeSub.n || '';
         }
+        refreshFormat(restoredDraft.format);
         checkDuplicateJersey();
         if(restoredDraft.mfr){
           mfrSelect.value = restoredDraft.mfr.v || '';
