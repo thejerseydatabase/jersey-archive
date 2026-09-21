@@ -3171,20 +3171,21 @@
 
       var curatedTypes = (CURATED_TYPES_OVERRIDE_BY_SPORT[sportSlug] || CURATED_TYPES_BASE.concat(EXTRA_TYPES_BY_SPORT[sportSlug] || []))
         .concat(['Training']);
-      var typeExtra = Object.keys(typeCounts).filter(function(t){ return curatedTypes.indexOf(t) === -1; })
-        .sort(function(a,b){ return typeCounts[b] - typeCounts[a]; });
+      var typeExtra = Object.keys(typeCounts).filter(function(t){ return curatedTypes.indexOf(t) === -1; }).sort();
       typeSelect.innerHTML = '<option value="">Select a type</option>' +
         curatedTypes.concat(typeExtra).map(function(t){ return '<option value="'+esc(t)+'">'+esc(t)+'</option>'; }).join('') +
         '<option value="__new__">+ Add a new one…</option>';
       typeSelect.hidden = false; typeNewRow.hidden = true; typeNew.value = ''; typeNew.required = false;
       refreshTypeSubVisibility();
 
-      // Priority brands first, then whatever's actually popular in this
-      // sport, then everything else already used ANYWHERE on the site
-      // (alphabetical) so a brand added for one sport doesn't look "new"
-      // again just because this is its first time in a different sport.
-      var mfrExtra = Object.keys(mfrCounts).filter(function(m){ return PRIORITY_MANUFACTURERS.indexOf(m) === -1; })
-        .sort(function(a,b){ return mfrCounts[b] - mfrCounts[a]; });
+      // Priority brands first, then everything else already used in this
+      // sport (alphabetical, so a freshly-approved manufacturer takes its
+      // proper place next time the form loads instead of just tacking
+      // onto the end), then everything else already used ANYWHERE on the
+      // site (also alphabetical) so a brand added for one sport doesn't
+      // look "new" again just because this is its first time in a
+      // different sport.
+      var mfrExtra = Object.keys(mfrCounts).filter(function(m){ return PRIORITY_MANUFACTURERS.indexOf(m) === -1; }).sort();
       var listedSoFar = {};
       PRIORITY_MANUFACTURERS.concat(mfrExtra).forEach(function(m){ listedSoFar[m] = true; });
       var mfrRest = globalMfrs.filter(function(m){ return !listedSoFar[m]; }).sort();
