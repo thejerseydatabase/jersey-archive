@@ -25,8 +25,11 @@
   function sportIcon(sportSlug){ return SPORT_ICONS[sportSlug] || ICON_SHIRT; }
   // International formats paired with their domestic equivalent right
   // after (Test/First Class, ODI/One Day, T20I/T20, T10I/T10) — the "I"
-  // suffix always means international.
-  var FORMATS_BY_SPORT = { cricket: ['Test','First Class','ODI','One Day','T20I','T20','T10I','T10'] };
+  // suffix always means international. "All Formats" is last, for kit
+  // that isn't tied to one (training tops, warm-ups) — a free-typed type
+  // like "Training 2" can't be detected as training-related up front, so
+  // this is a manual pick rather than something the form infers.
+  var FORMATS_BY_SPORT = { cricket: ['Test','First Class','ODI','One Day','T20I','T20','T10I','T10','All Formats'] };
   // Every sport gets these (Training always last — see below); sports in
   // the per-slug list also get those on top, before Training. Indigenous
   // jerseys are a rugby league/union/AFL/netball thing (and a few others)
@@ -3123,17 +3126,12 @@
       extraCompSel.value = '';
       await refreshExtraComps();
     }
-    // Training kit isn't tied to a match format — a squad wears the same
-    // training top whether they're about to play a Test or a T20 — so the
-    // format field only applies once a non-training type is picked, even
-    // for sports (cricket) where every match jersey needs one.
     function refreshFormat(preferredValue){
       var formats = FORMATS_BY_SPORT[sportSel.value];
-      var applies = !!formats && baseJerseyType(typeSelect.value).toLowerCase() !== 'training';
-      formatField.hidden = !applies;
-      formatSel.required = applies;
+      formatField.hidden = !formats;
+      formatSel.required = !!formats;
       formatSel.innerHTML = formats ? formats.map(function(f){ return '<option>'+f+'</option>'; }).join('') : '';
-      if(applies && preferredValue && formats.indexOf(preferredValue) > -1) formatSel.value = preferredValue;
+      if(formats && preferredValue && formats.indexOf(preferredValue) > -1) formatSel.value = preferredValue;
     }
 
     // Counts how often each value of `field` (manufacturer/type) shows up
@@ -3208,10 +3206,10 @@
       mfrSelect.hidden = false; mfrNewRow.hidden = true; mfrNew.value = ''; mfrNew.required = false;
     }
 
-    sportSel.addEventListener('change', function(){ refreshComps(); refreshMfrTypeOptions().then(refreshFormat); saveDraft(); });
+    sportSel.addEventListener('change', function(){ refreshComps(); refreshFormat(); refreshMfrTypeOptions(); saveDraft(); });
     compSelect.addEventListener('change', function(){ syncNewVisibility(compSelect, compNewRow, compNew, true); refreshTeams(); refreshExtraComps(); saveDraft(); });
     teamSelect.addEventListener('change', function(){ syncNewVisibility(teamSelect, teamNewRow, teamNew, true); checkTeamAlsoSee(); checkDuplicateJersey(); saveDraft(); });
-    typeSelect.addEventListener('change', function(){ syncNewVisibility(typeSelect, typeNewRow, typeNew, true); refreshTypeSubVisibility(); refreshFormat(); checkDuplicateJersey(); saveDraft(); });
+    typeSelect.addEventListener('change', function(){ syncNewVisibility(typeSelect, typeNewRow, typeNew, true); refreshTypeSubVisibility(); checkDuplicateJersey(); saveDraft(); });
     typeSubSelect.addEventListener('change', function(){ syncNewVisibility(typeSubSelect, typeSubNewRow, typeSubNew, false); checkDuplicateJersey(); saveDraft(); });
     seasonInput.addEventListener('input', checkDuplicateJersey);
     typeNew.addEventListener('input', checkDuplicateJersey);
@@ -3241,8 +3239,8 @@
     (async function init(){
       if(restoredDraft && restoredDraft.sport) sportSel.value = restoredDraft.sport;
       await refreshComps();
+      refreshFormat(restoredDraft && restoredDraft.format);
       await refreshMfrTypeOptions();
-      refreshFormat();
       if(restoredDraft){
         if(restoredDraft.comp){
           compSelect.value = restoredDraft.comp.v || '';
@@ -3268,7 +3266,6 @@
           syncNewVisibility(typeSubSelect, typeSubNewRow, typeSubNew, false);
           typeSubNew.value = restoredDraft.typeSub.n || '';
         }
-        refreshFormat(restoredDraft.format);
         checkDuplicateJersey();
         if(restoredDraft.mfr){
           mfrSelect.value = restoredDraft.mfr.v || '';
