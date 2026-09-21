@@ -529,7 +529,10 @@
         return a.localeCompare(b);
       });
       return groupNames.map(function(g){
-        var sorted = groups[g].slice().sort(function(a,b){ return a.name.localeCompare(b.name); });
+        // sort_order lets a competition (3. Liga under Bundesliga 2, say)
+        // be pinned next to a sibling it wouldn't otherwise sort next to -
+        // a leading digit or article beats plain alphabetical order.
+        var sorted = groups[g].slice().sort(function(a,b){ return (a.sort_order - b.sort_order) || a.name.localeCompare(b.name); });
         return '<div class="region-comp-group"><h4 class="extra-kits-label">'+esc(g)+'</h4><div class="comp-grid">'+sorted.map(compCard).join('')+'</div></div>';
       }).join('');
     }
@@ -2948,7 +2951,7 @@
       // group rather than one long A-Z list burying the popular ones.
       var q = supabaseClient.from('competitions').select('*').eq('sport_slug', sportSlug);
       if(!opts.includeTagOnly) q = q.eq('tag_only', false);
-      var r = await q.order('tier', {ascending:false}).order('name');
+      var r = await q.order('tier', {ascending:false}).order('sort_order').order('name');
       if(r.error) throw r.error;
       return r.data || [];
     }
