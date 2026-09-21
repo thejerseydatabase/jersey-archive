@@ -477,23 +477,40 @@
   }
 
   // Full "what's gone up recently" feed — jerseys and logos together,
-  // most recent first — for anyone who wants more than the home page's
-  // 6-item taster. Same source data as recentJerseysHtml, just a much
-  // higher cap and its own page instead of a small inline grid.
-  async function viewUpdates(){
-    setCrumbs([{label:'Home', href:'#/'},{label:'Latest Updates', href:'#'}]);
+  // most recent first — for anyone who wants more than the 6-item taster
+  // under the home page's (or, with sportSlug, a sport page's) recent
+  // grid. Same source data as recentJerseysHtml, just a much higher cap
+  // and its own page instead of a small inline grid.
+  async function viewUpdates(sportSlug){
+    var sport = null, compSlugs = null;
+    if(sportSlug){
+      var sportRes = await supabaseClient.from('sports').select('*').eq('slug', sportSlug).single();
+      if(sportRes.error) throw sportRes.error;
+      sport = sportRes.data;
+      var compRes = await supabaseClient.from('competitions').select('slug').eq('sport_slug', sportSlug);
+      if(compRes.error) throw compRes.error;
+      compSlugs = (compRes.data || []).map(function(c){ return c.slug; });
+    }
+    setCrumbs(sportSlug
+      ? [{label:'Home', href:'#/'},{label:sport.name, href:'#/sport/'+sportSlug},{label:'Latest Updates', href:'#'}]
+      : [{label:'Home', href:'#/'},{label:'Latest Updates', href:'#'}]);
     var LIMIT = 60;
     var jq = supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*), jersey_competitions(competitions(name))').order('created_at', {ascending:false}).limit(LIMIT);
     var lq = supabaseClient.from('team_logos').select('*, teams!inner(*, competitions!inner(sport_slug))').eq('is_current', true).order('approved_at', {ascending:false}).limit(LIMIT);
     var cq = supabaseClient.from('competition_logos').select('*, competitions!inner(*)').eq('is_current', true).order('approved_at', {ascending:false}).limit(LIMIT);
-    var results = await Promise.all([jq, lq, cq]);
+    if(compSlugs){
+      jq = jq.in('teams.competition_slug', compSlugs);
+      lq = lq.in('teams.competition_slug', compSlugs);
+      cq = cq.in('competition_slug', compSlugs);
+    }
+    var results = compSlugs && !compSlugs.length ? [{data:[]}, {data:[]}, {data:[]}] : await Promise.all([jq, lq, cq]);
     var jRes = results[0], lRes = results[1], cRes = results[2];
     var items = (jRes.data || []).map(function(j){ return {ts: j.created_at, html: jerseyCard(j, j.teams, {showTeam:true, ts:j.created_at})}; })
       .concat((lRes.data || []).map(function(l){ return {ts: l.approved_at, html: logoCard(l, l.teams, {ts:l.approved_at})}; }))
       .concat((cRes.data || []).map(function(l){ return {ts: l.approved_at, html: compLogoCard(l, l.competitions, {ts:l.approved_at})}; }));
     items.sort(function(a,b){ return new Date(b.ts) - new Date(a.ts); });
     items = items.slice(0, LIMIT);
-    return '<div class="section-head"><h2>Latest Updates</h2><span class="count">'+items.length+'</span></div>' +
+    return '<div class="section-head"><h2>'+(sport ? esc(sport.name)+' &mdash; Latest Updates' : 'Latest Updates')+'</h2><span class="count">'+items.length+'</span></div>' +
       (items.length
         ? '<div class="jersey-grid">'+items.map(function(i){ return i.html; }).join('')+'</div>'
         : '<div class="empty-note">Nothing added yet.</div>');
@@ -555,12 +572,15 @@
     }
 
     var recentHtml = comps.length ? await recentJerseysHtml(comps.map(function(c){ return c.slug; })) : '';
+    var updatesButtonHtml = recentHtml
+      ? '<div style="text-align:center;margin-top:22px;"><a class="btn" href="#/sport/'+sportSlug+'/updates">Latest Updates</a></div>'
+      : '';
 
     return '<header class="hero" style="padding-bottom:26px;"><p class="eyebrow">Sport</p><h1>'+esc(sport.name)+'</h1></header>' +
       '<section class="block"><div class="section-head"><h2>Competitions</h2></div>' +
         (comps.length ? compsHtml : '<div class="empty-note">No competitions yet for '+esc(sport.name)+'.</div>') +
       '</section>' +
-      recentHtml;
+      recentHtml + updatesButtonHtml;
   }
 
   // A jersey "in" a competition is either owned by a team that belongs to
@@ -1002,7 +1022,7 @@
           specItem('Season', '<a class="spec-link" href="#/sport/'+sport.slug+'/'+comp.slug+'/season/'+j.season+'">'+j.season+'</a>', {table:'jerseys', matchCol:'id', matchVal:j.id, field:'season', current:j.season}) +
           specItem('Jersey type', '<a class="spec-link" href="#/type/'+encodeURIComponent(j.type)+'/'+encodeURIComponent(sport.slug)+'/'+encodeURIComponent(comp.slug)+'">'+esc(j.type)+'</a>', {table:'jerseys', matchCol:'id', matchVal:j.id, field:'type', current:j.type}) +
           specItem('Manufacturer', j.manufacturer ? '<a class="spec-link" href="#/manufacturer/'+encodeURIComponent(j.manufacturer)+'">'+esc(j.manufacturer)+'</a>' : 'Unlisted', {table:'jerseys', matchCol:'id', matchVal:j.id, field:'manufacturer', current:j.manufacturer || ''}) +
-          (j.format ? specItem('Format', esc(j.format), {table:'jerseys', matchCol:'id', matchVal:j.id, field:'format', current:j.format}) : '') +
+          (j.format ? specItem('Format', '<a class="spec-link" href="#/format/'+encodeURIComponent(j.format)+'">'+esc(j.format)+'</a>', {table:'jerseys', matchCol:'id', matchVal:j.id, field:'format', current:j.format}) : '') +
         '</div>' +
         notesHtml +
         '<div class="stat-row"><span>logged '+fmtDate(j.created_at)+'</span>'+uploaderHtml+'</div>' +
@@ -1393,6 +1413,19 @@
   async function viewManufacturer(name){
     setCrumbs([{label:'Home', href:'#/'},{label:'Manufacturers', href:'#/manufacturers'},{label:name, href:'#'}]);
     var jerseys = await fetchAllRows('jerseys', '*, jersey_images(*), teams(*, competitions(*, sports(*))), jersey_competitions(competitions(name))', function(q){ return q.eq('manufacturer', name); });
+    if(!jerseys.length){
+      return '<div class="section-head"><h2>'+esc(name)+'</h2><span class="count">0 jerseys</span></div><div class="empty-note">Nothing matches yet.</div>';
+    }
+    return '<div class="section-head"><h2>'+esc(name)+'</h2><span class="count">'+jerseys.length+' jersey'+(jerseys.length===1?'':'s')+'</span></div>'+renderGroupedBySport(jerseys);
+  }
+
+  // Only cricket sets a format today, so this is effectively cricket-only
+  // in practice, but it isn't sport-scoped in the route (same as
+  // viewManufacturer) since nothing stops another sport from adopting
+  // formats later.
+  async function viewFormat(name){
+    setCrumbs([{label:'Home', href:'#/'},{label:name, href:'#'}]);
+    var jerseys = await fetchAllRows('jerseys', '*, jersey_images(*), teams(*, competitions(*, sports(*))), jersey_competitions(competitions(name))', function(q){ return q.eq('format', name); });
     if(!jerseys.length){
       return '<div class="section-head"><h2>'+esc(name)+'</h2><span class="count">0 jerseys</span></div><div class="empty-note">Nothing matches yet.</div>';
     }
@@ -2162,6 +2195,7 @@
       var html;
       if(parts.length === 0){ html = await viewHome(); }
       else if(parts[0]==='sport' && parts.length===2){ html = await viewSport(parts[1]); }
+      else if(parts[0]==='sport' && parts.length===3 && parts[2]==='updates'){ html = await viewUpdates(parts[1]); }
       else if(parts[0]==='sport' && parts.length===3){ html = await viewCompetition(parts[1], parts[2]); }
       else if(parts[0]==='sport' && parts.length===5 && parts[3]==='team'){ html = await viewTeam(parts[1], parts[2], parts[4]); }
       else if(parts[0]==='sport' && parts.length===5 && parts[3]==='season'){ html = await viewSeason(parts[1], parts[2], parts[4]); }
@@ -2169,6 +2203,7 @@
       else if(parts[0]==='search' && parts[1]){ html = await viewSearch(parts[1]); }
       else if(parts[0]==='manufacturers' && parts.length===1){ html = await viewManufacturers(); }
       else if(parts[0]==='manufacturer' && parts[1]){ html = await viewManufacturer(parts[1]); }
+      else if(parts[0]==='format' && parts[1]){ html = await viewFormat(parts[1]); }
       else if(parts[0]==='updates' && parts.length===1){ html = await viewUpdates(); }
       else if(parts[0]==='types' && parts.length===1){ html = await viewTypes(); }
       else if(parts[0]==='type' && parts[1]){ html = await viewType(parts[1], parts[2], parts[3]); }
@@ -3062,10 +3097,13 @@
       hintEl.textContent = '"'+teamName+'" also has a row under '+names.join(', ')+' — double check this is the season/era-correct competition for this jersey.';
     }
     // Flags a likely duplicate before it's submitted — same team, same
-    // season, same jersey type already logged (and not rejected). RLS
-    // means this can only ever see an approved jersey or one of the
-    // current user's own, which is fine: those are exactly the cases
-    // where a "didn't realise this was already here" duplicate happens.
+    // season, same jersey type (and, for sports with a format field like
+    // cricket, same format — a Test and a T20I home kit are two different
+    // jerseys, not a duplicate of each other) already logged, and not
+    // rejected. RLS means this can only ever see an approved jersey or one
+    // of the current user's own, which is fine: those are exactly the
+    // cases where a "didn't realise this was already here" duplicate
+    // happens.
     async function checkDuplicateJersey(){
       var hintEl = document.getElementById('f-duplicate-hint');
       if(!hintEl) return;
@@ -3077,15 +3115,18 @@
         var typeSub = fieldValue(typeSubSelect, typeSubNew);
         if(typeSub) typeVal = 'Training - ' + typeSub;
       }
+      var formatVal = FORMATS_BY_SPORT[sportSel.value] ? formatSel.value : '';
       var comps = await competitionsForSport(sportSel.value);
       var comp = comps.filter(function(c){ return c.name.toLowerCase() === compSelect.value.toLowerCase(); })[0];
       if(!comp){ hintEl.hidden = true; return; }
       var teamRes = await supabaseClient.from('teams').select('id').eq('competition_slug', comp.slug).eq('slug', slugify(teamName)).maybeSingle();
       if(teamRes.error || !teamRes.data){ hintEl.hidden = true; return; }
-      var res = await supabaseClient.from('jerseys').select('id, status').eq('team_id', teamRes.data.id).eq('season', seasonVal).eq('type', typeVal).neq('status', 'rejected').limit(1);
+      var query = supabaseClient.from('jerseys').select('id, status').eq('team_id', teamRes.data.id).eq('season', seasonVal).eq('type', typeVal).neq('status', 'rejected');
+      if(formatVal) query = query.eq('format', formatVal);
+      var res = await query.limit(1);
       if(res.error || !res.data || !res.data.length){ hintEl.hidden = true; return; }
       hintEl.hidden = false;
-      hintEl.innerHTML = 'Looks like this team already has a <a class="spec-link" href="#/jersey/'+res.data[0].id+'" target="_blank" rel="noopener">'+esc(seasonVal)+' '+esc(typeVal)+'</a> logged &mdash; please double check this isn&rsquo;t a duplicate before submitting.';
+      hintEl.innerHTML = 'Looks like this team already has a <a class="spec-link" href="#/jersey/'+res.data[0].id+'" target="_blank" rel="noopener">'+esc(seasonVal)+' '+esc(typeVal)+(formatVal ? ' ('+esc(formatVal)+')' : '')+'</a> logged &mdash; please double check this isn&rsquo;t a duplicate before submitting.';
     }
     // One optional extra competition in the same sport (the primary one
     // picked above is excluded — that's set via the Competition field,
@@ -3215,7 +3256,7 @@
     typeNew.addEventListener('input', checkDuplicateJersey);
     typeSubNew.addEventListener('input', checkDuplicateJersey);
     mfrSelect.addEventListener('change', function(){ syncNewVisibility(mfrSelect, mfrNewRow, mfrNew, true); saveDraft(); });
-    formatSel.addEventListener('change', saveDraft);
+    formatSel.addEventListener('change', function(){ checkDuplicateJersey(); saveDraft(); });
     extraCompToggle.addEventListener('change', function(){
       extraCompRow.hidden = !extraCompToggle.checked;
       if(!extraCompToggle.checked){
