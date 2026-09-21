@@ -1892,7 +1892,7 @@
     await refreshAuthUI(); // keeps the topbar count in sync even after changes made outside the app (e.g. deleting rows directly in Supabase)
 
     var jRes = await supabaseClient.from('jerseys')
-      .select('*, jersey_images(*), teams(id, name, competition_slug, competitions(slug, name, sport_slug, sports(name)))')
+      .select('*, jersey_images(*), teams(id, name, competition_slug, competitions(slug, name, sport_slug, sports(slug, name)))')
       .eq('status', 'pending').order('created_at');
     if(jRes.error) throw jRes.error;
     var pendingJerseys = jRes.data || [];
