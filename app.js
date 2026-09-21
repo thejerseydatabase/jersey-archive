@@ -2915,6 +2915,7 @@
           type: {v: typeSelect.value, n: typeNew.value},
           typeSub: {v: typeSubSelect.value, n: typeSubNew.value},
           mfr: {v: mfrSelect.value, n: mfrNew.value},
+          format: formatSel.value,
           notes: document.getElementById('f-notes').value
         }));
       } catch(e){}
@@ -3122,11 +3123,12 @@
       extraCompSel.value = '';
       await refreshExtraComps();
     }
-    function refreshFormat(){
+    function refreshFormat(preferredValue){
       var formats = FORMATS_BY_SPORT[sportSel.value];
       formatField.hidden = !formats;
       formatSel.required = !!formats;
       formatSel.innerHTML = formats ? formats.map(function(f){ return '<option>'+f+'</option>'; }).join('') : '';
+      if(formats && preferredValue && formats.indexOf(preferredValue) > -1) formatSel.value = preferredValue;
     }
 
     // Counts how often each value of `field` (manufacturer/type) shows up
@@ -3209,6 +3211,7 @@
     typeNew.addEventListener('input', checkDuplicateJersey);
     typeSubNew.addEventListener('input', checkDuplicateJersey);
     mfrSelect.addEventListener('change', function(){ syncNewVisibility(mfrSelect, mfrNewRow, mfrNew, true); saveDraft(); });
+    formatSel.addEventListener('change', saveDraft);
     extraCompToggle.addEventListener('change', function(){
       extraCompRow.hidden = !extraCompToggle.checked;
       if(!extraCompToggle.checked){
@@ -3232,7 +3235,7 @@
     (async function init(){
       if(restoredDraft && restoredDraft.sport) sportSel.value = restoredDraft.sport;
       await refreshComps();
-      refreshFormat();
+      refreshFormat(restoredDraft && restoredDraft.format);
       await refreshMfrTypeOptions();
       if(restoredDraft){
         if(restoredDraft.comp){
