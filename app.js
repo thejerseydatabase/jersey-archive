@@ -2217,35 +2217,64 @@
       usersPanelHtml + moderatorsPanelHtml;
   }
 
-  async function viewUserProfile(username){
+  // 50 jerseys a page — a collector with hundreds of approved uploads
+  // (the whole point of a profile page like this) would otherwise dump
+  // every single one into one enormous grid. Not a heavily-used page,
+  // so simple Previous/Next beats a full numbered pager.
+  var USER_UPLOADS_PAGE_SIZE = 50;
+  async function viewUserProfile(username, pageParam){
+    var page = Math.max(1, parseInt(pageParam, 10) || 1);
     setCrumbs([{label:'Home', href:'#/'},{label:username, href:'#'}]);
     var profRes = await supabaseClient.from('profiles').select('*').eq('username', username).maybeSingle();
     if(profRes.error) throw profRes.error;
     if(!profRes.data) return '<div class="empty-note">No user found with that username.</div>';
     var profile = profRes.data;
 
+    var countRes = await supabaseClient.from('jerseys').select('id', {count:'exact', head:true})
+      .eq('uploaded_by', profile.id).eq('status', 'approved');
+    var totalJerseys = countRes.count || 0;
+    var totalPages = Math.max(1, Math.ceil(totalJerseys / USER_UPLOADS_PAGE_SIZE));
+    if(page > totalPages) page = totalPages;
+    var from = (page - 1) * USER_UPLOADS_PAGE_SIZE;
+
     var jRes = await supabaseClient.from('jerseys')
       .select('*, jersey_images(*), teams(name, slug, primary_color, secondary_color, competition_slug)')
-      .eq('uploaded_by', profile.id).eq('status', 'approved').order('created_at', {ascending:false});
+      .eq('uploaded_by', profile.id).eq('status', 'approved').order('created_at', {ascending:false})
+      .range(from, from + USER_UPLOADS_PAGE_SIZE - 1);
     if(jRes.error) throw jRes.error;
     var jerseys = jRes.data || [];
     var cards = jerseys.map(function(j){ return jerseyCard(j, j.teams, {showTeam:true}); }).join('');
 
-    var teamLogoRes = await supabaseClient.from('team_logo_proposals')
-      .select('*, teams(name, slug, competition_slug, competitions!inner(sport_slug))')
-      .eq('proposed_by', profile.id).eq('status', 'approved').order('created_at', {ascending:false});
-    var compLogoRes = await supabaseClient.from('competition_logo_proposals')
-      .select('*, competitions(name, slug, sport_slug)')
-      .eq('proposed_by', profile.id).eq('status', 'approved').order('created_at', {ascending:false});
-    var logoCards = (teamLogoRes.data || []).map(function(l){ return logoCard(l, l.teams, {label:'Team logo'}); })
-      .concat((compLogoRes.data || []).map(function(l){ return compLogoCard(l, l.competitions, {label:'Competition logo'}); }))
-      .join('');
-    var logoSectionHtml = logoCards
-      ? '<div class="section-head" style="margin-top:34px;"><h2>Logos contributed</h2></div><div class="jersey-grid">'+logoCards+'</div>'
+    var pagerHtml = totalPages > 1
+      ? '<div style="display:flex;justify-content:center;align-items:center;gap:14px;margin-top:22px;">' +
+          (page > 1 ? '<a class="btn btn-secondary" href="#/user/'+encodeURIComponent(username)+'/'+(page-1)+'">&larr; Previous</a>' : '') +
+          '<span class="field-hint">Page '+page+' of '+totalPages+'</span>' +
+          (page < totalPages ? '<a class="btn btn-secondary" href="#/user/'+encodeURIComponent(username)+'/'+(page+1)+'">Next &rarr;</a>' : '') +
+        '</div>'
       : '';
 
-    return '<div class="section-head"><h2>'+esc(profile.username)+' '+pointsChip(profile.points)+'</h2><span class="count">'+jerseys.length+' upload'+(jerseys.length===1?'':'s')+'</span></div>' +
+    // Contributed logos aren't part of the paginated jersey grid (a
+    // separate, usually much smaller list) — shown once on page 1 only,
+    // rather than repeating identically on every page.
+    var logoSectionHtml = '';
+    if(page === 1){
+      var teamLogoRes = await supabaseClient.from('team_logo_proposals')
+        .select('*, teams(name, slug, competition_slug, competitions!inner(sport_slug))')
+        .eq('proposed_by', profile.id).eq('status', 'approved').order('created_at', {ascending:false});
+      var compLogoRes = await supabaseClient.from('competition_logo_proposals')
+        .select('*, competitions(name, slug, sport_slug)')
+        .eq('proposed_by', profile.id).eq('status', 'approved').order('created_at', {ascending:false});
+      var logoCards = (teamLogoRes.data || []).map(function(l){ return logoCard(l, l.teams, {label:'Team logo'}); })
+        .concat((compLogoRes.data || []).map(function(l){ return compLogoCard(l, l.competitions, {label:'Competition logo'}); }))
+        .join('');
+      logoSectionHtml = logoCards
+        ? '<div class="section-head" style="margin-top:34px;"><h2>Logos contributed</h2></div><div class="jersey-grid">'+logoCards+'</div>'
+        : '';
+    }
+
+    return '<div class="section-head"><h2>'+esc(profile.username)+' '+pointsChip(profile.points)+'</h2><span class="count">'+totalJerseys+' upload'+(totalJerseys===1?'':'s')+'</span></div>' +
       (cards ? '<div class="jersey-grid">'+cards+'</div>' : '<div class="empty-note">No approved uploads yet.</div>') +
+      pagerHtml +
       logoSectionHtml;
   }
 
@@ -2280,7 +2309,7 @@
       else if(parts[0]==='upload'){ html = await viewUpload(); }
       else if(parts[0]==='help'){ html = viewHelp(); }
       else if(parts[0]==='moderate'){ html = await viewModerate(); }
-      else if(parts[0]==='user' && parts[1]){ html = await viewUserProfile(parts[1]); }
+      else if(parts[0]==='user' && parts[1]){ html = await viewUserProfile(parts[1], parts[2]); }
       else { html = viewNotFound(); }
       app.innerHTML = html;
       wireViewEvents(parts);
