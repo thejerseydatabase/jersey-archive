@@ -1005,6 +1005,11 @@
     var notesHtml = (j.notes || isAdmin)
       ? '<div class="notes-block"><div class="spec-value-row">'+(j.notes ? esc(j.notes) : '<em style="color:var(--text-dim2);">No notes</em>')+notesEditBtn+'</div></div>'
       : '';
+    var creditEditData = {table:'jerseys', matchCol:'id', matchVal:j.id, field:'image_credit', current:j.image_credit || ''};
+    var creditEditBtn = isAdmin ? ' <button class="edit-pencil-btn" type="button" data-edit=\''+esc(JSON.stringify(creditEditData))+'\'>'+ICON_PENCIL+'</button>' : '';
+    var creditHtml = (j.image_credit || isAdmin)
+      ? '<div class="notes-block"><div class="spec-value-row"><span style="color:var(--text-dim2);">Image credit: </span>'+(j.image_credit ? esc(j.image_credit) : '<em style="color:var(--text-dim2);">None given</em>')+creditEditBtn+'</div></div>'
+      : '';
 
     return pendingBanner + '<div class="detail-grid">' +
       '<div class="jersey-gallery"><div class="gallery-main" id="gallery-main">'+mainHtml+'</div>' +
@@ -1025,6 +1030,7 @@
           (j.format ? specItem('Format', '<a class="spec-link" href="#/format/'+encodeURIComponent(j.format)+'">'+esc(j.format)+'</a>', {table:'jerseys', matchCol:'id', matchVal:j.id, field:'format', current:j.format}) : '') +
         '</div>' +
         notesHtml +
+        creditHtml +
         '<div class="stat-row"><span>logged '+fmtDate(j.created_at)+'</span>'+uploaderHtml+'</div>' +
         '<div class="rate-block"><span class="rate-label">Rate this jersey</span><div id="rating-widget" data-jersey-id="'+j.id+'">'+ratingWidgetHtml(rating, myRatingVal)+'</div></div>' +
         (j.status === 'approved' ? (
@@ -1617,6 +1623,7 @@
             '<p class="field-hint">If you leave this page before submitting, your typed-in details are kept for next time &mdash; but photos aren&rsquo;t, so you&rsquo;ll need to re-add them.</p>' +
           '</div>' +
           '<div class="field field-full"><label for="f-notes">Additional info <small>optional</small></label><textarea id="f-notes" placeholder="Sponsor changes, special edition, match it was worn in..."></textarea></div>' +
+          '<div class="field field-full"><label for="f-credit">Image credit <small>optional</small></label><input type="text" id="f-credit" placeholder="Where the photos are from &mdash; eBay listing, Instagram handle, personal collection, etc."></div>' +
         '</div>' +
         '<div style="margin-top:20px;"><button type="submit" class="btn" id="upload-submit-btn">Add jersey</button></div>' +
       '</form>' +
@@ -1821,6 +1828,7 @@
         '<input type="text" class="comp-move-new-input" id="'+prefix+'-format" placeholder="Format (cricket only)" value="'+esc(j.format || '')+'">' +
       '</div>' +
       '<textarea class="report-textarea" id="'+prefix+'-notes" placeholder="Additional info" style="margin-top:10px;">'+esc(j.notes || '')+'</textarea>' +
+      '<input type="text" class="comp-move-new-input" id="'+prefix+'-credit" placeholder="Image credit" style="margin-top:10px;width:100%;" value="'+esc(j.image_credit || '')+'">' +
       '<label class="rate-label" style="margin-top:10px;">Also used in</label>' +
       '<select id="'+prefix+'-extra-comp" style="width:100%;"><option value="">&mdash; None &mdash;</option>' +
         sameSportComps.map(function(c){ return '<option value="'+esc(c.slug)+'"'+(currentExtra && currentExtra.slug===c.slug?' selected':'')+'>'+esc(c.name)+'</option>'; }).join('') +
@@ -1869,6 +1877,7 @@
       var manufacturer = document.getElementById(prefix+'-mfr').value.trim();
       var format = document.getElementById(prefix+'-format').value.trim();
       var notes = document.getElementById(prefix+'-notes').value.trim();
+      var credit = document.getElementById(prefix+'-credit').value.trim();
       var teamId = teamSel.value;
       if(!season || !type || !teamId){
         msg.hidden = false; msg.className = 'field-error'; msg.textContent = 'Season, jersey type, and team can\'t be blank.';
@@ -1876,7 +1885,7 @@
       }
       btn.disabled = true; btn.textContent = 'Saving…';
       var upd = await supabaseClient.from('jerseys').update({
-        team_id: teamId, season: season, type: type, manufacturer: manufacturer || null, format: format || null, notes: notes || null
+        team_id: teamId, season: season, type: type, manufacturer: manufacturer || null, format: format || null, notes: notes || null, image_credit: credit || null
       }).eq('id', jerseyId);
       if(upd.error){
         btn.disabled = false; btn.textContent = 'Save changes';
@@ -2033,6 +2042,7 @@
           '<span>Manufacturer: '+esc(j.manufacturer || 'Unlisted')+'</span>' +
           (j.format ? '<span>Format: '+esc(j.format)+'</span>' : '') +
           (j.notes ? '<span>Notes: '+esc(j.notes)+'</span>' : '') +
+          (j.image_credit ? '<span>Image credit: '+esc(j.image_credit)+'</span>' : '') +
           (extraCompByJersey[j.id] ? '<span>Also used in: '+esc(extraCompByJersey[j.id].name)+'</span>' : '') +
           allPhotosHtml +
           '<button class="chip mod-edit-toggle" data-target="'+editId+'" type="button">Edit upload</button>' +
@@ -2954,7 +2964,8 @@
           typeSub: {v: typeSubSelect.value, n: typeSubNew.value},
           mfr: {v: mfrSelect.value, n: mfrNew.value},
           format: formatSel.value,
-          notes: document.getElementById('f-notes').value
+          notes: document.getElementById('f-notes').value,
+          credit: document.getElementById('f-credit').value
         }));
       } catch(e){}
     }
@@ -3272,7 +3283,7 @@
     wireNewCancel(typeSubSelect, typeSubNewRow, typeSubNew, false);
     wireNewCancel(mfrSelect, mfrNewRow, mfrNew, true);
     wireNewCancel(extraCompSel, extraCompNewRow, extraCompNew, false);
-    [compNew, teamNew, seasonInput, typeNew, typeSubNew, mfrNew, extraCompNew, document.getElementById('f-notes')].forEach(function(el){
+    [compNew, teamNew, seasonInput, typeNew, typeSubNew, mfrNew, extraCompNew, document.getElementById('f-notes'), document.getElementById('f-credit')].forEach(function(el){
       el.addEventListener('input', saveDraft);
       el.addEventListener('change', saveDraft);
     });
@@ -3314,6 +3325,7 @@
           mfrNew.value = restoredDraft.mfr.n || '';
         }
         if(restoredDraft.notes) document.getElementById('f-notes').value = restoredDraft.notes;
+        if(restoredDraft.credit) document.getElementById('f-credit').value = restoredDraft.credit;
       }
     })();
 
@@ -3361,10 +3373,11 @@
         var manufacturer = fieldValue(mfrSelect, mfrNew) || null;
         var format = FORMATS_BY_SPORT[sportSlug] ? formatSel.value : null;
         var notes = document.getElementById('f-notes').value.trim() || null;
+        var credit = document.getElementById('f-credit').value.trim() || null;
 
         var jerseyIns = await supabaseClient.from('jerseys').insert({
           team_id: team.id, season: season, type: type, manufacturer: manufacturer,
-          format: format, notes: notes, uploaded_by: currentUser.id
+          format: format, notes: notes, image_credit: credit, uploaded_by: currentUser.id
         }).select().single();
         if(jerseyIns.error) throw jerseyIns.error;
         var jersey = jerseyIns.data;
@@ -3420,6 +3433,7 @@
         syncNewVisibility(typeSelect, typeNewRow, typeNew, true);
         refreshTypeSubVisibility();
         document.getElementById('f-notes').value = '';
+        document.getElementById('f-credit').value = '';
         saveDraft();
       } catch(err) {
         var resultElOnError = document.getElementById('upload-result');
