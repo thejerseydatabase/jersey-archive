@@ -334,13 +334,15 @@
   }
 
   function ratingWidgetHtml(rating, myValue){
+    var canRate = currentUser && !(currentProfile && currentProfile.is_banned);
     var rounded = myValue || Math.round(rating.rating_count ? rating.avg_rating : 0);
     var stars = '';
     for(var i=1;i<=5;i++){
-      stars += '<button type="button" class="star-btn'+(i<=rounded?' is-filled':'')+'" data-value="'+i+'"'+(currentUser?'':' disabled')+' aria-label="Rate '+i+' star">'+ICON_STAR+'</button>';
+      stars += '<button type="button" class="star-btn'+(i<=rounded?' is-filled':'')+'" data-value="'+i+'"'+(canRate?'':' disabled')+' aria-label="Rate '+i+' star">'+ICON_STAR+'</button>';
     }
     var summary = rating.rating_count ? (rating.avg_rating+' · '+rating.rating_count+' rating'+(rating.rating_count===1?'':'s')) : 'Not yet rated — be the first';
     if(!currentUser) summary += ' — sign in to rate';
+    else if(!canRate) summary += ' — your account is banned from rating';
     return '<div class="stars-row">'+stars+'</div><p class="rating-summary">'+summary+'</p>';
   }
 
@@ -742,7 +744,7 @@
     }
 
     var compLogoButtonsHtml = (comp.logo_path ? '<button class="btn btn-secondary" id="comp-logo-history-toggle" data-comp-slug="'+comp.slug+'" type="button">Logo history</button>' : '') +
-      (currentUser ? '<button class="btn btn-secondary" id="propose-comp-logo-toggle" data-comp-slug="'+comp.slug+'" type="button">'+(comp.logo_path ? '+ Update logo' : '+ Propose a logo')+'</button>' : '');
+      ((currentUser && !(currentProfile && currentProfile.is_banned)) ? '<button class="btn btn-secondary" id="propose-comp-logo-toggle" data-comp-slug="'+comp.slug+'" type="button">'+(comp.logo_path ? '+ Update logo' : '+ Propose a logo')+'</button>' : '');
     var compLogoBlock = compLogoButtonsHtml
       ? '<div class="add-photos-block">' +
           '<div style="display:flex;gap:10px;flex-wrap:wrap;">'+compLogoButtonsHtml+'</div>' +
@@ -951,7 +953,7 @@
     // yet or is getting an update/replacement — approval (setTeamLogo)
     // already keeps the old one in history rather than losing it.
     var logoButtonsHtml = (team.logo_path ? '<button class="btn btn-secondary" id="logo-history-toggle" data-team-id="'+team.id+'" type="button">Logo history</button>' : '') +
-      (currentUser ? '<button class="btn btn-secondary" id="propose-logo-toggle" data-team-id="'+team.id+'" type="button">'+(team.logo_path ? '+ Update logo' : '+ Propose a logo')+'</button>' : '');
+      ((currentUser && !(currentProfile && currentProfile.is_banned)) ? '<button class="btn btn-secondary" id="propose-logo-toggle" data-team-id="'+team.id+'" type="button">'+(team.logo_path ? '+ Update logo' : '+ Propose a logo')+'</button>' : '');
     var logoBlock = logoButtonsHtml
       ? '<div class="add-photos-block">' +
           '<div style="display:flex;gap:10px;flex-wrap:wrap;">'+logoButtonsHtml+'</div>' +
@@ -1074,9 +1076,11 @@
         '<div class="stat-row"><span>logged '+fmtDate(j.created_at)+'</span>'+uploaderHtml+'</div>' +
         '<div class="rate-block"><span class="rate-label">Rate this jersey</span><div id="rating-widget" data-jersey-id="'+j.id+'">'+ratingWidgetHtml(rating, myRatingVal)+'</div></div>' +
         (j.status === 'approved' ? (
-          currentUser
-            ? '<div class="add-photos-block"><button class="btn btn-secondary" id="add-photos-toggle" data-jersey-id="'+j.id+'" type="button">+ Add more photos</button><div id="add-photos-panel" hidden></div></div>'
-            : '<div class="add-photos-block"><p class="field-hint">Sign in to add more photos to this jersey.</p></div>'
+          !currentUser
+            ? '<div class="add-photos-block"><p class="field-hint">Sign in to add more photos to this jersey.</p></div>'
+            : (currentProfile && currentProfile.is_banned)
+              ? '<div class="add-photos-block"><p class="field-hint">Your account is banned from adding photos.</p></div>'
+              : '<div class="add-photos-block"><button class="btn btn-secondary" id="add-photos-toggle" data-jersey-id="'+j.id+'" type="button">+ Add more photos</button><div id="add-photos-panel" hidden></div></div>'
         ) : '') +
         renderReportButton('jersey', j.id, j.season+' '+team.name+' '+j.type) +
         (isAdmin ? renderJerseyAdminBlock(j, images, sport.slug) : '') +
@@ -1575,6 +1579,10 @@
       return '<div class="section-head"><h2>Upload a jersey</h2></div>' +
         '<div class="empty-note">Sign in first (top right) &mdash; it just needs an email, no password. Once you click the magic link we send you, come back to this page.</div>';
     }
+    if(currentProfile && currentProfile.is_banned){
+      return '<div class="section-head"><h2>Upload a jersey</h2></div>' +
+        '<div class="empty-note">Your account has been banned from posting. Contact the site owner if you believe this is a mistake.</div>';
+    }
 
     var sportsRes = await supabaseClient.from('sports').select('*').order('sort_order');
     if(sportsRes.error) throw sportsRes.error;
@@ -2042,8 +2050,20 @@
       '<div id="mod-user-results"></div>' +
     '</section>') : '';
 
+    // Any admin can ban a rule-breaker (day-to-day moderation, same tier
+    // as approving/rejecting jerseys) — separate from the Moderators
+    // panel above, which is owner-only because granting moderator
+    // access itself is a higher-trust decision. Registered count comes
+    // free from the same query style used for the pending-queue badges.
+    var totalUsersRes = await supabaseClient.from('profiles').select('id', {count:'exact', head:true});
+    var usersPanelHtml =
+      '<section class="block"><div class="section-head"><h2>Users</h2><span class="count">'+(totalUsersRes.count || 0)+' registered</span></div>' +
+      '<div class="filter-row"><input type="text" id="ban-user-search" placeholder="Search by username&hellip;"><button class="btn btn-secondary" id="ban-user-search-btn" type="button">Search</button></div>' +
+      '<div id="ban-user-results"></div>' +
+    '</section>';
+
     if(!pendingJerseys.length && !pendingPhotos.length && !openReports.length && !pendingLogos.length && !pendingCompLogos.length){
-      return '<div class="section-head"><h2>Moderation queue</h2></div><div class="empty-note">Nothing waiting for review.</div>' + moderatorsPanelHtml;
+      return '<div class="section-head"><h2>Moderation queue</h2></div><div class="empty-note">Nothing waiting for review.</div>' + usersPanelHtml + moderatorsPanelHtml;
     }
 
     var jerseyCards = pendingJerseys.map(function(j){
@@ -2194,7 +2214,7 @@
       '<section class="block"><div class="section-head"><h2>Reports</h2><span class="count">'+openReports.length+' open</span></div>' +
         (reportCards ? '<div class="mod-list">'+reportCards+'</div>' : '<div class="empty-note">None open.</div>') +
       '</section>' +
-      moderatorsPanelHtml;
+      usersPanelHtml + moderatorsPanelHtml;
   }
 
   async function viewUserProfile(username){
@@ -2801,6 +2821,49 @@
       }
       modUserSearchBtn.addEventListener('click', runModUserSearch);
       modUserSearchInput.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); runModUserSearch(); } });
+    }
+    var banUserSearchBtn = document.getElementById('ban-user-search-btn');
+    if(banUserSearchBtn){
+      var banUserSearchInput = document.getElementById('ban-user-search');
+      var banUserResults = document.getElementById('ban-user-results');
+      async function runBanUserSearch(){
+        var term = banUserSearchInput.value.trim();
+        if(!term){ banUserResults.innerHTML = ''; return; }
+        var res = await supabaseClient.from('profiles').select('id, username, is_admin, is_owner, is_banned').ilike('username', '%'+term+'%').order('username').limit(10);
+        if(res.error){ banUserResults.innerHTML = '<div class="empty-note">Error: '+esc(res.error.message)+'</div>'; return; }
+        var rows = res.data || [];
+        banUserResults.innerHTML = rows.length ? rows.map(function(p){
+          var isSelf = currentUser && p.id === currentUser.id;
+          // Mirrors the DB-side rule (see user_ban_system.sql) so the
+          // button never offers something the server would reject anyway:
+          // nobody can ban an owner, and only the owner can ban a fellow
+          // admin — a plain admin can ban anyone else.
+          var canAct = !isSelf && !p.is_owner && (!p.is_admin || currentProfile.is_owner);
+          var badges = (p.is_owner ? ' <span class="chip is-active" style="pointer-events:none;padding:2px 8px;">Owner</span>' : '') +
+            (p.is_admin ? ' <span class="chip is-active" style="pointer-events:none;padding:2px 8px;">Moderator</span>' : '') +
+            (p.is_banned ? ' <span class="chip is-active" style="pointer-events:none;padding:2px 8px;background:var(--danger);border-color:var(--danger);color:var(--accent-ink);">Banned</span>' : '');
+          return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);">' +
+            '<span style="display:flex;align-items:center;gap:8px;"><a class="spec-link" href="#/user/'+esc(p.username)+'">'+esc(p.username)+'</a>'+badges+'</span>' +
+            (canAct
+              ? '<button class="btn '+(p.is_banned ? 'btn-secondary' : 'btn-reject')+'" data-ban-user-id="'+p.id+'" data-banned="'+p.is_banned+'" type="button">'+(p.is_banned ? 'Unban' : 'Ban')+'</button>'
+              : (isSelf ? '<span class="field-hint">(you)</span>' : '')) +
+          '</div>';
+        }).join('') : '<div class="empty-note">No users found.</div>';
+        banUserResults.querySelectorAll('button[data-ban-user-id]').forEach(function(btn){
+          btn.addEventListener('click', async function(){
+            var willBan = btn.dataset.banned !== 'true';
+            if(!confirm((willBan
+              ? 'Ban this user? They’ll be blocked from uploading, rating, or proposing logos, but can still browse and sign in.'
+              : 'Unban this user?'))) return;
+            btn.disabled = true;
+            var upd = await supabaseClient.from('profiles').update({is_banned: willBan}).eq('id', btn.dataset.banUserId);
+            if(upd.error){ btn.disabled = false; alert('Error: ' + upd.error.message); return; }
+            runBanUserSearch();
+          });
+        });
+      }
+      banUserSearchBtn.addEventListener('click', runBanUserSearch);
+      banUserSearchInput.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); runBanUserSearch(); } });
     }
     document.querySelectorAll('.mod-card').forEach(function(card){
       wirePhotoLabelSwap(card.querySelectorAll('.photo-label-select'));
