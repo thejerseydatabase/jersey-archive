@@ -124,6 +124,52 @@
   function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function fmtDate(iso){ try{ return new Date(iso).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}); }catch(e){ return ''; } }
   function slugify(s){ return String(s).toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'') || 'x'; }
+  // Every photo/logo upload runs through this before it ever reaches
+  // Supabase Storage — re-encodes it as WebP, which came out 60-90%+
+  // smaller than a typical phone-camera JPEG or a PNG in testing, with no
+  // visible quality loss at the sizes these ever get displayed. Also caps
+  // the long edge at MAX_UPLOAD_DIMENSION, since nothing on the site ever
+  // shows a single jersey photo bigger than that anyway. Resolves to the
+  // ORIGINAL file (untouched) if anything goes wrong — a format the
+  // browser can't decode, canvas support missing, whatever — so a
+  // compression hiccup never blocks someone's upload; and if the
+  // re-encoded version somehow comes out bigger (can happen with a very
+  // small or already heavily-compressed source), it keeps the original
+  // rather than uploading the bigger file.
+  var MAX_UPLOAD_DIMENSION = 2000;
+  var UPLOAD_WEBP_QUALITY = 0.82;
+  // Logos default to a higher quality than jersey photos: a badge's sharp
+  // edges (text, thin outlines) show lossy-compression ringing much more
+  // readily than a photo's soft gradients do, so it's worth spending a
+  // bit more file size to keep them crisp.
+  var LOGO_WEBP_QUALITY = 0.92;
+  function compressImageForUpload(file, quality){
+    return new Promise(function(resolve){
+      if(!file || !/^image\//.test(file.type) || file.type === 'image/svg+xml'){ resolve(file); return; }
+      var img = new Image();
+      var url = URL.createObjectURL(file);
+      img.onload = function(){
+        URL.revokeObjectURL(url);
+        try {
+          var w = img.naturalWidth, h = img.naturalHeight;
+          if(!w || !h){ resolve(file); return; }
+          var scale = Math.min(1, MAX_UPLOAD_DIMENSION / Math.max(w, h));
+          var canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(w * scale));
+          canvas.height = Math.max(1, Math.round(h * scale));
+          var ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob(function(blob){
+            if(!blob || blob.size >= file.size){ resolve(file); return; }
+            var newName = file.name.replace(/\.[^.\/]+$/, '') + '.webp';
+            resolve(new File([blob], newName, {type: 'image/webp'}));
+          }, 'image/webp', quality || UPLOAD_WEBP_QUALITY);
+        } catch(e){ resolve(file); }
+      };
+      img.onerror = function(){ URL.revokeObjectURL(url); resolve(file); };
+      img.src = url;
+    });
+  }
   // Same idea as footballkitarchive's own file naming (e.g.
   // "fc-augsburg-2026-27-third-kit") instead of an opaque
   // "front-0-1789703338930" — readable if someone saves the image
@@ -2662,6 +2708,7 @@
 
   function wireAddPhotosPanel(jerseyId){
     var selected = [];
+    var compressionPromises = [];
     var dropzone = document.getElementById('ap-dropzone');
     var input = document.getElementById('ap-photos-input');
     var previewsEl = document.getElementById('ap-photo-previews');
@@ -2697,7 +2744,9 @@
       var room = MAX_UPLOAD_PHOTOS - selected.length;
       if(room > 0){
         incoming.slice(0, room).forEach(function(file){
-          selected.push({file: file, label: labelForIndex(selected.length), url: URL.createObjectURL(file)});
+          var entry = {file: file, label: labelForIndex(selected.length), url: URL.createObjectURL(file)};
+          selected.push(entry);
+          compressionPromises.push(compressImageForUpload(file).then(function(compressed){ entry.file = compressed; }));
         });
       }
       if(incoming.length > room) alert('A jersey can have up to '+MAX_UPLOAD_PHOTOS+' photos — added '+Math.max(room,0)+' of '+incoming.length+'.');
@@ -2721,6 +2770,7 @@
       var btn = this;
       btn.disabled = true; btn.textContent = 'Submitting…';
       try {
+        await Promise.all(compressionPromises);
         for(var i=0; i<selected.length; i++){
           var p = selected[i];
           var ext = (p.file.name.split('.').pop() || 'jpg').toLowerCase();
@@ -2737,6 +2787,7 @@
         document.getElementById('ap-result').innerHTML = '<p class="field-hint is-match" style="margin-top:10px;">Submitted for review — thanks!</p>';
         selected.forEach(function(p){ URL.revokeObjectURL(p.url); });
         selected.length = 0;
+        compressionPromises.length = 0;
         renderPreviews();
       } catch(err) {
         document.getElementById('ap-result').innerHTML = errorBox(err);
@@ -2763,6 +2814,7 @@
     var refCol = kind === 'team' ? 'team_id' : 'competition_slug';
     var pathPrefix = kind === 'team' ? refId : 'comp-' + refId;
     var picked = null;
+    var pickedCompression = null;
     var dropzone = document.getElementById('pl-dropzone');
     var input = document.getElementById('pl-logo-input');
     var previewEl = document.getElementById('pl-logo-preview');
@@ -2771,7 +2823,9 @@
     function setFile(file){
       if(!file || !/^image\//.test(file.type)) return;
       if(picked) URL.revokeObjectURL(picked.url);
-      picked = {file: file, url: URL.createObjectURL(file)};
+      var entry = {file: file, url: URL.createObjectURL(file)};
+      picked = entry;
+      pickedCompression = compressImageForUpload(file, LOGO_WEBP_QUALITY).then(function(compressed){ entry.file = compressed; });
       previewEl.innerHTML = '<div class="photo-preview-item"><div class="photo-preview-thumb"><img src="'+picked.url+'" alt=""></div>' +
         '<button type="button" class="photo-remove-btn" id="pl-remove-btn" aria-label="Remove">✕</button></div>';
       document.getElementById('pl-remove-btn').addEventListener('click', function(){
@@ -2796,6 +2850,7 @@
       errorEl.hidden = true;
       submitBtn.disabled = true; submitBtn.textContent = 'Submitting…';
       try {
+        await pickedCompression;
         var ext = (picked.file.name.split('.').pop() || 'png').toLowerCase();
         var path = pathPrefix + '/logo-' + Date.now() + '.' + ext;
         var up = await supabaseClient.storage.from('team-logos').upload(path, picked.file);
@@ -3113,6 +3168,11 @@
     // multi-select) — we track {file, label, url} ourselves and just use
     // the input to grab newly picked/dropped files.
     var selectedPhotos = [];
+    // Compression runs in the background so a photo's preview appears
+    // instantly — the actual submit handler awaits these before
+    // uploading, so a fast typist hitting submit before compression
+    // finishes still gets the compressed version, not the original.
+    var photoCompressionPromises = [];
     var dropzone = document.getElementById('photo-dropzone');
     var photosInput = document.getElementById('f-photos-input');
     var previewsEl = document.getElementById('photo-previews');
@@ -3144,7 +3204,9 @@
       var room = MAX_UPLOAD_PHOTOS - selectedPhotos.length;
       if(room > 0){
         incoming.slice(0, room).forEach(function(file){
-          selectedPhotos.push({file: file, label: labelForIndex(selectedPhotos.length), url: URL.createObjectURL(file)});
+          var entry = {file: file, label: labelForIndex(selectedPhotos.length), url: URL.createObjectURL(file)};
+          selectedPhotos.push(entry);
+          photoCompressionPromises.push(compressImageForUpload(file).then(function(compressed){ entry.file = compressed; }));
         });
       }
       if(incoming.length > room) alert('A jersey can have up to '+MAX_UPLOAD_PHOTOS+' photos — added '+Math.max(room,0)+' of '+incoming.length+'.');
@@ -3526,6 +3588,7 @@
         }
 
         try {
+          await Promise.all(photoCompressionPromises);
           for(var i=0; i<selectedPhotos.length; i++){
             var photo = selectedPhotos[i];
             var ext = (photo.file.name.split('.').pop() || 'jpg').toLowerCase();
@@ -3559,6 +3622,7 @@
         // season back to back only needs a new photo and jersey type.
         selectedPhotos.forEach(function(p){ URL.revokeObjectURL(p.url); });
         selectedPhotos.length = 0;
+        photoCompressionPromises.length = 0;
         renderPhotoPreviews();
         await reselectAfterSubmit(comp.name, team.name);
         typeSelect.value = '';
