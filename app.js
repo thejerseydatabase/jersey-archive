@@ -67,6 +67,11 @@
   // one — plenty of headroom for every real angle someone would
   // photograph, while stopping an accidental hundred-photo batch drop.
   var MAX_UPLOAD_PHOTOS = 6;
+  // A jersey only counts as "highest rated" once at least this many people
+  // have rated it — otherwise a single 5-star vote in the site's early
+  // days would shoot straight to the top of the list ahead of everything
+  // else. Revisit upward once ratings pick up.
+  var MIN_RATINGS_FOR_HIGHEST_RATED = 5;
   // Fixed lead-in, well-known kit makers across every sport on the site —
   // shown up front regardless of whether they've been used yet, so an
   // already-real brand doesn't get re-added as "new" just because nobody's
@@ -447,6 +452,35 @@
     return '<div class="section-head" style="margin-top:34px;"><h2>Recently added</h2></div><div class="jersey-grid">'+cards+'</div>';
   }
 
+  // Same shape as recentJerseysHtml (site-wide on the home page, or
+  // scoped to a sport's competitions) but ranked by rating instead of
+  // recency, and only counting jerseys that clear
+  // MIN_RATINGS_FOR_HIGHEST_RATED. Starts from the ratings side (a short
+  // list even once the site's busy, since most jerseys won't clear the
+  // threshold) rather than pulling every jersey first, so this stays
+  // cheap however big the site gets.
+  async function highestRatedHtml(compSlugs){
+    var ratingsRes = await supabaseClient.from('jersey_ratings').select('*')
+      .gte('rating_count', MIN_RATINGS_FOR_HIGHEST_RATED)
+      .order('avg_rating', {ascending:false}).order('rating_count', {ascending:false})
+      .limit(60);
+    var candidates = ratingsRes.data || [];
+    if(!candidates.length) return '';
+    var ratingByJersey = {};
+    candidates.forEach(function(r){ ratingByJersey[r.jersey_id] = r; });
+    var jq = supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*), jersey_competitions(competitions(name))')
+      .in('id', candidates.map(function(r){ return r.jersey_id; }));
+    if(compSlugs) jq = jq.in('teams.competition_slug', compSlugs);
+    var jRes = await jq;
+    var jerseys = (jRes.data || []).sort(function(a,b){
+      var ra = ratingByJersey[a.id], rb = ratingByJersey[b.id];
+      return (rb.avg_rating - ra.avg_rating) || (rb.rating_count - ra.rating_count);
+    }).slice(0, 6);
+    if(!jerseys.length) return '';
+    var cards = jerseys.map(function(j){ return jerseyCard(j, j.teams, {showTeam:true}); }).join('');
+    return '<div class="section-head" style="margin-top:34px;"><h2>Highest rated</h2></div><div class="jersey-grid">'+cards+'</div>';
+  }
+
   async function viewHome(){
     setCrumbs([{label:'Home', href:'#/'}]);
     var res = await supabaseClient.from('sports').select('*').order('sort_order');
@@ -459,6 +493,7 @@
       '</a>';
     }).join('');
     var recentHtml = await recentJerseysHtml(null);
+    var highestRatedSectionHtml = await highestRatedHtml(null);
     // Six items is enough to show the home page is alive without turning
     // it into an endless feed — anyone who wants to see everything else
     // that's gone up recently gets a dedicated page instead, same idea
@@ -473,7 +508,7 @@
       '</header>' +
       '<div class="section-head"><h2>Browse by sport</h2></div>' +
       '<div class="sport-grid">'+(cards || '<div class="empty-note">No sports found &mdash; has schema.sql been run?</div>')+'</div>' +
-      recentHtml + updatesButtonHtml;
+      recentHtml + highestRatedSectionHtml + updatesButtonHtml;
   }
 
   // Full "what's gone up recently" feed — jerseys and logos together,
@@ -571,7 +606,9 @@
           '<div id="more-comps"'+(isExpanded ? '' : ' hidden')+' style="margin-top:12px;">'+moreCompsByRegion(more)+'</div>' : '');
     }
 
-    var recentHtml = comps.length ? await recentJerseysHtml(comps.map(function(c){ return c.slug; })) : '';
+    var compSlugs = comps.map(function(c){ return c.slug; });
+    var recentHtml = comps.length ? await recentJerseysHtml(compSlugs) : '';
+    var highestRatedSectionHtml = comps.length ? await highestRatedHtml(compSlugs) : '';
     var updatesButtonHtml = recentHtml
       ? '<div style="text-align:center;margin-top:22px;"><a class="btn" href="#/sport/'+sportSlug+'/updates">Latest Updates</a></div>'
       : '';
@@ -580,7 +617,7 @@
       '<section class="block"><div class="section-head"><h2>Competitions</h2></div>' +
         (comps.length ? compsHtml : '<div class="empty-note">No competitions yet for '+esc(sport.name)+'.</div>') +
       '</section>' +
-      recentHtml + updatesButtonHtml;
+      recentHtml + highestRatedSectionHtml + updatesButtonHtml;
   }
 
   // A jersey "in" a competition is either owned by a team that belongs to
@@ -691,7 +728,10 @@
       var ratingsRes = await supabaseClient.from('jersey_ratings').select('*').in('jersey_id', jerseyIds);
       var ratingsByJersey = {};
       (ratingsRes.data || []).forEach(function(r){ ratingsByJersey[r.jersey_id] = r; });
-      var rated = seasonJerseys.filter(function(j){ return ratingsByJersey[j.id]; }).sort(function(a,b){
+      var rated = seasonJerseys.filter(function(j){
+        var r = ratingsByJersey[j.id];
+        return r && r.rating_count >= MIN_RATINGS_FOR_HIGHEST_RATED;
+      }).sort(function(a,b){
         var ra = ratingsByJersey[a.id], rb = ratingsByJersey[b.id];
         return (rb.avg_rating - ra.avg_rating) || (rb.rating_count - ra.rating_count);
       }).slice(0, 6);
