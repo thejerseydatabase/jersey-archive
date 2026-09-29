@@ -1029,12 +1029,13 @@
     var byTeam = {};
     jerseys.forEach(function(j){ (byTeam[j.teams.id] = byTeam[j.teams.id] || {team:j.teams, jerseys:[]}).jerseys.push(j); });
 
-    var groups = Object.keys(byTeam).map(function(id){
-      var entry = byTeam[id];
-      var sorted = sortJerseysByType(entry.jerseys, sportSlug, compSlug, year);
-      var cards = sorted.map(function(j){ return jerseyCard(j, entry.team); }).join('');
-      return '<div class="season-group"><h3><a class="spec-link" href="#/sport/'+sportSlug+'/'+compSlug+'/team/'+entry.team.slug+'">'+esc(entry.team.name)+'</a></h3><div class="jersey-grid">'+cards+'</div></div>';
-    }).join('');
+    var groups = Object.keys(byTeam).map(function(id){ return byTeam[id]; })
+      .sort(function(a,b){ return a.team.name.localeCompare(b.team.name); })
+      .map(function(entry){
+        var sorted = sortJerseysByType(entry.jerseys, sportSlug, compSlug, year);
+        var cards = sorted.map(function(j){ return jerseyCard(j, entry.team); }).join('');
+        return '<div class="season-group"><h3><a class="spec-link" href="#/sport/'+sportSlug+'/'+compSlug+'/team/'+entry.team.slug+'">'+esc(entry.team.name)+'</a></h3><div class="jersey-grid">'+cards+'</div></div>';
+      }).join('');
 
     return '<div class="section-head"><h2>'+esc(comp.name)+' &mdash; '+year+'</h2></div>' +
       (groups || '<div class="empty-note">No jerseys logged for '+year+' yet.</div>');
