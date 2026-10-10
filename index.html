@@ -79,6 +79,18 @@
   .new-value-row input{flex:1;min-width:0;}
   .new-value-cancel{flex-shrink:0;width:40px;background:var(--surface);border:1px solid var(--line);border-radius:9px;color:var(--text-dim2);cursor:pointer;font-size:12px;}
   .new-value-cancel:hover{border-color:var(--accent);color:var(--accent);}
+  /* Type-to-search overlay sitting on top of a field's real <select> -
+     see wireComboOverlay() in app.js. */
+  .combo-wrap{position:relative;}
+  .combo-panel{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:20;max-height:240px;overflow-y:auto;background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,0.3);}
+  .combo-option{padding:8px 10px;border-radius:6px;font-size:13px;cursor:pointer;}
+  .combo-option:hover,.combo-option.active{background:var(--surface-2);}
+  .combo-option.is-new{color:var(--accent);border-top:1px solid var(--line);margin-top:4px;padding-top:10px;}
+  .combo-empty{padding:8px 10px;font-size:12.5px;color:var(--text-dim2);}
+  /* The real <select> a combo overlay drives stays in the DOM (existing
+     population/event logic keeps reading and writing it unchanged) but is
+     never shown - the combo-wrap above it is the only thing visible. */
+  .combo-source{display:none;}
   .field-full{grid-column:1/-1;}
   .field-hint{font-family:'IBM Plex Mono',monospace;font-size:10.5px;margin:1px 0 0;min-height:13px;color:var(--text-dim2);}
   .field-hint.is-match{color:var(--accent);}

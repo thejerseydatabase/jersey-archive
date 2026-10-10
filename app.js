@@ -122,6 +122,7 @@
 
   /* ================= helpers ================= */
   function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function normalizeText(s){ return (s || '').toString().normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim(); }
   function fmtDate(iso){ try{ return new Date(iso).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}); }catch(e){ return ''; } }
   function slugify(s){ return String(s).toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'') || 'x'; }
   // Every photo/logo upload runs through this before it ever reaches
@@ -1671,8 +1672,12 @@
               '<input type="text" id="f-comp-new" placeholder="New competition name">' +
               '<button type="button" class="new-value-cancel" id="f-comp-new-cancel" aria-label="Back to list">&#10005;</button>' +
             '</div></div>' +
-          '<div class="field"><label for="f-team-select">Team * <small>any level &mdash; local clubs welcome</small></label>' +
-            '<select id="f-team-select" required><option value="">Select a competition first</option></select>' +
+          '<div class="field"><label for="f-team-input">Team * <small>any level &mdash; local clubs welcome</small></label>' +
+            '<div class="combo-wrap" id="f-team-combo-wrap">' +
+              '<input type="text" id="f-team-input" placeholder="e.g. Manchester United, Melbourne Storm" autocomplete="off">' +
+              '<div class="combo-panel" id="f-team-panel" hidden></div>' +
+            '</div>' +
+            '<select id="f-team-select" class="combo-source"><option value="">Select a competition first</option></select>' +
             '<div class="new-value-row" id="f-team-new-row" hidden>' +
               '<input type="text" id="f-team-new" placeholder="New team name">' +
               '<button type="button" class="new-value-cancel" id="f-team-new-cancel" aria-label="Back to list">&#10005;</button>' +
@@ -3085,6 +3090,92 @@
     });
   }
 
+  // Type-to-search front end for a "pick or add new" <select> field (see
+  // the comment above syncNewVisibility, below) - the select stays
+  // exactly as-is and keeps driving every bit of existing
+  // population/event/draft-restore logic untouched; this just layers a
+  // search box on top of it. Reads its option list straight off the
+  // select itself (via MutationObserver, covering both a full repopulate
+  // and syncNewVisibility's hidden-attribute toggle) so nothing that
+  // already populates these fields needs to change.
+  function wireComboOverlay(selectEl, wrapId, inputId, panelId, opts){
+    var wrap = document.getElementById(wrapId);
+    var input = document.getElementById(inputId);
+    var panel = document.getElementById(panelId);
+    var newLabel = opts && opts.newLabel;
+    var newInputEl = opts && opts.newInputEl;
+    var activeIdx = -1;
+
+    function options(){
+      return [].slice.call(selectEl.options).filter(function(o){ return o.value && o.value !== '__new__'; })
+        .map(function(o){ return {value: o.value, label: o.textContent}; });
+    }
+    function labelFor(v){
+      if(!v) return ''; // keep the field empty so its placeholder hint shows, rather than the blank option's own label text
+      var m = [].slice.call(selectEl.options).filter(function(o){ return o.value === v; })[0];
+      return m ? m.textContent : '';
+    }
+    function syncDisplay(){ input.value = labelFor(selectEl.value); }
+    function syncVisibility(){ wrap.hidden = selectEl.hidden; }
+    function syncAll(){ syncVisibility(); syncDisplay(); }
+
+    function renderPanel(){
+      var q = normalizeText(input.value);
+      var matches = q ? options().filter(function(o){ return normalizeText(o.label).indexOf(q) > -1; }) : options();
+      activeIdx = -1;
+      var rows = matches.length
+        ? matches.map(function(o,i){ return '<div class="combo-option" data-value="'+esc(o.value)+'" data-i="'+i+'">'+esc(o.label)+'</div>'; }).join('')
+        : '<div class="combo-empty">No matches</div>';
+      if(newLabel) rows += '<div class="combo-option is-new" data-value="__new__" data-i="'+matches.length+'">'+esc(newLabel)+'</div>';
+      panel.innerHTML = rows;
+    }
+    function openPanel(){ renderPanel(); panel.hidden = false; }
+    function closePanel(){ panel.hidden = true; activeIdx = -1; }
+    function setActive(i){
+      var rows = panel.querySelectorAll('.combo-option');
+      for(var k = 0; k < rows.length; k++) rows[k].classList.remove('active');
+      activeIdx = i;
+      if(i > -1 && rows[i]){ rows[i].classList.add('active'); rows[i].scrollIntoView({block:'nearest'}); }
+    }
+    function choose(v){
+      if(v === '__new__' && newInputEl) newInputEl.value = input.value.trim();
+      selectEl.value = v;
+      selectEl.dispatchEvent(new Event('change'));
+      syncDisplay();
+      closePanel();
+    }
+
+    input.addEventListener('focus', openPanel);
+    input.addEventListener('input', openPanel);
+    input.addEventListener('keydown', function(e){
+      if(panel.hidden){
+        if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){ e.preventDefault(); openPanel(); }
+        return;
+      }
+      var rows = panel.querySelectorAll('.combo-option');
+      if(e.key === 'ArrowDown'){ e.preventDefault(); setActive(Math.min(activeIdx + 1, rows.length - 1)); }
+      else if(e.key === 'ArrowUp'){ e.preventDefault(); setActive(Math.max(activeIdx - 1, 0)); }
+      else if(e.key === 'Enter'){ e.preventDefault(); if(activeIdx > -1 && rows[activeIdx]) choose(rows[activeIdx].dataset.value); }
+      else if(e.key === 'Escape'){ syncDisplay(); closePanel(); }
+    });
+    panel.addEventListener('mousedown', function(e){
+      var opt = e.target.closest('.combo-option');
+      if(!opt) return;
+      e.preventDefault(); // keeps the input focused so this fires instead of a blur closing the panel first
+      choose(opt.dataset.value);
+    });
+    input.addEventListener('blur', function(){
+      setTimeout(function(){ syncDisplay(); closePanel(); }, 120);
+    });
+    document.addEventListener('click', function(e){
+      if(!panel.hidden && !wrap.contains(e.target)) closePanel();
+    });
+
+    new MutationObserver(syncAll).observe(selectEl, {attributes: true, attributeFilter: ['hidden']});
+    new MutationObserver(syncAll).observe(selectEl, {childList: true});
+    syncAll();
+  }
+
   function wireUploadForm(){
     var form = document.getElementById('upload-form');
     if(!form) return;
@@ -3487,6 +3578,7 @@
     extraCompSel.addEventListener('change', function(){ syncNewVisibility(extraCompSel, extraCompNewRow, extraCompNew, false); saveDraft(); });
     wireNewCancel(compSelect, compNewRow, compNew, true, refreshTeams);
     wireNewCancel(teamSelect, teamNewRow, teamNew, true);
+    wireComboOverlay(teamSelect, 'f-team-combo-wrap', 'f-team-input', 'f-team-panel', {newLabel: '+ Add a new team…', newInputEl: teamNew});
     wireNewCancel(typeSelect, typeNewRow, typeNew, true);
     wireNewCancel(typeSubSelect, typeSubNewRow, typeSubNew, false);
     wireNewCancel(mfrSelect, mfrNewRow, mfrNew, true);
