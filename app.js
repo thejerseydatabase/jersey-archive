@@ -3904,17 +3904,19 @@
       var combined = teamMatches.map(function(t){
         var c = t.competitions, sport = c.sports;
         return {
-          rank: matchRank(t.name, qNorm), sport: sportRank(sport), tier: tierRank(c.tier), name: t.name,
+          rank: matchRank(t.name, qNorm), sport: sportRank(sport), tier: tierRank(c.tier),
+          active: t.is_active === false ? 1 : 0, name: t.name,
           html: '<a class="combo-option search-suggest-row" href="#/sport/'+sport.slug+'/'+c.slug+'/team/'+t.slug+'"><span>'+esc(t.name)+'</span><span class="meta">'+esc(c.name)+' &middot; '+esc(sport.name)+'</span></a>'
         };
       }).concat(compMatches.map(function(c){
         return {
-          rank: matchRank(c.name, qNorm), sport: sportRank(c.sports), tier: tierRank(c.tier), name: c.name,
+          rank: matchRank(c.name, qNorm), sport: sportRank(c.sports), tier: tierRank(c.tier),
+          active: 0, name: c.name,
           html: '<a class="combo-option search-suggest-row" href="#/sport/'+c.sports.slug+'/'+c.slug+'"><span>'+esc(c.name)+'</span><span class="meta">'+esc(c.sports.name)+' &middot; Competition</span></a>'
         };
       }));
       combined.sort(function(a, b){
-        return (a.rank - b.rank) || (a.tier - b.tier) || (a.sport - b.sport) || a.name.localeCompare(b.name);
+        return (a.rank - b.rank) || (a.tier - b.tier) || (a.sport - b.sport) || (a.active - b.active) || a.name.localeCompare(b.name);
       });
       panel.innerHTML = combined.slice(0, 8).map(function(r){ return r.html; }).join('');
       panel.hidden = false;
