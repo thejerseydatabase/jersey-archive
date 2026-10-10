@@ -239,12 +239,17 @@
     return jerseys.slice().sort(function(a, b){ return typeSortIndex(groups, a.type) - typeSortIndex(groups, b.type); });
   }
 
+  // Used to flag the SAME team appearing under more than one competition
+  // (an old competition name vs. the current one, most often) - not to
+  // match loosely-similar names. It used to also strip "Women"/"WFC"/
+  // "(Women)"/"(Men)" before comparing, which was well-intentioned but
+  // backfired: "Wellington Phoenix Women" and the men's "Wellington
+  // Phoenix" are different teams entirely (different competition,
+  // different squad), not the same team under a renamed competition, and
+  // stripping the gender marker made them register as a match. Exact name
+  // (post-trim) only, now.
   function normalizeTeamName(name){
-    return String(name).trim()
-      .replace(/\s*\((women|men)\)\s*$/i, '')
-      .replace(/\s+wfc$/i, '')
-      .replace(/\s+women$/i, '')
-      .trim();
+    return String(name).trim();
   }
 
   // A per-browser random id (not tied to identity) so anonymous report
