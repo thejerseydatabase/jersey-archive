@@ -261,12 +261,25 @@
     } catch(e){ return null; }
   }
 
+  // Routed through a Cloudflare Worker (img.thejerseydatabase.com) that
+  // caches these at Cloudflare's edge. Supabase Storage's own domain can't
+  // be proxied directly through Cloudflare (it's already on Cloudflare
+  // under Supabase's own account, and Cloudflare blocks cross-account
+  // CNAMEs), so the Worker re-fetches from Supabase only on a cache miss
+  // and serves everything else straight from the edge - cutting out most
+  // of the repeat bandwidth from the same photo being viewed by many
+  // different visitors.
+  var IMAGE_CDN_HOST = 'https://img.thejerseydatabase.com';
+  function toCdnUrl(supabaseUrl){
+    return supabaseUrl.replace(SUPABASE_URL, IMAGE_CDN_HOST);
+  }
+
   function publicImageUrl(path){
-    return supabaseClient.storage.from('jersey-photos').getPublicUrl(path).data.publicUrl;
+    return toCdnUrl(supabaseClient.storage.from('jersey-photos').getPublicUrl(path).data.publicUrl);
   }
 
   function publicLogoUrl(path){
-    return supabaseClient.storage.from('team-logos').getPublicUrl(path).data.publicUrl;
+    return toCdnUrl(supabaseClient.storage.from('team-logos').getPublicUrl(path).data.publicUrl);
   }
 
   function teamSwatch(team, opts){
@@ -2196,7 +2209,7 @@
       var reporter = uploaderNames[r.reported_by] || (r.reported_by ? 'unknown' : 'anonymous');
       var link = reportLink(r);
       var thumb = r.attachment_path
-        ? '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(supabaseClient.storage.from('report-attachments').getPublicUrl(r.attachment_path).data.publicUrl)+'" alt=""></div>'
+        ? '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(toCdnUrl(supabaseClient.storage.from('report-attachments').getPublicUrl(r.attachment_path).data.publicUrl))+'" alt=""></div>'
         : '';
       var useAsLogoBtn = (r.attachment_path && r.page_type === 'team')
         ? '<button class="btn" data-type="report-logo" data-action="use" data-id="'+r.id+'" data-team-id="'+esc(r.page_ref)+'" data-path="'+esc(r.attachment_path)+'" type="button">Use as team logo</button>'
