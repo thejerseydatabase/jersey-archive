@@ -3834,6 +3834,23 @@
       if(i > -1 && rows[i]){ rows[i].classList.add('active'); rows[i].scrollIntoView({block: 'nearest'}); }
     }
 
+    // Ranks a plain substring/token-subset match (e.g. "a-league" matching
+    // some unrelated club purely because it contains an "a" and "league"
+    // somewhere) below an actual prefix match, so the obvious answer
+    // doesn't get buried under loose matches. Ties within a rank fall back
+    // to each competition's curated tier (same "top" flag that already
+    // orders the upload form's competition dropdown) so NRL/A-League/etc.
+    // outrank NSW Cup/Ron Massey/regional comps instead of going purely
+    // alphabetical.
+    function matchRank(nameRaw, qNorm){
+      var name = normalizeSearchText(nameRaw);
+      if(name.indexOf(qNorm) === 0) return 0;
+      var words = name.split(' ');
+      for(var i = 0; i < words.length; i++){ if(words[i].indexOf(qNorm) === 0) return 1; }
+      return 2;
+    }
+    function tierRank(tier){ return tier === 'top' ? 0 : 1; }
+
     async function renderSuggestions(){
       var q = input.value.trim();
       if(q.length < MIN_CHARS){ closePanel(); return; }
@@ -3841,9 +3858,15 @@
       // Query may have changed (or the box may have been cleared/closed)
       // while that fetch/filter was in flight.
       if(input.value.trim() !== q) return;
+      var qNorm = normalizeSearchText(q);
 
       var teamMatches = teams.filter(function(t){ return searchTextMatches(t.name, q); })
-        .sort(function(a, b){ return a.name.localeCompare(b.name); }).slice(0, 6);
+        .sort(function(a, b){
+          var r = matchRank(a.name, qNorm) - matchRank(b.name, qNorm);
+          if(r) return r;
+          r = tierRank(a.competitions.tier) - tierRank(b.competitions.tier);
+          return r || a.name.localeCompare(b.name);
+        }).slice(0, 6);
 
       var compSeen = {}, compMatches = [];
       teams.forEach(function(t){
@@ -3852,7 +3875,12 @@
         compSeen[c.slug] = true;
         compMatches.push(c);
       });
-      compMatches.sort(function(a, b){ return a.name.localeCompare(b.name); });
+      compMatches.sort(function(a, b){
+        var r = matchRank(a.name, qNorm) - matchRank(b.name, qNorm);
+        if(r) return r;
+        r = tierRank(a.tier) - tierRank(b.tier);
+        return r || a.name.localeCompare(b.name);
+      });
       compMatches = compMatches.slice(0, 4);
 
       activeIdx = -1;
@@ -3861,13 +3889,27 @@
         panel.hidden = false;
         return;
       }
-      var rows = teamMatches.map(function(t){
+      // Combined into one ranked list rather than "teams first, then
+      // comps" - otherwise a loose team match (e.g. some club that only
+      // matches "a-league" because it happens to contain an "a" and a
+      // "league" somewhere) would always sit above the actual A-League
+      // competition entry just because it's a team.
+      var combined = teamMatches.map(function(t){
         var c = t.competitions, sport = c.sports;
-        return '<a class="combo-option search-suggest-row" href="#/sport/'+sport.slug+'/'+c.slug+'/team/'+t.slug+'"><span>'+esc(t.name)+'</span><span class="meta">'+esc(c.name)+'</span></a>';
+        return {
+          rank: matchRank(t.name, qNorm), tier: tierRank(c.tier), name: t.name,
+          html: '<a class="combo-option search-suggest-row" href="#/sport/'+sport.slug+'/'+c.slug+'/team/'+t.slug+'"><span>'+esc(t.name)+'</span><span class="meta">'+esc(c.name)+'</span></a>'
+        };
       }).concat(compMatches.map(function(c){
-        return '<a class="combo-option search-suggest-row" href="#/sport/'+c.sports.slug+'/'+c.slug+'"><span>'+esc(c.name)+'</span><span class="meta">Competition</span></a>';
-      })).join('');
-      panel.innerHTML = rows;
+        return {
+          rank: matchRank(c.name, qNorm), tier: tierRank(c.tier), name: c.name,
+          html: '<a class="combo-option search-suggest-row" href="#/sport/'+c.sports.slug+'/'+c.slug+'"><span>'+esc(c.name)+'</span><span class="meta">Competition</span></a>'
+        };
+      }));
+      combined.sort(function(a, b){
+        return (a.rank - b.rank) || (a.tier - b.tier) || a.name.localeCompare(b.name);
+      });
+      panel.innerHTML = combined.map(function(r){ return r.html; }).join('');
       panel.hidden = false;
     }
 
