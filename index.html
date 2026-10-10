@@ -42,6 +42,12 @@
   .search-form{position:relative;}
   .search-form input{background:var(--surface);border:1px solid var(--line);border-radius:8px;color:var(--text);font-family:'Inter',sans-serif;font-size:13px;padding:9px 12px;width:190px;}
   .search-form input:focus{border-color:var(--accent);}
+  /* Wider than the input itself (team/competition names run long) and
+     right-anchored so it doesn't run off the edge of the screen - the
+     search box sits near the right end of the top nav. */
+  #search-suggest-panel{left:auto;right:0;width:min(320px, calc(100vw - 32px));}
+  .search-suggest-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;text-decoration:none;color:var(--text);}
+  .search-suggest-row .meta{color:var(--text-dim2);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .theme-toggle{background:var(--surface);border:1px solid var(--line);border-radius:8px;color:var(--text-dim);width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;}
   .theme-toggle:hover{color:var(--accent);border-color:var(--accent);}
   .nav-link{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.04em;text-transform:uppercase;text-decoration:none;color:var(--text-dim);padding:8px 4px;}
@@ -346,7 +352,8 @@
       <a class="nav-link" href="https://thejerseydatabase.com/trackers.html" target="_blank" rel="noopener">Jersey Tracker</a>
       <a class="nav-link" href="#/upload">Upload</a>
       <form class="search-form" id="search-form">
-        <input id="search-input" type="text" placeholder="Search team, year..." aria-label="Search jerseys">
+        <input id="search-input" type="text" placeholder="Search team, year..." aria-label="Search jerseys" autocomplete="off">
+        <div class="combo-panel" id="search-suggest-panel" hidden></div>
       </form>
       <div id="auth-area"></div>
       <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle light/dark mode"></button>

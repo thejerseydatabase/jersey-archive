@@ -3798,6 +3798,101 @@
     if(val) location.hash = '#/search/' + encodeURIComponent(val);
   });
 
+  // Live suggestions under the search box, jumping straight to a team or
+  // competition page instead of needing the full #/search/ results page
+  // for the common case of knowing roughly who you're looking for. Only
+  // kicks in from 3 characters on - below that, almost everything matches
+  // something, so the list is more noise than help (also keeps the one
+  // underlying fetch from firing on every single keystroke of a very
+  // short, still-being-typed query).
+  (function wireSearchSuggest(){
+    var input = document.getElementById('search-input');
+    var panel = document.getElementById('search-suggest-panel');
+    if(!input || !panel) return;
+    var MIN_CHARS = 3;
+    var activeIdx = -1;
+    var debounceTimer = null;
+
+    // Fetched once and cached, not once per keystroke - reuses the exact
+    // same rows + searchTextMatches() the full #/search/ page uses, so a
+    // suggestion and what you'd get from pressing Enter stay consistent.
+    var teamsPromise = null;
+    function loadTeams(){
+      if(!teamsPromise){
+        teamsPromise = fetchAllRows('teams', '*, competitions(*, sports(*))')
+          .then(function(rows){ return rows.filter(function(t){ return t.competitions && t.competitions.sports; }); })
+          .catch(function(){ teamsPromise = null; return []; });
+      }
+      return teamsPromise;
+    }
+
+    function closePanel(){ panel.hidden = true; activeIdx = -1; }
+    function setActive(i){
+      var rows = panel.querySelectorAll('.combo-option');
+      for(var k = 0; k < rows.length; k++) rows[k].classList.remove('active');
+      activeIdx = i;
+      if(i > -1 && rows[i]){ rows[i].classList.add('active'); rows[i].scrollIntoView({block: 'nearest'}); }
+    }
+
+    async function renderSuggestions(){
+      var q = input.value.trim();
+      if(q.length < MIN_CHARS){ closePanel(); return; }
+      var teams = await loadTeams();
+      // Query may have changed (or the box may have been cleared/closed)
+      // while that fetch/filter was in flight.
+      if(input.value.trim() !== q) return;
+
+      var teamMatches = teams.filter(function(t){ return searchTextMatches(t.name, q); })
+        .sort(function(a, b){ return a.name.localeCompare(b.name); }).slice(0, 6);
+
+      var compSeen = {}, compMatches = [];
+      teams.forEach(function(t){
+        var c = t.competitions;
+        if(compSeen[c.slug] || !searchTextMatches(c.name, q)) return;
+        compSeen[c.slug] = true;
+        compMatches.push(c);
+      });
+      compMatches.sort(function(a, b){ return a.name.localeCompare(b.name); });
+      compMatches = compMatches.slice(0, 4);
+
+      activeIdx = -1;
+      if(!teamMatches.length && !compMatches.length){
+        panel.innerHTML = '<div class="combo-empty">No matches</div>';
+        panel.hidden = false;
+        return;
+      }
+      var rows = teamMatches.map(function(t){
+        var c = t.competitions, sport = c.sports;
+        return '<a class="combo-option search-suggest-row" href="#/sport/'+sport.slug+'/'+c.slug+'/team/'+t.slug+'"><span>'+esc(t.name)+'</span><span class="meta">'+esc(c.name)+'</span></a>';
+      }).concat(compMatches.map(function(c){
+        return '<a class="combo-option search-suggest-row" href="#/sport/'+c.sports.slug+'/'+c.slug+'"><span>'+esc(c.name)+'</span><span class="meta">Competition</span></a>';
+      })).join('');
+      panel.innerHTML = rows;
+      panel.hidden = false;
+    }
+
+    input.addEventListener('input', function(){
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(renderSuggestions, 150);
+    });
+    input.addEventListener('focus', function(){
+      if(input.value.trim().length >= MIN_CHARS) renderSuggestions();
+    });
+    input.addEventListener('keydown', function(e){
+      if(panel.hidden) return;
+      var rows = panel.querySelectorAll('.combo-option');
+      if(!rows.length) return;
+      if(e.key === 'ArrowDown'){ e.preventDefault(); setActive(Math.min(activeIdx + 1, rows.length - 1)); }
+      else if(e.key === 'ArrowUp'){ e.preventDefault(); setActive(Math.max(activeIdx - 1, 0)); }
+      else if(e.key === 'Enter' && activeIdx > -1){ e.preventDefault(); rows[activeIdx].click(); }
+      else if(e.key === 'Escape'){ closePanel(); }
+    });
+    panel.addEventListener('click', closePanel);
+    document.addEventListener('click', function(e){
+      if(!panel.hidden && !document.getElementById('search-form').contains(e.target)) closePanel();
+    });
+  })();
+
   /* ================= auth ================= */
   function closeAuthPanel(){
     var p = document.getElementById('auth-panel');
