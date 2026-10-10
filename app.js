@@ -1666,15 +1666,19 @@
         '<div class="upload-grid">' +
           '<div class="field"><label for="f-sport">Sport *</label><select id="f-sport" required>'+sportOptions+'</select></div>' +
           '<div class="field" id="field-format" hidden><label for="f-format">Format * <small>cricket has several</small></label><select id="f-format" required></select></div>' +
-          '<div class="field"><label for="f-comp-select">Competition * <small>pick or add a new one</small></label>' +
-            '<select id="f-comp-select" required><option value="">Select a competition</option></select>' +
+          '<div class="field"><label for="f-comp-input">Competition * <small>pick or add a new one</small></label>' +
+            '<div class="combo-wrap" id="f-comp-combo-wrap">' +
+              '<input type="text" id="f-comp-input" placeholder="e.g. NRL, Premier League" autocomplete="off" required>' +
+              '<div class="combo-panel" id="f-comp-panel" hidden></div>' +
+            '</div>' +
+            '<select id="f-comp-select" class="combo-source"><option value="">Select a competition</option></select>' +
             '<div class="new-value-row" id="f-comp-new-row" hidden>' +
               '<input type="text" id="f-comp-new" placeholder="New competition name">' +
               '<button type="button" class="new-value-cancel" id="f-comp-new-cancel" aria-label="Back to list">&#10005;</button>' +
             '</div></div>' +
           '<div class="field"><label for="f-team-input">Team * <small>any level &mdash; local clubs welcome</small></label>' +
             '<div class="combo-wrap" id="f-team-combo-wrap">' +
-              '<input type="text" id="f-team-input" placeholder="e.g. Manchester United, Melbourne Storm" autocomplete="off">' +
+              '<input type="text" id="f-team-input" placeholder="e.g. Manchester United, Melbourne Storm" autocomplete="off" required>' +
               '<div class="combo-panel" id="f-team-panel" hidden></div>' +
             '</div>' +
             '<select id="f-team-select" class="combo-source"><option value="">Select a competition first</option></select>' +
@@ -1686,8 +1690,12 @@
           '</div>' +
           '<div class="field"><label for="f-season">Season * <small>a single year, or a range for split-year comps</small></label>' +
             '<input type="text" id="f-season" placeholder="e.g. '+thisYear+' or '+thisYear+'-'+String(thisYear+1).slice(-2)+'" required></div>' +
-          '<div class="field"><label for="f-type-select">Jersey type *</label>' +
-            '<select id="f-type-select" required>'+typeOptions+'</select>' +
+          '<div class="field"><label for="f-type-input">Jersey type *</label>' +
+            '<div class="combo-wrap" id="f-type-combo-wrap">' +
+              '<input type="text" id="f-type-input" placeholder="e.g. Home, Away, Alternate" autocomplete="off" required>' +
+              '<div class="combo-panel" id="f-type-panel" hidden></div>' +
+            '</div>' +
+            '<select id="f-type-select" class="combo-source">'+typeOptions+'</select>' +
             '<div class="new-value-row" id="f-type-new-row" hidden>' +
               '<input type="text" id="f-type-new" placeholder="New jersey type">' +
               '<button type="button" class="new-value-cancel" id="f-type-new-cancel" aria-label="Back to list">&#10005;</button>' +
@@ -1708,8 +1716,12 @@
               '</div>' +
             '</div>' +
           '</div>' +
-          '<div class="field"><label for="f-mfr-select">Manufacturer * <small>don&rsquo;t know it? pick &ldquo;Unknown&rdquo; &mdash; click the dropdown or click it and start typing to jump to a brand; add it below if it&rsquo;s not there</small></label>' +
-            '<select id="f-mfr-select" required>'+mfrOptions+'</select>' +
+          '<div class="field"><label for="f-mfr-input">Manufacturer * <small>don&rsquo;t know it? pick &ldquo;Unknown&rdquo;</small></label>' +
+            '<div class="combo-wrap" id="f-mfr-combo-wrap">' +
+              '<input type="text" id="f-mfr-input" placeholder="e.g. Nike, Adidas, Puma" autocomplete="off" required>' +
+              '<div class="combo-panel" id="f-mfr-panel" hidden></div>' +
+            '</div>' +
+            '<select id="f-mfr-select" class="combo-source">'+mfrOptions+'</select>' +
             '<div class="new-value-row" id="f-mfr-new-row" hidden>' +
               '<input type="text" id="f-mfr-new" placeholder="New manufacturer">' +
               '<button type="button" class="new-value-cancel" id="f-mfr-new-cancel" aria-label="Back to list">&#10005;</button>' +
@@ -3095,9 +3107,14 @@
   // exactly as-is and keeps driving every bit of existing
   // population/event/draft-restore logic untouched; this just layers a
   // search box on top of it. Reads its option list straight off the
-  // select itself (via MutationObserver, covering both a full repopulate
-  // and syncNewVisibility's hidden-attribute toggle) so nothing that
-  // already populates these fields needs to change.
+  // select itself, and stays in sync with it two ways: a property
+  // override on .value catches every direct assignment (draft-restore
+  // sets selectEl.value directly, with no 'change' event and, critically,
+  // sometimes no actual attribute mutation for a MutationObserver to see
+  // either - e.g. setting .hidden to the same value it already had is a
+  // silent no-op), while a MutationObserver on childList catches a full
+  // innerHTML repopulate (refreshTeams() and friends) choosing a
+  // different option as selected.
   function wireComboOverlay(selectEl, wrapId, inputId, panelId, opts){
     var wrap = document.getElementById(wrapId);
     var input = document.getElementById(inputId);
@@ -3116,7 +3133,16 @@
       return m ? m.textContent : '';
     }
     function syncDisplay(){ input.value = labelFor(selectEl.value); }
-    function syncVisibility(){ wrap.hidden = selectEl.hidden; }
+    // A required field hidden via the `hidden` attribute or display:none
+    // still blocks form submission in this browser - it's NOT exempt from
+    // constraint validation just because it can't be seen. The original
+    // select-based "+Add new" flow sidestepped this because a required
+    // <select> is satisfied by ANY non-empty value, and '__new__' counts;
+    // our combo input needs its required-ness toggled explicitly to match.
+    function syncVisibility(){
+      wrap.hidden = selectEl.hidden;
+      if(input.hasAttribute('required')) input.required = !selectEl.hidden;
+    }
     function syncAll(){ syncVisibility(); syncDisplay(); }
 
     function renderPanel(){
@@ -3173,6 +3199,17 @@
 
     new MutationObserver(syncAll).observe(selectEl, {attributes: true, attributeFilter: ['hidden']});
     new MutationObserver(syncAll).observe(selectEl, {childList: true});
+
+    // Catches a direct `selectEl.value = x` assignment from elsewhere
+    // (draft-restore, reselectAfterSubmit) the instant it happens, rather
+    // than hoping a side-effecting attribute change gets observed too.
+    var nativeValueProp = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+    Object.defineProperty(selectEl, 'value', {
+      get: function(){ return nativeValueProp.get.call(selectEl); },
+      set: function(v){ nativeValueProp.set.call(selectEl, v); syncAll(); },
+      configurable: true
+    });
+
     syncAll();
   }
 
@@ -3577,11 +3614,14 @@
     });
     extraCompSel.addEventListener('change', function(){ syncNewVisibility(extraCompSel, extraCompNewRow, extraCompNew, false); saveDraft(); });
     wireNewCancel(compSelect, compNewRow, compNew, true, refreshTeams);
+    wireComboOverlay(compSelect, 'f-comp-combo-wrap', 'f-comp-input', 'f-comp-panel', {newLabel: '+ Add a new competition…', newInputEl: compNew});
     wireNewCancel(teamSelect, teamNewRow, teamNew, true);
     wireComboOverlay(teamSelect, 'f-team-combo-wrap', 'f-team-input', 'f-team-panel', {newLabel: '+ Add a new team…', newInputEl: teamNew});
     wireNewCancel(typeSelect, typeNewRow, typeNew, true);
+    wireComboOverlay(typeSelect, 'f-type-combo-wrap', 'f-type-input', 'f-type-panel', {newLabel: '+ Add a new jersey type…', newInputEl: typeNew});
     wireNewCancel(typeSubSelect, typeSubNewRow, typeSubNew, false);
     wireNewCancel(mfrSelect, mfrNewRow, mfrNew, true);
+    wireComboOverlay(mfrSelect, 'f-mfr-combo-wrap', 'f-mfr-input', 'f-mfr-panel', {newLabel: '+ Add a new manufacturer…', newInputEl: mfrNew});
     wireNewCancel(extraCompSel, extraCompNewRow, extraCompNew, false);
     [compNew, teamNew, seasonInput, typeNew, typeSubNew, mfrNew, extraCompNew, document.getElementById('f-notes'), document.getElementById('f-credit')].forEach(function(el){
       el.addEventListener('input', saveDraft);
