@@ -30,6 +30,27 @@
   // like "Training 2" can't be detected as training-related up front, so
   // this is a manual pick rather than something the form infers.
   var FORMATS_BY_SPORT = { cricket: ['Test','First Class','ODI','One Day','T20I','T20','T10I','T10','All Formats'] };
+  // Keyed by sport slug (not name) since that's what f-sport's <option
+  // value> holds. One big, obviously-recognisable club/country plus one
+  // Australian one, mirroring the site's own Australia-first audience,
+  // so "Manchester United, Melbourne Storm" (a football club shown while
+  // uploading a cricket jersey) stops being the example no matter what's
+  // selected.
+  var TEAM_PLACEHOLDER_BY_SPORT = {
+    'rugby-league': 'e.g. Penrith Panthers, Melbourne Storm',
+    'cricket': 'e.g. Australia, Melbourne Stars',
+    'football': 'e.g. Manchester United, Melbourne Victory',
+    'rugby-union': 'e.g. Wallabies, Crusaders',
+    'afl': 'e.g. Collingwood, Richmond',
+    'american-football': 'e.g. Dallas Cowboys, Kansas City Chiefs',
+    'basketball': 'e.g. Boston Celtics, Melbourne United',
+    'baseball': 'e.g. New York Yankees, Perth Heat',
+    'ice-hockey': 'e.g. Toronto Maple Leafs, Melbourne Ice',
+    'netball': 'e.g. NSW Swifts, Melbourne Vixens',
+    'field-hockey': 'e.g. Australia, Netherlands',
+    'volleyball': 'e.g. Australia, Brazil'
+  };
+  var DEFAULT_TEAM_PLACEHOLDER = 'e.g. Manchester United, Melbourne Storm';
   // Every sport gets these (Training always last — see below); sports in
   // the per-slug list also get those on top, before Training. Indigenous
   // jerseys are a rugby league/union/AFL/netball thing (and a few others)
@@ -1681,7 +1702,7 @@
               '<input type="text" id="f-comp-new" placeholder="New competition name">' +
               '<button type="button" class="new-value-cancel" id="f-comp-new-cancel" aria-label="Back to list">&#10005;</button>' +
             '</div></div>' +
-          '<div class="field"><label for="f-team-input">Team * <small>any level &mdash; local clubs welcome</small></label>' +
+          '<div class="field"><label for="f-team-input">Team * <small>any level &mdash; not sure of the competition? just search the team</small></label>' +
             '<div class="combo-wrap" id="f-team-combo-wrap">' +
               '<input type="text" id="f-team-input" placeholder="e.g. Manchester United, Melbourne Storm" autocomplete="off" required>' +
               '<div class="combo-panel" id="f-team-panel" hidden></div>' +
@@ -3226,6 +3247,7 @@
     var compNewRow = document.getElementById('f-comp-new-row');
     var compNew = document.getElementById('f-comp-new');
     var teamSelect = document.getElementById('f-team-select');
+    var teamInput = document.getElementById('f-team-input');
     var teamNewRow = document.getElementById('f-team-new-row');
     var teamNew = document.getElementById('f-team-new');
     var seasonInput = document.getElementById('f-season');
@@ -3388,10 +3410,18 @@
       if(!opts.includeTagOnly) q = q.eq('tag_only', false);
       var r = await q.order('tier', {ascending:false}).order('sort_order').order('name');
       if(r.error) throw r.error;
-      return r.data || [];
+      var comps = r.data || [];
+      // A competition with no formats tagged (every sport but cricket
+      // today) always shows, format filter or not - only a competition
+      // that HAS formats tagged gets narrowed, and only down to the ones
+      // that actually include the one picked (an ODI shouldn't be able
+      // to pick a T20 league as its competition).
+      if(opts.format) comps = comps.filter(function(c){ return !c.formats || !c.formats.length || c.formats.indexOf(opts.format) > -1; });
+      return comps;
     }
     async function refreshComps(){
-      var comps = await competitionsForSport(sportSel.value);
+      var formatVal = FORMATS_BY_SPORT[sportSel.value] ? formatSel.value : '';
+      var comps = await competitionsForSport(sportSel.value, {format: formatVal || undefined});
       compSelect.innerHTML = '<option value="">Select a competition</option>' +
         comps.map(function(c){ return '<option value="'+esc(c.name)+'">'+esc(c.name)+'</option>'; }).join('') +
         '<option value="__new__">+ Add a new competition…</option>';
@@ -3498,7 +3528,8 @@
     // used, rather than resetting to blank like refreshComps/refreshTeams
     // would — the whole point is to keep it selected for the next upload.
     async function reselectAfterSubmit(compName, teamName){
-      var comps = await competitionsForSport(sportSel.value);
+      var formatVal = FORMATS_BY_SPORT[sportSel.value] ? formatSel.value : '';
+      var comps = await competitionsForSport(sportSel.value, {format: formatVal || undefined});
       compSelect.innerHTML = '<option value="">Select a competition</option>' +
         comps.map(function(c){ return '<option value="'+esc(c.name)+'"'+(c.name===compName?' selected':'')+'>'+esc(c.name)+'</option>'; }).join('') +
         '<option value="__new__">+ Add a new competition…</option>';
@@ -3523,8 +3554,17 @@
       var formats = FORMATS_BY_SPORT[sportSel.value];
       formatField.hidden = !formats;
       formatSel.required = !!formats;
-      formatSel.innerHTML = formats ? formats.map(function(f){ return '<option>'+f+'</option>'; }).join('') : '';
+      // A real blank option, not just "whatever's listed first" - without
+      // this, rebuilding the list left Test silently selected on its own
+      // (nothing had explicitly chosen it), which looked exactly like a
+      // leftover value from a previous upload even on a first visit.
+      formatSel.innerHTML = formats
+        ? '<option value="" disabled selected>Select a format&hellip;</option>' + formats.map(function(f){ return '<option>'+f+'</option>'; }).join('')
+        : '';
       if(formats && preferredValue && formats.indexOf(preferredValue) > -1) formatSel.value = preferredValue;
+    }
+    function refreshTeamPlaceholder(){
+      teamInput.placeholder = TEAM_PLACEHOLDER_BY_SPORT[sportSel.value] || DEFAULT_TEAM_PLACEHOLDER;
     }
 
     // Counts how often each value of `field` (manufacturer/type) shows up
@@ -3599,7 +3639,24 @@
       mfrSelect.hidden = false; mfrNewRow.hidden = true; mfrNew.value = ''; mfrNew.required = false;
     }
 
-    sportSel.addEventListener('change', function(){ refreshComps(); refreshFormat(); refreshMfrTypeOptions(); saveDraft(); });
+    // Competition/Team/Jersey type/Manufacturer already rebuild themselves
+    // blank on a sport switch (refreshComps/refreshMfrTypeOptions). Season
+    // is free text, so nothing else ever clears it - left alone, a cricket
+    // Test season like "2025-26" would carry straight into a football
+    // upload. The hints are specific to the team/comp/season/format combo
+    // that's about to change, so they'd otherwise sit there stale too.
+    sportSel.addEventListener('change', function(){
+      // Format first - refreshComps reads formatSel.value to filter the
+      // competition list, so it needs the new sport's (blank) format
+      // already in place rather than the previous sport's leftover one.
+      refreshFormat(); refreshComps(); refreshMfrTypeOptions(); refreshTeamPlaceholder();
+      seasonInput.value = '';
+      var alsoSeeHint = document.getElementById('f-team-also-see-hint');
+      if(alsoSeeHint) alsoSeeHint.hidden = true;
+      var dupHint = document.getElementById('f-duplicate-hint');
+      if(dupHint) dupHint.hidden = true;
+      saveDraft();
+    });
     compSelect.addEventListener('change', function(){ syncNewVisibility(compSelect, compNewRow, compNew, true); refreshTeams(); refreshExtraComps(); saveDraft(); });
     teamSelect.addEventListener('change', function(){ syncNewVisibility(teamSelect, teamNewRow, teamNew, true); checkTeamAlsoSee(); checkDuplicateJersey(); saveDraft(); });
     typeSelect.addEventListener('change', function(){ syncNewVisibility(typeSelect, typeNewRow, typeNew, true); refreshTypeSubVisibility(); checkDuplicateJersey(); saveDraft(); });
@@ -3608,7 +3665,11 @@
     typeNew.addEventListener('input', checkDuplicateJersey);
     typeSubNew.addEventListener('input', checkDuplicateJersey);
     mfrSelect.addEventListener('change', function(){ syncNewVisibility(mfrSelect, mfrNewRow, mfrNew, true); saveDraft(); });
-    formatSel.addEventListener('change', function(){ checkDuplicateJersey(); saveDraft(); });
+    // Changing the format re-filters which competitions are offered (an
+    // ODI shouldn't be able to pick a T20 league), which means whatever
+    // was already selected may no longer be valid - refreshComps rebuilds
+    // the list from scratch and clears the pick, same as a sport change.
+    formatSel.addEventListener('change', function(){ refreshComps(); checkDuplicateJersey(); saveDraft(); });
     extraCompToggle.addEventListener('change', function(){
       extraCompRow.hidden = !extraCompToggle.checked;
       if(!extraCompToggle.checked){
@@ -3621,7 +3682,147 @@
     wireNewCancel(compSelect, compNewRow, compNew, true, refreshTeams);
     wireComboOverlay(compSelect, 'f-comp-combo-wrap', 'f-comp-input', 'f-comp-panel', {newLabel: '+ Add a new competition…', newInputEl: compNew});
     wireNewCancel(teamSelect, teamNewRow, teamNew, true);
-    wireComboOverlay(teamSelect, 'f-team-combo-wrap', 'f-team-input', 'f-team-panel', {newLabel: '+ Add a new team…', newInputEl: teamNew});
+    // Team gets its own overlay instead of the generic wireComboOverlay -
+    // every other combo field searches a fixed, already-loaded option
+    // list, but Team needs to search EVERY team in the sport (not just
+    // the selected competition's), so someone who knows the club but not
+    // its competition ("South Melbourne" - which league is that again?)
+    // can find it and have Competition fill itself in, instead of being
+    // stuck picking a competition first on a guess.
+    (function wireTeamComboOverlay(){
+      var wrap = document.getElementById('f-team-combo-wrap');
+      var panel = document.getElementById('f-team-panel');
+      var MIN_SPORT_CHARS = 2;
+      var activeIdx = -1;
+      var sportTeamsSlug = null, sportTeamsPromise = null;
+
+      function loadSportTeams(){
+        var sportSlug = sportSel.value;
+        if(sportTeamsSlug !== sportSlug){
+          sportTeamsSlug = sportSlug;
+          sportTeamsPromise = supabaseClient.from('teams')
+            .select('name, competition_slug, competitions!inner(name, sport_slug)')
+            .eq('competitions.sport_slug', sportSlug).order('name')
+            .then(function(r){ return r.data || []; })
+            .catch(function(){ sportTeamsSlug = null; return []; });
+        }
+        return sportTeamsPromise;
+      }
+      function inCompOptions(){
+        return [].slice.call(teamSelect.options).filter(function(o){ return o.value && o.value !== '__new__'; })
+          .map(function(o){ return {name: o.value, label: o.textContent}; });
+      }
+      function labelFor(v){
+        if(!v) return '';
+        var m = [].slice.call(teamSelect.options).filter(function(o){ return o.value === v; })[0];
+        return m ? m.textContent : '';
+      }
+      function syncDisplay(){ teamInput.value = labelFor(teamSelect.value); }
+      function syncVisibility(){
+        wrap.hidden = teamSelect.hidden;
+        if(teamInput.hasAttribute('required')) teamInput.required = !teamSelect.hidden;
+      }
+      function syncAll(){ syncVisibility(); syncDisplay(); }
+
+      async function renderPanel(){
+        var raw = teamInput.value;
+        var q = normalizeText(raw);
+        var hasComp = !!compSelect.value && compSelect.value !== '__new__';
+        var rows = [];
+        // The current competition's own teams - unchanged from before,
+        // shown immediately with no fetch and no character minimum.
+        if(hasComp){
+          inCompOptions().filter(function(o){ return !q || normalizeText(o.label).indexOf(q) > -1; })
+            .forEach(function(o){ rows.push({name: o.name, comp: compSelect.value, html: esc(o.label)}); });
+        }
+        if(q.length >= MIN_SPORT_CHARS){
+          var teams = await loadSportTeams();
+          if(normalizeText(teamInput.value) !== q) return; // query moved on while that fetch was in flight
+          var already = {}; rows.forEach(function(r){ already[r.name+'|'+r.comp] = true; });
+          teams.filter(function(t){ return normalizeText(t.name).indexOf(q) > -1; })
+            .forEach(function(t){
+              var compName = t.competitions.name;
+              if(already[t.name+'|'+compName]) return;
+              rows.push({name: t.name, comp: compName, html: esc(t.name)+' <span class="meta">&middot; '+esc(compName)+'</span>'});
+            });
+        } else if(normalizeText(teamInput.value) !== q) return;
+        rows = rows.slice(0, 10);
+
+        activeIdx = -1;
+        var html = rows.length
+          ? rows.map(function(r, i){ return '<div class="combo-option search-suggest-row" data-i="'+i+'" data-name="'+esc(r.name)+'" data-comp="'+esc(r.comp)+'"><span>'+r.html+'</span></div>'; }).join('')
+          : (hasComp || q.length >= MIN_SPORT_CHARS
+              ? '<div class="combo-empty">No matches'+(hasComp ? '' : ' - pick a competition above to add a brand new team')+'</div>'
+              : '<div class="combo-empty">Type at least '+MIN_SPORT_CHARS+' letters to search every team in this sport, or pick a competition above first</div>');
+        if(hasComp) html += '<div class="combo-option is-new" data-i="'+rows.length+'" data-new="1">+ Add a new team&hellip;</div>';
+        panel.innerHTML = html;
+      }
+      function openPanel(){ renderPanel(); panel.hidden = false; }
+      function closePanel(){ panel.hidden = true; activeIdx = -1; }
+      function setActive(i){
+        var opts = panel.querySelectorAll('.combo-option');
+        for(var k = 0; k < opts.length; k++) opts[k].classList.remove('active');
+        activeIdx = i;
+        if(i > -1 && opts[i]){ opts[i].classList.add('active'); opts[i].scrollIntoView({block:'nearest'}); }
+      }
+      async function choose(el){
+        if(el.dataset.new){
+          teamNew.value = teamInput.value.trim();
+          teamSelect.value = '__new__';
+        } else {
+          var compName = el.dataset.comp;
+          if(compName && compName.toLowerCase() !== compSelect.value.toLowerCase()){
+            compSelect.value = compName;
+            syncNewVisibility(compSelect, compNewRow, compNew, true);
+            await refreshTeams();
+            await refreshExtraComps();
+          }
+          teamSelect.value = el.dataset.name;
+        }
+        syncNewVisibility(teamSelect, teamNewRow, teamNew, true);
+        checkTeamAlsoSee();
+        checkDuplicateJersey();
+        syncDisplay();
+        closePanel();
+        saveDraft();
+      }
+
+      teamInput.addEventListener('focus', openPanel);
+      teamInput.addEventListener('input', openPanel);
+      teamInput.addEventListener('keydown', function(e){
+        if(panel.hidden){
+          if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){ e.preventDefault(); openPanel(); }
+          return;
+        }
+        var opts = panel.querySelectorAll('.combo-option');
+        if(e.key === 'ArrowDown'){ e.preventDefault(); setActive(Math.min(activeIdx + 1, opts.length - 1)); }
+        else if(e.key === 'ArrowUp'){ e.preventDefault(); setActive(Math.max(activeIdx - 1, 0)); }
+        else if(e.key === 'Enter'){ e.preventDefault(); if(activeIdx > -1 && opts[activeIdx]) choose(opts[activeIdx]); }
+        else if(e.key === 'Escape'){ syncDisplay(); closePanel(); }
+      });
+      panel.addEventListener('mousedown', function(e){
+        var opt = e.target.closest('.combo-option');
+        if(!opt || !opt.dataset) return;
+        e.preventDefault();
+        choose(opt);
+      });
+      teamInput.addEventListener('blur', function(){
+        setTimeout(function(){ syncDisplay(); closePanel(); }, 120);
+      });
+      document.addEventListener('click', function(e){
+        if(!panel.hidden && !wrap.contains(e.target)) closePanel();
+      });
+
+      new MutationObserver(syncAll).observe(teamSelect, {attributes: true, attributeFilter: ['hidden']});
+      new MutationObserver(syncAll).observe(teamSelect, {childList: true});
+      var nativeValueProp = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+      Object.defineProperty(teamSelect, 'value', {
+        get: function(){ return nativeValueProp.get.call(teamSelect); },
+        set: function(v){ nativeValueProp.set.call(teamSelect, v); syncAll(); },
+        configurable: true
+      });
+      syncAll();
+    })();
     wireNewCancel(typeSelect, typeNewRow, typeNew, true);
     wireComboOverlay(typeSelect, 'f-type-combo-wrap', 'f-type-input', 'f-type-panel', {newLabel: '+ Add a new jersey type…', newInputEl: typeNew});
     wireNewCancel(typeSubSelect, typeSubNewRow, typeSubNew, false);
@@ -3635,8 +3836,12 @@
 
     (async function init(){
       if(restoredDraft && restoredDraft.sport) sportSel.value = restoredDraft.sport;
-      await refreshComps();
+      // Format before the first refreshComps - it reads formatSel.value
+      // to filter the competition list, so a restored format needs to be
+      // in place before that first fetch, not applied to it after.
       refreshFormat(restoredDraft && restoredDraft.format);
+      await refreshComps();
+      refreshTeamPlaceholder();
       await refreshMfrTypeOptions();
       if(restoredDraft){
         if(restoredDraft.comp){
