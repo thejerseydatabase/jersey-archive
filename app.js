@@ -3861,6 +3861,19 @@
     // the sport's position in the homepage's "Browse by sport" grid
     // decides between them instead of falling straight to A-Z.
     function tierRank(tier){ return tier === 'top' ? 0 : 1; }
+    // A competition's OWN sort_order (the same field competitionsForSport()
+    // already uses to put NRL before NSW Cup in the upload form) is a
+    // finer, more deliberate signal than tier alone - tier just means
+    // "top flight of its own sport" and gets applied broadly (every
+    // "International*" competition across every sport was bulk-promoted
+    // to top, same for the rugby league "Representative" grab-bag of
+    // teams that are really just pinned for sport-page visibility, not
+    // because they're prominent). sort_order is hand-curated per
+    // competition instead, so it's checked before sport: it's what lets
+    // Cricket's International (sort_order 1) outrank Rugby League's
+    // Representative (never curated, sitting at the schema default)
+    // even though rugby league sits above cricket in the sport order.
+    function compSortRank(c){ return c && c.sort_order != null ? c.sort_order : 999; }
     function sportRank(sport){ return sport && sport.sort_order != null ? sport.sort_order : 9999; }
 
     async function renderSuggestions(){
@@ -3904,19 +3917,19 @@
       var combined = teamMatches.map(function(t){
         var c = t.competitions, sport = c.sports;
         return {
-          rank: matchRank(t.name, qNorm), sport: sportRank(sport), tier: tierRank(c.tier),
+          rank: matchRank(t.name, qNorm), tier: tierRank(c.tier), compSort: compSortRank(c), sport: sportRank(sport),
           active: t.is_active === false ? 1 : 0, name: t.name,
           html: '<a class="combo-option search-suggest-row" href="#/sport/'+sport.slug+'/'+c.slug+'/team/'+t.slug+'"><span>'+esc(t.name)+'</span><span class="meta">'+esc(c.name)+' &middot; '+esc(sport.name)+'</span></a>'
         };
       }).concat(compMatches.map(function(c){
         return {
-          rank: matchRank(c.name, qNorm), sport: sportRank(c.sports), tier: tierRank(c.tier),
+          rank: matchRank(c.name, qNorm), tier: tierRank(c.tier), compSort: compSortRank(c), sport: sportRank(c.sports),
           active: 0, name: c.name,
           html: '<a class="combo-option search-suggest-row" href="#/sport/'+c.sports.slug+'/'+c.slug+'"><span>'+esc(c.name)+'</span><span class="meta">'+esc(c.sports.name)+' &middot; Competition</span></a>'
         };
       }));
       combined.sort(function(a, b){
-        return (a.rank - b.rank) || (a.tier - b.tier) || (a.sport - b.sport) || (a.active - b.active) || a.name.localeCompare(b.name);
+        return (a.rank - b.rank) || (a.tier - b.tier) || (a.compSort - b.compSort) || (a.sport - b.sport) || (a.active - b.active) || a.name.localeCompare(b.name);
       });
       panel.innerHTML = combined.slice(0, 8).map(function(r){ return r.html; }).join('');
       panel.hidden = false;
