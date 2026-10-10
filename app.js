@@ -3841,10 +3841,7 @@
     // ("Hornchurch") and a name where just one word does ("Charlotte
     // Hornets") count as equally strong - "Hornets" IS what someone
     // typing "horn" is after - so they land in the same rank and get
-    // sorted apart by competition tier instead: the "top" flag already
-    // used to order the upload form's competition dropdown, so NBA/NRL/
-    // A-League/etc. outrank National League/VFL/regional comps rather
-    // than whichever happened to match a fraction more literally.
+    // sorted apart by sport/tier instead.
     function matchRank(nameRaw, qNorm){
       var name = normalizeSearchText(nameRaw);
       if(name.indexOf(qNorm) === 0) return 0;
@@ -3852,7 +3849,19 @@
       for(var i = 0; i < words.length; i++){ if(words[i].indexOf(qNorm) === 0) return 0; }
       return 1;
     }
+    // "top" vs everything else within ONE sport's own competitions (same
+    // flag that already orders the upload form's competition dropdown,
+    // e.g. NRL over NSW Cup) stays the main tiebreaker - it's why
+    // Charlotte Hornets (NBA, top) still outranks Rochdale Hornets
+    // (Championship, a non-top rugby league comp) even though rugby
+    // league sits above basketball in the site's own sport order. Sport
+    // order only steps in to break a tie WITHIN the same tier - that's
+    // what puts Brisbane Broncos (NRL, top) ahead of Brisbane Bullets
+    // (NBL, also top): both are the top flight of their own sport, so
+    // the sport's position in the homepage's "Browse by sport" grid
+    // decides between them instead of falling straight to A-Z.
     function tierRank(tier){ return tier === 'top' ? 0 : 1; }
+    function sportRank(sport){ return sport && sport.sort_order != null ? sport.sort_order : 9999; }
 
     async function renderSuggestions(){
       var q = input.value.trim();
@@ -3895,17 +3904,17 @@
       var combined = teamMatches.map(function(t){
         var c = t.competitions, sport = c.sports;
         return {
-          rank: matchRank(t.name, qNorm), tier: tierRank(c.tier), name: t.name,
+          rank: matchRank(t.name, qNorm), sport: sportRank(sport), tier: tierRank(c.tier), name: t.name,
           html: '<a class="combo-option search-suggest-row" href="#/sport/'+sport.slug+'/'+c.slug+'/team/'+t.slug+'"><span>'+esc(t.name)+'</span><span class="meta">'+esc(c.name)+' &middot; '+esc(sport.name)+'</span></a>'
         };
       }).concat(compMatches.map(function(c){
         return {
-          rank: matchRank(c.name, qNorm), tier: tierRank(c.tier), name: c.name,
+          rank: matchRank(c.name, qNorm), sport: sportRank(c.sports), tier: tierRank(c.tier), name: c.name,
           html: '<a class="combo-option search-suggest-row" href="#/sport/'+c.sports.slug+'/'+c.slug+'"><span>'+esc(c.name)+'</span><span class="meta">'+esc(c.sports.name)+' &middot; Competition</span></a>'
         };
       }));
       combined.sort(function(a, b){
-        return (a.rank - b.rank) || (a.tier - b.tier) || a.name.localeCompare(b.name);
+        return (a.rank - b.rank) || (a.tier - b.tier) || (a.sport - b.sport) || a.name.localeCompare(b.name);
       });
       panel.innerHTML = combined.slice(0, 8).map(function(r){ return r.html; }).join('');
       panel.hidden = false;
