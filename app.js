@@ -3836,18 +3836,21 @@
 
     // Ranks a plain substring/token-subset match (e.g. "a-league" matching
     // some unrelated club purely because it contains an "a" and "league"
-    // somewhere) below an actual prefix match, so the obvious answer
-    // doesn't get buried under loose matches. Ties within a rank fall back
-    // to each competition's curated tier (same "top" flag that already
-    // orders the upload form's competition dropdown) so NRL/A-League/etc.
-    // outrank NSW Cup/Ron Massey/regional comps instead of going purely
-    // alphabetical.
+    // somewhere) below a real prefix match, so the obvious answer doesn't
+    // get buried under loose matches. A name that starts with the query
+    // ("Hornchurch") and a name where just one word does ("Charlotte
+    // Hornets") count as equally strong - "Hornets" IS what someone
+    // typing "horn" is after - so they land in the same rank and get
+    // sorted apart by competition tier instead: the "top" flag already
+    // used to order the upload form's competition dropdown, so NBA/NRL/
+    // A-League/etc. outrank National League/VFL/regional comps rather
+    // than whichever happened to match a fraction more literally.
     function matchRank(nameRaw, qNorm){
       var name = normalizeSearchText(nameRaw);
       if(name.indexOf(qNorm) === 0) return 0;
       var words = name.split(' ');
-      for(var i = 0; i < words.length; i++){ if(words[i].indexOf(qNorm) === 0) return 1; }
-      return 2;
+      for(var i = 0; i < words.length; i++){ if(words[i].indexOf(qNorm) === 0) return 0; }
+      return 1;
     }
     function tierRank(tier){ return tier === 'top' ? 0 : 1; }
 
@@ -3860,13 +3863,11 @@
       if(input.value.trim() !== q) return;
       var qNorm = normalizeSearchText(q);
 
-      var teamMatches = teams.filter(function(t){ return searchTextMatches(t.name, q); })
-        .sort(function(a, b){
-          var r = matchRank(a.name, qNorm) - matchRank(b.name, qNorm);
-          if(r) return r;
-          r = tierRank(a.competitions.tier) - tierRank(b.competitions.tier);
-          return r || a.name.localeCompare(b.name);
-        }).slice(0, 6);
+      // Not sliced to a small number per type yet - a weaker-but-correct
+      // match (Chicago Bulls, buried alphabetically among a dozen other
+      // "Bull..." teams) must not get cut before tier/rank sorting and
+      // the final combined slice below ever sees it.
+      var teamMatches = teams.filter(function(t){ return searchTextMatches(t.name, q); });
 
       var compSeen = {}, compMatches = [];
       teams.forEach(function(t){
@@ -3875,13 +3876,6 @@
         compSeen[c.slug] = true;
         compMatches.push(c);
       });
-      compMatches.sort(function(a, b){
-        var r = matchRank(a.name, qNorm) - matchRank(b.name, qNorm);
-        if(r) return r;
-        r = tierRank(a.tier) - tierRank(b.tier);
-        return r || a.name.localeCompare(b.name);
-      });
-      compMatches = compMatches.slice(0, 4);
 
       activeIdx = -1;
       if(!teamMatches.length && !compMatches.length){
@@ -3893,23 +3887,27 @@
       // comps" - otherwise a loose team match (e.g. some club that only
       // matches "a-league" because it happens to contain an "a" and a
       // "league" somewhere) would always sit above the actual A-League
-      // competition entry just because it's a team.
+      // competition entry just because it's a team. A team's meta shows
+      // its sport alongside the competition name since a generic comp
+      // name like "International" exists once per sport - without the
+      // sport name there's no telling Australia (Rugby League) apart
+      // from Australia (Football) in the dropdown.
       var combined = teamMatches.map(function(t){
         var c = t.competitions, sport = c.sports;
         return {
           rank: matchRank(t.name, qNorm), tier: tierRank(c.tier), name: t.name,
-          html: '<a class="combo-option search-suggest-row" href="#/sport/'+sport.slug+'/'+c.slug+'/team/'+t.slug+'"><span>'+esc(t.name)+'</span><span class="meta">'+esc(c.name)+'</span></a>'
+          html: '<a class="combo-option search-suggest-row" href="#/sport/'+sport.slug+'/'+c.slug+'/team/'+t.slug+'"><span>'+esc(t.name)+'</span><span class="meta">'+esc(c.name)+' &middot; '+esc(sport.name)+'</span></a>'
         };
       }).concat(compMatches.map(function(c){
         return {
           rank: matchRank(c.name, qNorm), tier: tierRank(c.tier), name: c.name,
-          html: '<a class="combo-option search-suggest-row" href="#/sport/'+c.sports.slug+'/'+c.slug+'"><span>'+esc(c.name)+'</span><span class="meta">Competition</span></a>'
+          html: '<a class="combo-option search-suggest-row" href="#/sport/'+c.sports.slug+'/'+c.slug+'"><span>'+esc(c.name)+'</span><span class="meta">'+esc(c.sports.name)+' &middot; Competition</span></a>'
         };
       }));
       combined.sort(function(a, b){
         return (a.rank - b.rank) || (a.tier - b.tier) || a.name.localeCompare(b.name);
       });
-      panel.innerHTML = combined.map(function(r){ return r.html; }).join('');
+      panel.innerHTML = combined.slice(0, 8).map(function(r){ return r.html; }).join('');
       panel.hidden = false;
     }
 
