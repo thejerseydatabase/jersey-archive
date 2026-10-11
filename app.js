@@ -3418,7 +3418,21 @@
     }
     dropzone.addEventListener('click', function(){ photosInput.click(); });
     dropzone.addEventListener('keydown', function(e){ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); photosInput.click(); } });
-    photosInput.addEventListener('change', function(){ addPhotoFiles(photosInput.files); photosInput.value = ''; });
+    // photosInput is display:none (a real file input can't be styled, so
+    // the dropzone stands in for it visually) - a hidden input can't hold
+    // focus, so once the native file dialog closes the browser falls
+    // back to whatever WAS focused before it opened. If that happened to
+    // be a combo field (e.g. Jersey type, picked right before clicking
+    // the dropzone), landing focus back on it re-triggers its "focus
+    // opens the panel" handler, popping the dropdown back open for no
+    // reason the person did. Sending focus to the dropzone itself - a
+    // sensible place for it to land after choosing photos anyway - avoids
+    // it stopping anywhere that reopens something.
+    photosInput.addEventListener('change', function(){
+      addPhotoFiles(photosInput.files);
+      photosInput.value = '';
+      dropzone.focus();
+    });
     dropzone.addEventListener('dragover', function(e){ e.preventDefault(); dropzone.classList.add('is-dragover'); });
     dropzone.addEventListener('dragleave', function(){ dropzone.classList.remove('is-dragover'); });
     dropzone.addEventListener('drop', function(e){
