@@ -88,6 +88,10 @@
   /* Type-to-search overlay sitting on top of a field's real <select> -
      see wireComboOverlay() in app.js. */
   .combo-wrap{position:relative;}
+  .combo-wrap input[type="text"]{padding-right:30px;}
+  .combo-clear{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:22px;height:22px;border:none;background:transparent;color:var(--text-dim2);cursor:pointer;font-size:12px;border-radius:50%;display:flex;align-items:center;justify-content:center;padding:0;}
+  .combo-clear[hidden]{display:none;}
+  .combo-clear:hover{background:var(--surface-2);color:var(--text);}
   .combo-panel{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:20;max-height:240px;overflow-y:auto;background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,0.3);}
   .combo-option{padding:8px 10px;border-radius:6px;font-size:13px;cursor:pointer;}
   .combo-option:hover,.combo-option.active{background:var(--surface-2);}
@@ -412,6 +416,6 @@
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="config.js?v=94"></script>
-<script src="app.js?v=101"></script>
+<script src="app.js?v=102"></script>
 </body>
 </html>

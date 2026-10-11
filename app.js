@@ -40,8 +40,8 @@
     'rugby-league': 'e.g. Penrith Panthers, Melbourne Storm',
     'cricket': 'e.g. Australia, Melbourne Stars',
     'football': 'e.g. Manchester United, Melbourne Victory',
-    'rugby-union': 'e.g. Wallabies, Crusaders',
-    'afl': 'e.g. Collingwood, Richmond',
+    'rugby-union': 'e.g. Australia, Crusaders',
+    'afl': 'e.g. Collingwood Magpies, Richmond Tigers',
     'american-football': 'e.g. Dallas Cowboys, Kansas City Chiefs',
     'basketball': 'e.g. Boston Celtics, Melbourne United',
     'baseball': 'e.g. New York Yankees, Perth Heat',
@@ -51,6 +51,21 @@
     'volleyball': 'e.g. Australia, Brazil'
   };
   var DEFAULT_TEAM_PLACEHOLDER = 'e.g. Manchester United, Melbourne Storm';
+  var COMPETITION_PLACEHOLDER_BY_SPORT = {
+    'rugby-league': 'e.g. NRL, International',
+    'cricket': 'e.g. International, BBL',
+    'football': 'e.g. Premier League, International',
+    'rugby-union': 'e.g. Super Rugby Pacific, International',
+    'afl': 'e.g. AFL, AFLW',
+    'american-football': 'e.g. NFL, CFL',
+    'basketball': 'e.g. NBA, NBL',
+    'baseball': 'e.g. ABL, International',
+    'ice-hockey': 'e.g. NHL, International',
+    'netball': 'e.g. International, Suncorp Super Netball',
+    'field-hockey': 'e.g. International',
+    'volleyball': 'e.g. AVL, International'
+  };
+  var DEFAULT_COMPETITION_PLACEHOLDER = 'e.g. NRL, Premier League';
   // Every sport gets these (Training always last — see below); sports in
   // the per-slug list also get those on top, before Training. Indigenous
   // jerseys are a rugby league/union/AFL/netball thing (and a few others)
@@ -1695,6 +1710,7 @@
           '<div class="field"><label for="f-comp-input">Competition * <small>pick or add a new one</small></label>' +
             '<div class="combo-wrap" id="f-comp-combo-wrap">' +
               '<input type="text" id="f-comp-input" placeholder="e.g. NRL, Premier League" autocomplete="off" required>' +
+              '<button type="button" class="combo-clear" id="f-comp-clear" aria-label="Clear competition" tabindex="-1" hidden>&#10005;</button>' +
               '<div class="combo-panel" id="f-comp-panel" hidden></div>' +
             '</div>' +
             '<select id="f-comp-select" class="combo-source"><option value="">Select a competition</option></select>' +
@@ -1705,6 +1721,7 @@
           '<div class="field"><label for="f-team-input">Team * <small>any level &mdash; not sure of the competition? just search the team</small></label>' +
             '<div class="combo-wrap" id="f-team-combo-wrap">' +
               '<input type="text" id="f-team-input" placeholder="e.g. Manchester United, Melbourne Storm" autocomplete="off" required>' +
+              '<button type="button" class="combo-clear" id="f-team-clear" aria-label="Clear team" tabindex="-1" hidden>&#10005;</button>' +
               '<div class="combo-panel" id="f-team-panel" hidden></div>' +
             '</div>' +
             '<select id="f-team-select" class="combo-source"><option value="">Select a competition first</option></select>' +
@@ -1719,6 +1736,7 @@
           '<div class="field"><label for="f-type-input">Jersey type *</label>' +
             '<div class="combo-wrap" id="f-type-combo-wrap">' +
               '<input type="text" id="f-type-input" placeholder="e.g. Home, Away, Alternate" autocomplete="off" required>' +
+              '<button type="button" class="combo-clear" id="f-type-clear" aria-label="Clear jersey type" tabindex="-1" hidden>&#10005;</button>' +
               '<div class="combo-panel" id="f-type-panel" hidden></div>' +
             '</div>' +
             '<select id="f-type-select" class="combo-source">'+typeOptions+'</select>' +
@@ -1745,6 +1763,7 @@
           '<div class="field"><label for="f-mfr-input">Manufacturer * <small>don&rsquo;t know it? pick &ldquo;Unknown&rdquo;</small></label>' +
             '<div class="combo-wrap" id="f-mfr-combo-wrap">' +
               '<input type="text" id="f-mfr-input" placeholder="e.g. Nike, Adidas, Puma" autocomplete="off" required>' +
+              '<button type="button" class="combo-clear" id="f-mfr-clear" aria-label="Clear manufacturer" tabindex="-1" hidden>&#10005;</button>' +
               '<div class="combo-panel" id="f-mfr-panel" hidden></div>' +
             '</div>' +
             '<select id="f-mfr-select" class="combo-source">'+mfrOptions+'</select>' +
@@ -3145,6 +3164,7 @@
     var wrap = document.getElementById(wrapId);
     var input = document.getElementById(inputId);
     var panel = document.getElementById(panelId);
+    var clearBtn = wrap.querySelector('.combo-clear');
     var newLabel = opts && opts.newLabel;
     var newInputEl = opts && opts.newInputEl;
     var activeIdx = -1;
@@ -3158,7 +3178,10 @@
       var m = [].slice.call(selectEl.options).filter(function(o){ return o.value === v; })[0];
       return m ? m.textContent : '';
     }
-    function syncDisplay(){ input.value = labelFor(selectEl.value); }
+    function syncDisplay(){
+      input.value = labelFor(selectEl.value);
+      if(clearBtn) clearBtn.hidden = !selectEl.value;
+    }
     // A required field hidden via the `hidden` attribute or display:none
     // still blocks form submission in this browser - it's NOT exempt from
     // constraint validation just because it can't be seen. The original
@@ -3222,6 +3245,17 @@
     document.addEventListener('click', function(e){
       if(!panel.hidden && !wrap.contains(e.target)) closePanel();
     });
+    // Clearing the typed text alone doesn't un-pick anything - the real
+    // value only changes when an option (or "+ Add new") is chosen, so
+    // blurring with the box emptied just snaps the old selection straight
+    // back. This gives an explicit way to deliberately unset it instead.
+    if(clearBtn){
+      clearBtn.addEventListener('mousedown', function(e){
+        e.preventDefault(); // keeps the input focused instead of blurring first
+        choose('');
+        input.focus();
+      });
+    }
 
     new MutationObserver(syncAll).observe(selectEl, {attributes: true, attributeFilter: ['hidden']});
     new MutationObserver(syncAll).observe(selectEl, {childList: true});
@@ -3244,6 +3278,7 @@
     if(!form) return;
     var sportSel = document.getElementById('f-sport');
     var compSelect = document.getElementById('f-comp-select');
+    var compInput = document.getElementById('f-comp-input');
     var compNewRow = document.getElementById('f-comp-new-row');
     var compNew = document.getElementById('f-comp-new');
     var teamSelect = document.getElementById('f-team-select');
@@ -3563,8 +3598,9 @@
         : '';
       if(formats && preferredValue && formats.indexOf(preferredValue) > -1) formatSel.value = preferredValue;
     }
-    function refreshTeamPlaceholder(){
+    function refreshPlaceholders(){
       teamInput.placeholder = TEAM_PLACEHOLDER_BY_SPORT[sportSel.value] || DEFAULT_TEAM_PLACEHOLDER;
+      compInput.placeholder = COMPETITION_PLACEHOLDER_BY_SPORT[sportSel.value] || DEFAULT_COMPETITION_PLACEHOLDER;
     }
 
     // Counts how often each value of `field` (manufacturer/type) shows up
@@ -3649,7 +3685,7 @@
       // Format first - refreshComps reads formatSel.value to filter the
       // competition list, so it needs the new sport's (blank) format
       // already in place rather than the previous sport's leftover one.
-      refreshFormat(); refreshComps(); refreshMfrTypeOptions(); refreshTeamPlaceholder();
+      refreshFormat(); refreshComps(); refreshMfrTypeOptions(); refreshPlaceholders();
       seasonInput.value = '';
       var alsoSeeHint = document.getElementById('f-team-also-see-hint');
       if(alsoSeeHint) alsoSeeHint.hidden = true;
@@ -3692,6 +3728,7 @@
     (function wireTeamComboOverlay(){
       var wrap = document.getElementById('f-team-combo-wrap');
       var panel = document.getElementById('f-team-panel');
+      var clearBtn = wrap.querySelector('.combo-clear');
       var MIN_SPORT_CHARS = 2;
       var activeIdx = -1;
       var sportTeamsSlug = null, sportTeamsPromise = null;
@@ -3717,7 +3754,10 @@
         var m = [].slice.call(teamSelect.options).filter(function(o){ return o.value === v; })[0];
         return m ? m.textContent : '';
       }
-      function syncDisplay(){ teamInput.value = labelFor(teamSelect.value); }
+      function syncDisplay(){
+        teamInput.value = labelFor(teamSelect.value);
+        if(clearBtn) clearBtn.hidden = !teamSelect.value;
+      }
       function syncVisibility(){
         wrap.hidden = teamSelect.hidden;
         if(teamInput.hasAttribute('required')) teamInput.required = !teamSelect.hidden;
@@ -3812,6 +3852,19 @@
       document.addEventListener('click', function(e){
         if(!panel.hidden && !wrap.contains(e.target)) closePanel();
       });
+      if(clearBtn){
+        clearBtn.addEventListener('mousedown', function(e){
+          e.preventDefault();
+          teamSelect.value = '';
+          syncNewVisibility(teamSelect, teamNewRow, teamNew, true);
+          checkTeamAlsoSee();
+          checkDuplicateJersey();
+          syncDisplay();
+          closePanel();
+          saveDraft();
+          teamInput.focus();
+        });
+      }
 
       new MutationObserver(syncAll).observe(teamSelect, {attributes: true, attributeFilter: ['hidden']});
       new MutationObserver(syncAll).observe(teamSelect, {childList: true});
@@ -3841,7 +3894,7 @@
       // in place before that first fetch, not applied to it after.
       refreshFormat(restoredDraft && restoredDraft.format);
       await refreshComps();
-      refreshTeamPlaceholder();
+      refreshPlaceholders();
       await refreshMfrTypeOptions();
       if(restoredDraft){
         if(restoredDraft.comp){
