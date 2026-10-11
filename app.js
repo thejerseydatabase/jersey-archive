@@ -3439,6 +3439,12 @@
       e.preventDefault();
       dropzone.classList.remove('is-dragover');
       if(e.dataTransfer && e.dataTransfer.files) addPhotoFiles(e.dataTransfer.files);
+      // Same reopening-dropdown problem as the file-picker path above, and
+      // the same fix: a drop doesn't move focus anywhere on its own, so if
+      // a combo field (e.g. Jersey type) was focused before the drag
+      // started, it's still focused after - sending focus to the dropzone
+      // itself avoids it landing somewhere that reopens a panel.
+      dropzone.focus();
     });
 
     // tag_only competitions (FIFA World Cup, Rugby League World Cup, etc.)
