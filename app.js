@@ -3795,6 +3795,11 @@
           inCompOptions().filter(function(o){ return !q || normalizeText(o.label).indexOf(q) > -1; })
             .forEach(function(o){ rows.push({name: o.name, comp: compSelect.value, html: esc(o.label)}); });
         }
+        // Once a competition is picked, its own teams are shown in full below -
+        // the 10-item cap only applies to the broader cross-competition search
+        // results appended after them, so a competition with a large roster
+        // (e.g. A-League) doesn't get cropped before the user can scroll to it.
+        var inCompCount = rows.length;
         if(q.length >= MIN_SPORT_CHARS){
           var teams = await loadSportTeams();
           if(normalizeText(teamInput.value) !== q) return; // query moved on while that fetch was in flight
@@ -3806,7 +3811,7 @@
               rows.push({name: t.name, comp: compName, html: esc(t.name)+' <span class="meta">&middot; '+esc(compName)+'</span>'});
             });
         } else if(normalizeText(teamInput.value) !== q) return;
-        rows = rows.slice(0, 10);
+        rows = rows.slice(0, inCompCount).concat(rows.slice(inCompCount, inCompCount + 10));
 
         activeIdx = -1;
         var html = rows.length
