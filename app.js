@@ -96,8 +96,19 @@
   // and collapsed back to the "Training" family by baseJerseyType() for
   // browsing, same way "Home V1"/"Home V2" collapse to "Home". Retro
   // isn't in here — that's a genuine match jersey, already covered by
-  // the separate "Heritage" type.
-  var TRAINING_SUBTYPES = ['Pre-match','Warm Up','Captain\'s Run','Travel'];
+  // the separate "Heritage" type. The plain numbered options exist for
+  // "just another training top, nothing distinguishes it" — composeTrainingType()
+  // below stores those as "Training 2" etc. rather than "Training - Training 2",
+  // reserving the " - " form for an actually-named kind like Pre-match.
+  var TRAINING_SUBTYPES = ['Training 2','Training 3','Training 4','Training 5','Pre-match','Warm Up','Captain\'s Run','Travel'];
+  // A subtype that already starts with "Training" (the plain numbered
+  // options above, or anyone typing their own "Training 6") is used as-is;
+  // anything else is a genuinely distinct kind, so it's qualified with the
+  // "Training - " prefix the rest of the app (baseJerseyType, etc.) expects.
+  function composeTrainingType(sub){
+    if(!sub) return 'Training';
+    return /^training\b/i.test(sub) ? sub : 'Training - ' + sub;
+  }
   // Applies to a single upload (front/back/other angles for one jersey)
   // and to a later "add more photos" proposal on an already-approved
   // one — plenty of headroom for every real angle someone would
@@ -1748,7 +1759,7 @@
             // grid cell) so revealing it just grows this one box downward
             // instead of pushing every field after it — Manufacturer in
             // particular — into a different grid slot.
-            '<div id="f-type-sub-field" class="field" hidden style="margin-top:10px;"><label for="f-type-sub-select">Training type <small>optional &mdash; e.g. warm up, captain&rsquo;s run</small></label>' +
+            '<div id="f-type-sub-field" class="field" hidden style="margin-top:10px;"><label for="f-type-sub-select">Training type <small>optional &mdash; another training top? pick a number; a specific kind? pick e.g. warm up, captain&rsquo;s run</small></label>' +
               '<select id="f-type-sub-select">' +
                 '<option value="">&mdash; Just &ldquo;Training&rdquo; &mdash;</option>' +
                 TRAINING_SUBTYPES.map(function(t){ return '<option value="'+t+'">'+t+'</option>'; }).join('') +
@@ -3550,7 +3561,7 @@
       if(!teamName || teamName === '__new__' || !seasonVal || !typeVal){ hintEl.hidden = true; return; }
       if(typeVal === 'Training'){
         var typeSub = fieldValue(typeSubSelect, typeSubNew);
-        if(typeSub) typeVal = 'Training - ' + typeSub;
+        if(typeSub) typeVal = composeTrainingType(typeSub);
       }
       var formatVal = FORMATS_BY_SPORT[sportSel.value] ? formatSel.value : '';
       var comps = await competitionsForSport(sportSel.value);
@@ -3996,7 +4007,7 @@
         var type = fieldValue(typeSelect, typeNew);
         if(type === 'Training'){
           var typeSub = fieldValue(typeSubSelect, typeSubNew);
-          if(typeSub) type = 'Training - ' + typeSub;
+          if(typeSub) type = composeTrainingType(typeSub);
         }
         var manufacturer = fieldValue(mfrSelect, mfrNew) || null;
         var format = FORMATS_BY_SPORT[sportSlug] ? formatSel.value : null;
