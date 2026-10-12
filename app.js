@@ -3674,7 +3674,14 @@
 
       var curatedTypes = (CURATED_TYPES_OVERRIDE_BY_SPORT[sportSlug] || CURATED_TYPES_BASE.concat(EXTRA_TYPES_BY_SPORT[sportSlug] || []))
         .concat(['Training']);
-      var typeExtra = Object.keys(typeCounts).filter(function(t){ return curatedTypes.indexOf(t) === -1; }).sort();
+      // Any already-used value outside the curated list normally gets its
+      // own entry here so it's quick to reselect — but every training
+      // variant (Training 2, Training - Pre-match, etc.) is already
+      // reachable via "Training" + the subtype field below, so listing it
+      // again up here would just be the same option twice.
+      var typeExtra = Object.keys(typeCounts).filter(function(t){
+        return curatedTypes.indexOf(t) === -1 && baseJerseyType(t).toLowerCase() !== 'training';
+      }).sort();
       typeSelect.innerHTML = '<option value="">Select a type</option>' +
         curatedTypes.concat(typeExtra).map(function(t){ return '<option value="'+esc(t)+'">'+esc(t)+'</option>'; }).join('') +
         '<option value="__new__">+ Add a new one…</option>';
@@ -4378,9 +4385,15 @@
   // silently renewing the session, not a real identity change) — only a
   // genuine SIGNED_IN/SIGNED_OUT should ever re-render the current page,
   // otherwise switching tabs mid-upload wipes whatever was typed so far.
+  // INITIAL_SESSION is the odd one out: it's how a hard refresh reports
+  // "a signed-in session was restored from storage", but it fires AFTER
+  // the page's own first render() call below (currentUser is still null
+  // at that point) — on the Upload page specifically, that first render
+  // already locked in "Sign in first", and without this it never gets
+  // a second chance to re-render now that currentUser is actually set.
   supabaseClient.auth.onAuthStateChange(function(event){
     refreshAuthUI();
-    if(event === 'SIGNED_IN' || event === 'SIGNED_OUT'){
+    if(event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'INITIAL_SESSION'){
       if(location.hash.replace(/^#\/?/,'') === 'upload') render();
     }
   });
