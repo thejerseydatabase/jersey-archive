@@ -4391,8 +4391,13 @@
   // at that point) — on the Upload page specifically, that first render
   // already locked in "Sign in first", and without this it never gets
   // a second chance to re-render now that currentUser is actually set.
-  supabaseClient.auth.onAuthStateChange(function(event){
-    refreshAuthUI();
+  supabaseClient.auth.onAuthStateChange(async function(event){
+    // Awaited deliberately: refreshAuthUI's first line awaits getSession(),
+    // which always defers at least one microtask even when the answer's
+    // already known - calling render() right after an un-awaited
+    // refreshAuthUI() ran it before currentUser was actually updated,
+    // so the re-render below still saw the stale (signed-out) value.
+    await refreshAuthUI();
     if(event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'INITIAL_SESSION'){
       if(location.hash.replace(/^#\/?/,'') === 'upload') render();
     }
