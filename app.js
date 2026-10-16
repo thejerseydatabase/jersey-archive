@@ -421,7 +421,11 @@
   // Shares the jersey-card markup/CSS so a logo slots into the same
   // "Recently added" grid as jerseys instead of needing its own layout.
   function logoCard(logo, team, opts){
-    var label = (opts && opts.label) || 'New logo';
+    // Recently Added now includes history-only logos too (not just
+    // whatever's actually live), so "New logo" needs to be honest about
+    // which kind this is - otherwise a backdated/historical add reads as
+    // if it just became the team's current logo when it didn't.
+    var label = (opts && opts.label) || (logo.is_current === false ? 'Logo added (historical)' : 'New logo');
     var dateHtml = (opts && opts.ts) ? '<span>'+esc(relativeTimeLabel(opts.ts))+'</span>' : '';
     var sportSlug = team.competitions.sport_slug;
     return '<a class="jersey-card" href="#/sport/'+sportSlug+'/'+team.competition_slug+'/team/'+team.slug+'">' +
@@ -431,7 +435,7 @@
   }
 
   function compLogoCard(logo, comp, opts){
-    var label = (opts && opts.label) || 'New logo';
+    var label = (opts && opts.label) || (logo.is_current === false ? 'Logo added (historical)' : 'New logo');
     var dateHtml = (opts && opts.ts) ? '<span>'+esc(relativeTimeLabel(opts.ts))+'</span>' : '';
     return '<a class="jersey-card" href="#/sport/'+comp.sport_slug+'/'+comp.slug+'">' +
       '<div class="jersey-thumb"><img src="'+esc(publicLogoUrl(logo.storage_path))+'" alt=""></div>' +
@@ -551,8 +555,11 @@
   // mixes in newly-approved team logos alongside jerseys, most recent first.
   async function recentJerseysHtml(compSlugs){
     var jq = supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*), jersey_competitions(competitions(name))').order('created_at', {ascending:false}).limit(6);
-    var lq = supabaseClient.from('team_logos').select('*, teams!inner(*, competitions!inner(sport_slug))').eq('is_current', true).order('approved_at', {ascending:false}).limit(6);
-    var cq = supabaseClient.from('competition_logos').select('*, competitions!inner(*)').eq('is_current', true).order('approved_at', {ascending:false}).limit(6);
+    // Every logo that's actually been added, not just whichever one is
+    // currently live - a history-only add (e.g. a backdated logo) is
+    // still something that just happened and belongs in "recently added".
+    var lq = supabaseClient.from('team_logos').select('*, teams!inner(*, competitions!inner(sport_slug))').order('approved_at', {ascending:false}).limit(6);
+    var cq = supabaseClient.from('competition_logos').select('*, competitions!inner(*)').order('approved_at', {ascending:false}).limit(6);
     if(compSlugs){ jq = jq.in('teams.competition_slug', compSlugs); lq = lq.in('teams.competition_slug', compSlugs); cq = cq.in('competition_slug', compSlugs); }
     var results = await Promise.all([jq, lq, cq]);
     var jRes = results[0], lRes = results[1], cRes = results[2];
@@ -645,8 +652,8 @@
       : [{label:'Home', href:'#/'},{label:'Latest Updates', href:'#'}]);
     var LIMIT = 60;
     var jq = supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*), jersey_competitions(competitions(name))').order('created_at', {ascending:false}).limit(LIMIT);
-    var lq = supabaseClient.from('team_logos').select('*, teams!inner(*, competitions!inner(sport_slug))').eq('is_current', true).order('approved_at', {ascending:false}).limit(LIMIT);
-    var cq = supabaseClient.from('competition_logos').select('*, competitions!inner(*)').eq('is_current', true).order('approved_at', {ascending:false}).limit(LIMIT);
+    var lq = supabaseClient.from('team_logos').select('*, teams!inner(*, competitions!inner(sport_slug))').order('approved_at', {ascending:false}).limit(LIMIT);
+    var cq = supabaseClient.from('competition_logos').select('*, competitions!inner(*)').order('approved_at', {ascending:false}).limit(LIMIT);
     if(compSlugs){
       jq = jq.in('teams.competition_slug', compSlugs);
       lq = lq.in('teams.competition_slug', compSlugs);
