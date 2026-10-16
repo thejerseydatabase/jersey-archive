@@ -1997,8 +1997,18 @@
       '<div class="comp-move-row" style="margin-top:8px;">' +
         '<select class="comp-move-select" id="'+prefix+'-comp-select"><option>Loading…</option></select>' +
       '</div>' +
+      '<div class="comp-move-new" id="'+prefix+'-comp-new" hidden>' +
+        '<input type="text" class="comp-move-new-input" id="'+prefix+'-comp-new-name" placeholder="New competition name">' +
+        '<select class="comp-move-new-tier" id="'+prefix+'-comp-new-tier">' +
+          '<option value="more">More competitions</option>' +
+          '<option value="top">Top competitions</option>' +
+        '</select>' +
+      '</div>' +
       '<div class="comp-move-row" style="margin-top:8px;">' +
         '<select class="comp-move-select" id="'+prefix+'-team-select"><option>Loading…</option></select>' +
+      '</div>' +
+      '<div class="comp-move-new" id="'+prefix+'-team-new" hidden>' +
+        '<input type="text" class="comp-move-new-input" id="'+prefix+'-team-new-name" placeholder="New team name">' +
       '</div>' +
       '<div class="comp-move-row" style="margin-top:10px;">' +
         '<input type="text" class="comp-move-new-input" id="'+prefix+'-season" placeholder="Season" value="'+esc(j.season)+'">' +
@@ -2020,7 +2030,9 @@
   async function wireModEditControl(prefix, jerseyId, currentTeamId, currentSportSlug, onSaved){
     var sportSel = document.getElementById(prefix+'-sport-select');
     var compSel = document.getElementById(prefix+'-comp-select');
+    var compNewPanel = document.getElementById(prefix+'-comp-new');
     var teamSel = document.getElementById(prefix+'-team-select');
+    var teamNewPanel = document.getElementById(prefix+'-team-new');
     var btn = document.getElementById(prefix+'-save-btn');
     if(!sportSel) return;
 
@@ -2039,10 +2051,21 @@
       // moderator picks a different sport there's no "current" team to
       // default back to.
       var stillOriginalSport = sportSel.value === currentSportSlug;
-      compSel.innerHTML = comps.map(function(c){ return '<option value="'+esc(c.slug)+'"'+(stillOriginalSport && c.slug===currentCompSlug?' selected':'')+'>'+esc(c.name)+'</option>'; }).join('');
+      compSel.innerHTML = comps.map(function(c){ return '<option value="'+esc(c.slug)+'"'+(stillOriginalSport && c.slug===currentCompSlug?' selected':'')+'>'+esc(c.name)+'</option>'; }).join('')
+        + '<option value="__new__">+ Create new competition…</option>';
       await refreshTeams();
     }
+    // A brand new competition has no teams yet to pick from, so this swaps
+    // the team dropdown for a plain text input in that case - same escape
+    // hatch the main upload form already has, just missing here before.
     async function refreshTeams(){
+      compNewPanel.hidden = compSel.value !== '__new__';
+      if(compSel.value === '__new__'){
+        teamSel.hidden = true; teamSel.innerHTML = '';
+        teamNewPanel.hidden = false;
+        return;
+      }
+      teamSel.hidden = false; teamNewPanel.hidden = true;
       var r = await supabaseClient.from('teams').select('id,name').eq('competition_slug', compSel.value).order('name');
       var teams = r.data || [];
       teamSel.innerHTML = teams.map(function(t){ return '<option value="'+t.id+'"'+(t.id===currentTeamId?' selected':'')+'>'+esc(t.name)+'</option>'; }).join('');
@@ -2059,12 +2082,29 @@
       var format = document.getElementById(prefix+'-format').value.trim();
       var notes = document.getElementById(prefix+'-notes').value.trim();
       var credit = document.getElementById(prefix+'-credit').value.trim();
-      var teamId = teamSel.value;
-      if(!season || !type || !teamId){
-        msg.hidden = false; msg.className = 'field-error'; msg.textContent = 'Season, jersey type, and team can\'t be blank.';
+      var creatingComp = compSel.value === '__new__';
+      var newCompName = creatingComp ? document.getElementById(prefix+'-comp-new-name').value.trim() : '';
+      var newTeamName = creatingComp ? document.getElementById(prefix+'-team-new-name').value.trim() : '';
+      var teamId = creatingComp ? null : teamSel.value;
+      if(!season || !type || (creatingComp ? (!newCompName || !newTeamName) : !teamId)){
+        msg.hidden = false; msg.className = 'field-error';
+        msg.textContent = creatingComp
+          ? 'Season, jersey type, new competition name, and new team name can\'t be blank.'
+          : 'Season, jersey type, and team can\'t be blank.';
         return;
       }
       btn.disabled = true; btn.textContent = 'Saving…';
+      if(creatingComp){
+        try {
+          var newComp = await ensureCompetition(sportSel.value, newCompName);
+          var newTeam = await ensureTeam(newComp.slug, newTeamName);
+          teamId = newTeam.id;
+        } catch(e){
+          btn.disabled = false; btn.textContent = 'Save changes';
+          msg.hidden = false; msg.className = 'field-error'; msg.textContent = 'Error: ' + (e.message || e);
+          return;
+        }
+      }
       var upd = await supabaseClient.from('jerseys').update({
         team_id: teamId, season: season, type: type, manufacturer: manufacturer || null, format: format || null, notes: notes || null, image_credit: credit || null
       }).eq('id', jerseyId);
@@ -2730,10 +2770,27 @@
       ? '<div class="logo-history-grid lightbox-group">' + rows.map(function(r){
           var caption = r.years_used ? esc(r.years_used) : (r.is_current ? 'Current' : 'Added '+fmtDate(r.approved_at));
           var editBtn = isAdmin ? ' <button class="edit-pencil-btn" type="button" data-logo-id="'+r.id+'" data-current="'+esc(r.years_used || '')+'">'+ICON_PENCIL+'</button>' : '';
+          // Lets an admin swap back to an older logo (e.g. a one-off
+          // anniversary logo this year, back to the regular one next
+          // year) without re-uploading the same image file again - the
+          // image's already sitting right here in history.
+          var makeCurrentBtn = (isAdmin && !r.is_current) ? ' <button class="btn btn-secondary make-current-btn" type="button" data-logo-id="'+r.id+'" data-path="'+esc(r.storage_path)+'" style="padding:2px 8px;font-size:12px;">Make current</button>' : '';
           return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(r.storage_path))+'" alt="">' +
-            '<div class="spec-value-row"><span>'+caption+'</span>'+editBtn+'</div></div>';
+            '<div class="spec-value-row"><span>'+caption+'</span>'+editBtn+makeCurrentBtn+'</div></div>';
         }).join('') + '</div>'
       : '<div class="empty-note">No logo history yet.</div>';
+    panel.querySelectorAll('.make-current-btn').forEach(function(btn){
+      btn.addEventListener('click', async function(){
+        btn.disabled = true; btn.textContent = 'Setting…';
+        try {
+          await setLogo(kind, refId, btn.dataset.path);
+          render();
+        } catch(e){
+          btn.disabled = false; btn.textContent = 'Make current';
+          alert('Error: ' + (e.message || e));
+        }
+      });
+    });
     panel.querySelectorAll('.edit-pencil-btn').forEach(function(btn){
       btn.addEventListener('click', function(){
         var row = btn.closest('.spec-value-row');
