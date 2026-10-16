@@ -2137,12 +2137,13 @@
       ? {history: 'team_logos', main: 'teams', refCol: 'team_id', idCol: 'id'}
       : {history: 'competition_logos', main: 'competitions', refCol: 'competition_slug', idCol: 'slug'};
   }
-  async function setLogo(kind, refId, path){
+  async function setLogo(kind, refId, path, yearsUsed){
     var t = logoTables(kind);
     // never overwrite history — the previous logo just stops being "current"
     var unmark = await supabaseClient.from(t.history).update({is_current:false}).eq(t.refCol, refId).eq('is_current', true);
     if(unmark.error) throw unmark.error;
     var histRow = {storage_path: path, is_current: true};
+    if(yearsUsed) histRow.years_used = yearsUsed;
     histRow[t.refCol] = refId;
     var histIns = await supabaseClient.from(t.history).insert(histRow);
     if(histIns.error) throw histIns.error;
@@ -2348,9 +2349,10 @@
         '<div class="mod-info">' +
           '<strong>Logo for '+(l.teams ? esc(l.teams.name) : 'a team')+'</strong>' +
           '<span>proposed by '+esc(proposer)+'</span>' +
+          (l.years_used ? '<span>Years used: '+esc(l.years_used)+'</span>' : '') +
         '</div>' +
         '<div class="mod-actions">' +
-          '<button class="btn" data-type="logo" data-action="approve" data-id="'+l.id+'" data-team-id="'+l.team_id+'" data-path="'+esc(l.storage_path)+'" type="button">Approve</button>' +
+          '<button class="btn" data-type="logo" data-action="approve" data-id="'+l.id+'" data-team-id="'+l.team_id+'" data-path="'+esc(l.storage_path)+'" data-years="'+esc(l.years_used || '')+'" type="button">Approve</button>' +
           '<button class="btn btn-reject" data-type="logo" data-action="reject" data-id="'+l.id+'" data-path="'+esc(l.storage_path)+'" type="button">Reject</button>' +
         '</div>' +
       '</div>';
@@ -2363,9 +2365,10 @@
         '<div class="mod-info">' +
           '<strong>Logo for '+(l.competitions ? esc(l.competitions.name) : 'a competition')+'</strong>' +
           '<span>proposed by '+esc(proposer)+'</span>' +
+          (l.years_used ? '<span>Years used: '+esc(l.years_used)+'</span>' : '') +
         '</div>' +
         '<div class="mod-actions">' +
-          '<button class="btn" data-type="comp-logo" data-action="approve" data-id="'+l.id+'" data-comp-slug="'+esc(l.competition_slug)+'" data-path="'+esc(l.storage_path)+'" type="button">Approve</button>' +
+          '<button class="btn" data-type="comp-logo" data-action="approve" data-id="'+l.id+'" data-comp-slug="'+esc(l.competition_slug)+'" data-path="'+esc(l.storage_path)+'" data-years="'+esc(l.years_used || '')+'" type="button">Approve</button>' +
           '<button class="btn btn-reject" data-type="comp-logo" data-action="reject" data-id="'+l.id+'" data-path="'+esc(l.storage_path)+'" type="button">Reject</button>' +
         '</div>' +
       '</div>';
@@ -2949,6 +2952,13 @@
       '</div>' +
       '<div class="photo-previews" id="pl-logo-preview"></div>' +
       '<p class="field-error" id="pl-logo-error" hidden>Choose an image before submitting.</p>' +
+      // Optional up front, rather than the only way being to go back and
+      // edit it on the page afterward once it's approved - if it's a
+      // one-off (an anniversary logo, say) that's going to get swapped
+      // back later, this is also the easiest place to leave a note of
+      // that for whoever approves it.
+      '<div class="field" style="margin-top:14px;"><label for="pl-years-used">Years used <small>optional &mdash; e.g. 1990&ndash;1999, or just 2026 for a one-off</small></label>' +
+        '<input type="text" id="pl-years-used" placeholder="e.g. 2026, or 1990-1999"></div>' +
       '<div style="margin-top:14px;"><button class="btn" id="pl-submit-btn" type="button" disabled>Submit for review</button></div>' +
       '<div id="pl-result"></div>';
   }
@@ -2999,7 +3009,8 @@
         var path = pathPrefix + '/logo-' + Date.now() + '.' + ext;
         var up = await supabaseClient.storage.from('team-logos').upload(path, picked.file);
         if(up.error) throw up.error;
-        var proposalRow = {storage_path: path, proposed_by: currentUser.id};
+        var yearsUsed = document.getElementById('pl-years-used').value.trim() || null;
+        var proposalRow = {storage_path: path, proposed_by: currentUser.id, years_used: yearsUsed};
         proposalRow[refCol] = refId;
         var ins = await supabaseClient.from(proposalTable).insert(proposalRow);
         if(ins.error) throw ins.error;
@@ -3173,7 +3184,7 @@
             var logoProposalTable = type === 'logo' ? 'team_logo_proposals' : 'competition_logo_proposals';
             var logoRefId = type === 'logo' ? btn.dataset.teamId : btn.dataset.compSlug;
             if(btn.dataset.action === 'approve'){
-              await setLogo(logoKind, logoRefId, btn.dataset.path);
+              await setLogo(logoKind, logoRefId, btn.dataset.path, btn.dataset.years || null);
               // status update (not delete) so the award_logo_point trigger
               // fires and the proposer gets their point, same as a jersey.
               var logoApprove = await supabaseClient.from(logoProposalTable).update({status:'approved'}).eq('id', id);
