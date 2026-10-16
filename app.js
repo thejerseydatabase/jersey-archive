@@ -2150,6 +2150,17 @@
     var mainUpd = await supabaseClient.from(t.main).update({logo_path: path}).eq(t.idCol, refId);
     if(mainUpd.error) throw mainUpd.error;
   }
+  // For a proposal submitted with "Make this the current logo" unticked -
+  // a backdated/one-off logo (a past-years special edition, say) that
+  // should sit in history without touching whatever's actually live now.
+  async function addLogoToHistory(kind, refId, path, yearsUsed){
+    var t = logoTables(kind);
+    var histRow = {storage_path: path, is_current: false};
+    if(yearsUsed) histRow.years_used = yearsUsed;
+    histRow[t.refCol] = refId;
+    var histIns = await supabaseClient.from(t.history).insert(histRow);
+    if(histIns.error) throw histIns.error;
+  }
 
   async function viewModerate(){
     setCrumbs([{label:'Home', href:'#/'},{label:'Moderate', href:'#/moderate'}]);
@@ -2344,15 +2355,17 @@
 
     var logoCards = pendingLogos.map(function(l){
       var proposer = uploaderNames[l.proposed_by] || 'unknown';
+      var willReplace = l.make_current !== false;
       return '<div class="mod-card">' +
         '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(l.storage_path))+'" alt=""></div>' +
         '<div class="mod-info">' +
           '<strong>Logo for '+(l.teams ? esc(l.teams.name) : 'a team')+'</strong>' +
           '<span>proposed by '+esc(proposer)+'</span>' +
           (l.years_used ? '<span>Years used: '+esc(l.years_used)+'</span>' : '') +
+          '<span>'+(willReplace ? 'Will replace the current logo' : 'History only &mdash; won’t change the current logo')+'</span>' +
         '</div>' +
         '<div class="mod-actions">' +
-          '<button class="btn" data-type="logo" data-action="approve" data-id="'+l.id+'" data-team-id="'+l.team_id+'" data-path="'+esc(l.storage_path)+'" data-years="'+esc(l.years_used || '')+'" type="button">Approve</button>' +
+          '<button class="btn" data-type="logo" data-action="approve" data-id="'+l.id+'" data-team-id="'+l.team_id+'" data-path="'+esc(l.storage_path)+'" data-years="'+esc(l.years_used || '')+'" data-make-current="'+willReplace+'" type="button">Approve</button>' +
           '<button class="btn btn-reject" data-type="logo" data-action="reject" data-id="'+l.id+'" data-path="'+esc(l.storage_path)+'" type="button">Reject</button>' +
         '</div>' +
       '</div>';
@@ -2360,15 +2373,17 @@
 
     var compLogoCards = pendingCompLogos.map(function(l){
       var proposer = uploaderNames[l.proposed_by] || 'unknown';
+      var willReplace = l.make_current !== false;
       return '<div class="mod-card">' +
         '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(l.storage_path))+'" alt=""></div>' +
         '<div class="mod-info">' +
           '<strong>Logo for '+(l.competitions ? esc(l.competitions.name) : 'a competition')+'</strong>' +
           '<span>proposed by '+esc(proposer)+'</span>' +
           (l.years_used ? '<span>Years used: '+esc(l.years_used)+'</span>' : '') +
+          '<span>'+(willReplace ? 'Will replace the current logo' : 'History only &mdash; won’t change the current logo')+'</span>' +
         '</div>' +
         '<div class="mod-actions">' +
-          '<button class="btn" data-type="comp-logo" data-action="approve" data-id="'+l.id+'" data-comp-slug="'+esc(l.competition_slug)+'" data-path="'+esc(l.storage_path)+'" data-years="'+esc(l.years_used || '')+'" type="button">Approve</button>' +
+          '<button class="btn" data-type="comp-logo" data-action="approve" data-id="'+l.id+'" data-comp-slug="'+esc(l.competition_slug)+'" data-path="'+esc(l.storage_path)+'" data-years="'+esc(l.years_used || '')+'" data-make-current="'+willReplace+'" type="button">Approve</button>' +
           '<button class="btn btn-reject" data-type="comp-logo" data-action="reject" data-id="'+l.id+'" data-path="'+esc(l.storage_path)+'" type="button">Reject</button>' +
         '</div>' +
       '</div>';
@@ -2765,9 +2780,27 @@
     var panel = document.getElementById(kind === 'team' ? 'logo-history-panel' : 'comp-logo-history-panel');
     if(!panel) return;
     panel.innerHTML = '<p class="loading">Loading…</p>';
-    var res = await supabaseClient.from(t.history).select('*').eq(t.refCol, refId).order('approved_at', {ascending:false});
+    var res = await supabaseClient.from(t.history).select('*').eq(t.refCol, refId);
     if(res.error){ panel.innerHTML = errorBox(res.error); return; }
     var rows = res.data || [];
+    // Sorted by the logo's actual year, latest first, rather than by
+    // when it happened to be approved - a backdated/historical logo
+    // added just now (e.g. a 2017 special edition found after the
+    // fact) should still land in its real chronological spot, not at
+    // the top just because it's the newest row. The current logo
+    // always leads regardless, same as its own "Current" caption.
+    function sortYear(r){
+      if(r.years_used){
+        var nums = r.years_used.match(/\d{4}/g);
+        if(nums) return Math.max.apply(null, nums.map(Number));
+      }
+      return new Date(r.approved_at).getFullYear();
+    }
+    rows.sort(function(a, b){
+      if(a.is_current !== b.is_current) return a.is_current ? -1 : 1;
+      var diff = sortYear(b) - sortYear(a);
+      return diff !== 0 ? diff : new Date(b.approved_at) - new Date(a.approved_at);
+    });
     var isAdmin = currentProfile && currentProfile.is_admin;
     panel.innerHTML = rows.length
       ? '<div class="logo-history-grid lightbox-group">' + rows.map(function(r){
@@ -2959,6 +2992,7 @@
       // that for whoever approves it.
       '<div class="field" style="margin-top:14px;"><label for="pl-years-used">Years used <small>optional &mdash; e.g. 1990&ndash;1999, or just 2026 for a one-off</small></label>' +
         '<input type="text" id="pl-years-used" placeholder="e.g. 2026, or 1990-1999"></div>' +
+      '<label style="display:block;margin-top:14px;text-transform:none;letter-spacing:normal;"><input type="checkbox" id="pl-make-current" checked style="width:auto;margin-right:8px;">Make this the current logo <small>untick for a backdated or one-off logo that should just be added to history</small></label>' +
       '<div style="margin-top:14px;"><button class="btn" id="pl-submit-btn" type="button" disabled>Submit for review</button></div>' +
       '<div id="pl-result"></div>';
   }
@@ -3010,7 +3044,8 @@
         var up = await supabaseClient.storage.from('team-logos').upload(path, picked.file);
         if(up.error) throw up.error;
         var yearsUsed = document.getElementById('pl-years-used').value.trim() || null;
-        var proposalRow = {storage_path: path, proposed_by: currentUser.id, years_used: yearsUsed};
+        var makeCurrent = document.getElementById('pl-make-current').checked;
+        var proposalRow = {storage_path: path, proposed_by: currentUser.id, years_used: yearsUsed, make_current: makeCurrent};
         proposalRow[refCol] = refId;
         var ins = await supabaseClient.from(proposalTable).insert(proposalRow);
         if(ins.error) throw ins.error;
@@ -3184,7 +3219,8 @@
             var logoProposalTable = type === 'logo' ? 'team_logo_proposals' : 'competition_logo_proposals';
             var logoRefId = type === 'logo' ? btn.dataset.teamId : btn.dataset.compSlug;
             if(btn.dataset.action === 'approve'){
-              await setLogo(logoKind, logoRefId, btn.dataset.path, btn.dataset.years || null);
+              if(btn.dataset.makeCurrent === 'false') await addLogoToHistory(logoKind, logoRefId, btn.dataset.path, btn.dataset.years || null);
+              else await setLogo(logoKind, logoRefId, btn.dataset.path, btn.dataset.years || null);
               // status update (not delete) so the award_logo_point trigger
               // fires and the proposer gets their point, same as a jersey.
               var logoApprove = await supabaseClient.from(logoProposalTable).update({status:'approved'}).eq('id', id);
