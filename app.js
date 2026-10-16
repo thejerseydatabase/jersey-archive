@@ -113,7 +113,7 @@
   // and to a later "add more photos" proposal on an already-approved
   // one — plenty of headroom for every real angle someone would
   // photograph, while stopping an accidental hundred-photo batch drop.
-  var MAX_UPLOAD_PHOTOS = 6;
+  var MAX_UPLOAD_PHOTOS = 4;
   // A jersey only counts as "highest rated" once at least this many people
   // have rated it — otherwise a single 5-star vote in the site's early
   // days would shoot straight to the top of the list ahead of everything
@@ -856,7 +856,7 @@
     }
 
     var compLogoButtonsHtml = (comp.logo_path ? '<button class="btn btn-secondary" id="comp-logo-history-toggle" data-comp-slug="'+comp.slug+'" type="button">Logo history</button>' : '') +
-      ((currentUser && !(currentProfile && currentProfile.is_banned)) ? '<button class="btn btn-secondary" id="propose-comp-logo-toggle" data-comp-slug="'+comp.slug+'" type="button">'+(comp.logo_path ? '+ Update logo' : '+ Propose a logo')+'</button>' : '');
+      ((currentUser && !(currentProfile && currentProfile.is_banned)) ? '<button class="btn btn-secondary" id="propose-comp-logo-toggle" data-comp-slug="'+comp.slug+'" type="button">'+(comp.logo_path ? '+ Update logo' : '+ Add logo')+'</button>' : '');
     var compLogoBlock = compLogoButtonsHtml
       ? '<div class="add-photos-block">' +
           '<div style="display:flex;gap:10px;flex-wrap:wrap;">'+compLogoButtonsHtml+'</div>' +
@@ -1065,7 +1065,7 @@
     // yet or is getting an update/replacement — approval (setTeamLogo)
     // already keeps the old one in history rather than losing it.
     var logoButtonsHtml = (team.logo_path ? '<button class="btn btn-secondary" id="logo-history-toggle" data-team-id="'+team.id+'" type="button">Logo history</button>' : '') +
-      ((currentUser && !(currentProfile && currentProfile.is_banned)) ? '<button class="btn btn-secondary" id="propose-logo-toggle" data-team-id="'+team.id+'" type="button">'+(team.logo_path ? '+ Update logo' : '+ Propose a logo')+'</button>' : '');
+      ((currentUser && !(currentProfile && currentProfile.is_banned)) ? '<button class="btn btn-secondary" id="propose-logo-toggle" data-team-id="'+team.id+'" type="button">'+(team.logo_path ? '+ Update logo' : '+ Add logo')+'</button>' : '');
     var logoBlock = logoButtonsHtml
       ? '<div class="add-photos-block">' +
           '<div style="display:flex;gap:10px;flex-wrap:wrap;">'+logoButtonsHtml+'</div>' +
@@ -2161,6 +2161,20 @@
     var histIns = await supabaseClient.from(t.history).insert(histRow);
     if(histIns.error) throw histIns.error;
   }
+  // Restores an EXISTING history row as current (the "Make current" button
+  // in Logo History) - deliberately not setLogo(), which always inserts a
+  // brand new row for a newly-uploaded image. Reusing setLogo() here would
+  // leave the original row behind AND add a second row for the same image,
+  // showing the same logo twice.
+  async function restoreLogo(kind, refId, logoId){
+    var t = logoTables(kind);
+    var unmark = await supabaseClient.from(t.history).update({is_current:false}).eq(t.refCol, refId).eq('is_current', true);
+    if(unmark.error) throw unmark.error;
+    var row = await supabaseClient.from(t.history).update({is_current:true}).eq('id', logoId).select().single();
+    if(row.error) throw row.error;
+    var mainUpd = await supabaseClient.from(t.main).update({logo_path: row.data.storage_path}).eq(t.idCol, refId);
+    if(mainUpd.error) throw mainUpd.error;
+  }
 
   async function viewModerate(){
     setCrumbs([{label:'Home', href:'#/'},{label:'Moderate', href:'#/moderate'}]);
@@ -2819,7 +2833,7 @@
       btn.addEventListener('click', async function(){
         btn.disabled = true; btn.textContent = 'Setting…';
         try {
-          await setLogo(kind, refId, btn.dataset.path);
+          await restoreLogo(kind, refId, btn.dataset.logoId);
           render();
         } catch(e){
           btn.disabled = false; btn.textContent = 'Make current';
@@ -3175,15 +3189,30 @@
         var msg = document.getElementById('reject-msg-'+id);
         var reason = document.getElementById('reject-reason-'+id).value.trim() || null;
         btn.disabled = true; btn.textContent = 'Rejecting…';
-        // kept, not deleted — status flips to 'rejected' with an optional
-        // reason so the uploader can see why and fix it, rather than the
-        // submission just vanishing with no explanation.
-        var upd = await supabaseClient.from('jerseys').update({status:'rejected', rejection_reason: reason}).eq('id', id);
-        btn.disabled = false; btn.textContent = 'Confirm reject';
-        if(upd.error){
-          msg.hidden = false; msg.className = 'field-error'; msg.textContent = 'Error: ' + upd.error.message;
+        try {
+          // The jersey row itself is kept, not deleted — status flips to
+          // 'rejected' with an optional reason so the uploader can see why
+          // and fix it, rather than the submission just vanishing with no
+          // explanation. The photo FILES are a different story: nobody
+          // needs a rejected submission's images still sitting in storage
+          // once it's been actioned, so those are actually removed.
+          var imgRes = await supabaseClient.from('jersey_images').select('storage_path').eq('jersey_id', id);
+          if(imgRes.error) throw imgRes.error;
+          var paths = (imgRes.data || []).map(function(r){ return r.storage_path; });
+          if(paths.length){
+            var rm = await supabaseClient.storage.from('jersey-photos').remove(paths);
+            if(rm.error) throw rm.error;
+          }
+          var delImgs = await supabaseClient.from('jersey_images').delete().eq('jersey_id', id);
+          if(delImgs.error) throw delImgs.error;
+          var upd = await supabaseClient.from('jerseys').update({status:'rejected', rejection_reason: reason}).eq('id', id);
+          if(upd.error) throw upd.error;
+        } catch(err){
+          btn.disabled = false; btn.textContent = 'Confirm reject';
+          msg.hidden = false; msg.className = 'field-error'; msg.textContent = 'Error: ' + (err.message || err);
           return;
         }
+        btn.disabled = false; btn.textContent = 'Confirm reject';
         await refreshAuthUI();
         render();
       });
