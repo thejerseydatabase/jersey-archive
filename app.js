@@ -4537,8 +4537,20 @@
     // already known - calling render() right after an un-awaited
     // refreshAuthUI() ran it before currentUser was actually updated,
     // so the re-render below still saw the stale (signed-out) value.
+    var wasSignedIn = !!currentUser;
     await refreshAuthUI();
-    if(event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'INITIAL_SESSION'){
+    // Re-rendering the Upload page is only actually needed when it's
+    // showing the signed-out placeholder and now shouldn't be (the
+    // hard-refresh-while-already-signed-in case this exists for) - a
+    // SIGNED_IN/INITIAL_SESSION event that fires again later while already
+    // signed in (Supabase re-validates the session when a tab regains
+    // focus/visibility, among other things) isn't a real state change, and
+    // render() rebuilds the whole page from scratch - including wiping
+    // out any photos already picked for an in-progress upload. Only a
+    // genuine transition re-renders; SIGNED_OUT always does, since that's
+    // an explicit action and the page genuinely needs to reflect it.
+    var justSignedIn = (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && !wasSignedIn && currentUser;
+    if(justSignedIn || event === 'SIGNED_OUT'){
       if(location.hash.replace(/^#\/?/,'') === 'upload') render();
     }
   });
