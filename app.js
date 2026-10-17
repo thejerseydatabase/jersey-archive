@@ -1808,7 +1808,6 @@
             '</div>' +
             '<div class="photo-previews" id="photo-previews"></div>' +
             '<p class="field-error" id="photo-error" hidden>Add at least one photo before submitting.</p>' +
-            '<p class="field-hint">If you leave this page before submitting, your typed-in details are kept for next time &mdash; but photos aren&rsquo;t, so you&rsquo;ll need to re-add them.</p>' +
           '</div>' +
           '<div class="field field-full"><label for="f-notes">Additional info <small>optional</small></label><textarea id="f-notes" placeholder="Sponsor changes, special edition, match it was worn in..."></textarea></div>' +
           '<div class="field field-full"><label for="f-credit">Image credit <small>optional</small></label><input type="text" id="f-credit" placeholder="Where the photos are from &mdash; eBay listing, Instagram handle, personal collection, etc."></div>' +
@@ -4492,28 +4491,36 @@
     }, 0);
   }
 
-  async function refreshAuthUI(){
+  // Just enough to know who's signed in - split out from refreshAuthUI so
+  // the auth-state-change handler below can await this one fast call
+  // instead of the full thing (profile + four separate admin pending-count
+  // queries), which was otherwise adding several round trips' worth of
+  // delay to it.
+  async function syncCurrentUser(){
     var sess = await supabaseClient.auth.getSession();
     currentUser = sess.data.session ? sess.data.session.user : null;
+  }
+  function safeCount(query){
+    return query.catch(function(e){ return {error: e}; });
+  }
+  async function refreshAuthUI(){
+    await syncCurrentUser();
     pendingCount = 0;
     if(currentUser){
       var profRes = await supabaseClient.from('profiles').select('*').eq('id', currentUser.id).maybeSingle();
       currentProfile = profRes.data || null;
       if(currentProfile && currentProfile.is_admin){
-        var jerseyCountRes = await supabaseClient.from('jerseys').select('id', {count:'exact', head:true}).eq('status', 'pending');
-        pendingCount = jerseyCountRes.count || 0;
-        try {
-          var photoCountRes = await supabaseClient.from('jersey_images').select('id', {count:'exact', head:true}).eq('status', 'pending');
-          if(!photoCountRes.error) pendingCount += (photoCountRes.count || 0);
-        } catch(e){} // jersey_images.status may not exist yet if add_photos.sql hasn't been run
-        try {
-          var reportCountRes = await supabaseClient.from('reports').select('id', {count:'exact', head:true}).eq('status', 'open');
-          if(!reportCountRes.error) pendingCount += (reportCountRes.count || 0);
-        } catch(e){} // reports table may not exist yet if edit_and_report.sql hasn't been run
-        try {
-          var logoCountRes = await supabaseClient.from('team_logo_proposals').select('id', {count:'exact', head:true}).eq('status', 'pending');
-          if(!logoCountRes.error) pendingCount += (logoCountRes.count || 0);
-        } catch(e){} // team_logo_proposals may not exist yet if team_logos.sql hasn't been run
+        // Four independent counts - run together instead of one after
+        // another. jersey_images/reports/team_logo_proposals are wrapped
+        // since those tables/columns may not exist yet on an install that
+        // hasn't run the matching migration.
+        var results = await Promise.all([
+          supabaseClient.from('jerseys').select('id', {count:'exact', head:true}).eq('status', 'pending'),
+          safeCount(supabaseClient.from('jersey_images').select('id', {count:'exact', head:true}).eq('status', 'pending')),
+          safeCount(supabaseClient.from('reports').select('id', {count:'exact', head:true}).eq('status', 'open')),
+          safeCount(supabaseClient.from('team_logo_proposals').select('id', {count:'exact', head:true}).eq('status', 'pending'))
+        ]);
+        pendingCount = results.reduce(function(sum, r){ return sum + (r && !r.error ? (r.count || 0) : 0); }, 0);
       }
     } else {
       currentProfile = null;
@@ -4532,13 +4539,19 @@
   // already locked in "Sign in first", and without this it never gets
   // a second chance to re-render now that currentUser is actually set.
   supabaseClient.auth.onAuthStateChange(async function(event){
-    // Awaited deliberately: refreshAuthUI's first line awaits getSession(),
-    // which always defers at least one microtask even when the answer's
-    // already known - calling render() right after an un-awaited
-    // refreshAuthUI() ran it before currentUser was actually updated,
-    // so the re-render below still saw the stale (signed-out) value.
+    // Awaited deliberately: syncCurrentUser's own getSession() call always
+    // defers at least one microtask even when the answer's already known -
+    // calling render() right after an un-awaited call ran it before
+    // currentUser was actually updated, so the re-render below still saw
+    // the stale (signed-out) value. Only this lightweight call is awaited
+    // here, not the full refreshAuthUI() (see below) - the admin
+    // pending-count queries it also runs aren't needed for this decision,
+    // and awaiting them here held up this handler for several extra
+    // round trips, which turned out to be competing with - and stalling -
+    // whatever else was in flight at the time, like an in-progress photo
+    // upload triggered by the same tab regaining focus.
     var wasSignedIn = !!currentUser;
-    await refreshAuthUI();
+    await syncCurrentUser();
     // Re-rendering the Upload page is only actually needed when it's
     // showing the signed-out placeholder and now shouldn't be (the
     // hard-refresh-while-already-signed-in case this exists for) - a
@@ -4553,6 +4566,10 @@
     if(justSignedIn || event === 'SIGNED_OUT'){
       if(location.hash.replace(/^#\/?/,'') === 'upload') render();
     }
+    // Not awaited - keeps the header's profile/pending-count badge in
+    // sync, same as always, just without blocking the render decision
+    // above (or anything else in flight) on it.
+    refreshAuthUI();
   });
 
   /* ================= lightbox ================= */
