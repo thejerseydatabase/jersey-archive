@@ -4500,8 +4500,15 @@
     var sess = await supabaseClient.auth.getSession();
     currentUser = sess.data.session ? sess.data.session.user : null;
   }
+  // Wrapped in Promise.resolve() because the Supabase query builder is only
+  // thenable (implements .then()), not a full Promise - calling .catch()
+  // straight on it isn't guaranteed to exist and throws if it doesn't,
+  // which happened here: the throw happened before refreshAuthUI() ever
+  // reached renderAuthArea(), so the whole header's sign-in/profile area
+  // stopped rendering for any admin account (is_admin is what triggers
+  // this code path) - including on the very first page load.
   function safeCount(query){
-    return query.catch(function(e){ return {error: e}; });
+    return Promise.resolve(query).catch(function(e){ return {error: e}; });
   }
   async function refreshAuthUI(){
     await syncCurrentUser();
