@@ -2181,6 +2181,21 @@
     var mainUpd = await supabaseClient.from(t.main).update({logo_path: row.data.storage_path}).eq(t.idCol, refId);
     if(mainUpd.error) throw mainUpd.error;
   }
+  // Deletes a non-current logo history entry (e.g. a duplicate row, like
+  // the ones restoreLogo's predecessor bug could leave behind). Only
+  // removes the actual file from storage if no other row for this
+  // team/competition still points at the same path - a duplicate shares
+  // its storage_path with the row it duplicated, and deleting the file
+  // out from under that still-live row would break its image.
+  async function deleteLogoHistoryEntry(kind, refId, logoId, storagePath){
+    var t = logoTables(kind);
+    var del = await supabaseClient.from(t.history).delete().eq('id', logoId);
+    if(del.error) throw del.error;
+    var stillUsed = await supabaseClient.from(t.history).select('id', {count:'exact', head:true}).eq(t.refCol, refId).eq('storage_path', storagePath);
+    if(!stillUsed.error && !stillUsed.count){
+      await supabaseClient.storage.from('team-logos').remove([storagePath]);
+    }
+  }
 
   async function viewModerate(){
     setCrumbs([{label:'Home', href:'#/'},{label:'Moderate', href:'#/moderate'}]);
@@ -2831,8 +2846,12 @@
           // year) without re-uploading the same image file again - the
           // image's already sitting right here in history.
           var makeCurrentBtn = (isAdmin && !r.is_current) ? ' <button class="btn btn-secondary make-current-btn" type="button" data-logo-id="'+r.id+'" data-path="'+esc(r.storage_path)+'" style="padding:2px 8px;font-size:12px;">Make current</button>' : '';
+          // Only for a non-current entry - deliberately no way to delete
+          // the live logo from here, so there's never a team/competition
+          // left pointing at a storage_path that no longer exists.
+          var deleteBtn = (isAdmin && !r.is_current) ? ' <button class="btn btn-reject delete-logo-btn" type="button" data-logo-id="'+r.id+'" data-path="'+esc(r.storage_path)+'" style="padding:2px 8px;font-size:12px;">Delete</button>' : '';
           return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(r.storage_path))+'" alt="">' +
-            '<div class="spec-value-row"><span>'+caption+'</span>'+editBtn+makeCurrentBtn+'</div></div>';
+            '<div class="spec-value-row"><span>'+caption+'</span>'+editBtn+makeCurrentBtn+deleteBtn+'</div></div>';
         }).join('') + '</div>'
       : '<div class="empty-note">No logo history yet.</div>';
     panel.querySelectorAll('.make-current-btn').forEach(function(btn){
@@ -2843,6 +2862,19 @@
           render();
         } catch(e){
           btn.disabled = false; btn.textContent = 'Make current';
+          alert('Error: ' + (e.message || e));
+        }
+      });
+    });
+    panel.querySelectorAll('.delete-logo-btn').forEach(function(btn){
+      btn.addEventListener('click', async function(){
+        if(!confirm('Delete this logo from history? This removes the image permanently.')) return;
+        btn.disabled = true; btn.textContent = 'Deleting…';
+        try {
+          await deleteLogoHistoryEntry(kind, refId, btn.dataset.logoId, btn.dataset.path);
+          refreshLogoHistoryPanel(kind, refId);
+        } catch(e){
+          btn.disabled = false; btn.textContent = 'Delete';
           alert('Error: ' + (e.message || e));
         }
       });
