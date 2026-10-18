@@ -2882,6 +2882,14 @@
     panel.querySelectorAll('.edit-pencil-btn').forEach(function(btn){
       btn.addEventListener('click', function(){
         var row = btn.closest('.spec-value-row');
+        // The card itself is only ~96-128px (sized for a thumbnail), but
+        // the edit input alone has a 120px min-width - without this, the
+        // Save/Cancel buttons get squeezed out of the card's layout by an
+        // input wider than the card, and only Cancel (last, no min-width
+        // of its own) ends up visible. Spanning the full grid row while
+        // editing gives the input and both buttons room to actually show.
+        var card = btn.closest('.logo-history-item');
+        if(card) card.classList.add('is-editing');
         row.innerHTML = '<input type="text" class="inline-edit-input" value="'+esc(btn.dataset.current)+'" placeholder="e.g. 1990–1999">' +
           '<button class="inline-save-btn" type="button">Save</button>' +
           '<button class="inline-cancel-btn" type="button">Cancel</button>';
