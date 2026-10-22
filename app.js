@@ -554,12 +554,18 @@
   // that sport's competitions) to show a small "just uploaded" gallery —
   // mixes in newly-approved team logos alongside jerseys, most recent first.
   async function recentJerseysHtml(compSlugs){
-    var jq = supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*), jersey_competitions(competitions(name))').order('created_at', {ascending:false}).limit(6);
+    // 12, not 6 - with a steady stream of uploads, a 6-item window gets
+    // pushed out within a day or two, so most visitors never see it. 12
+    // (shown as two rows of six at desktop width, fewer per row on
+    // anything narrower, since .jersey-grid already wraps responsively)
+    // gives a better sense of what's actually just been added.
+    var RECENT_LIMIT = 12;
+    var jq = supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*), jersey_competitions(competitions(name))').order('created_at', {ascending:false}).limit(RECENT_LIMIT);
     // Every logo that's actually been added, not just whichever one is
     // currently live - a history-only add (e.g. a backdated logo) is
     // still something that just happened and belongs in "recently added".
-    var lq = supabaseClient.from('team_logos').select('*, teams!inner(*, competitions!inner(sport_slug))').order('approved_at', {ascending:false}).limit(6);
-    var cq = supabaseClient.from('competition_logos').select('*, competitions!inner(*)').order('approved_at', {ascending:false}).limit(6);
+    var lq = supabaseClient.from('team_logos').select('*, teams!inner(*, competitions!inner(sport_slug))').order('approved_at', {ascending:false}).limit(RECENT_LIMIT);
+    var cq = supabaseClient.from('competition_logos').select('*, competitions!inner(*)').order('approved_at', {ascending:false}).limit(RECENT_LIMIT);
     if(compSlugs){ jq = jq.in('teams.competition_slug', compSlugs); lq = lq.in('teams.competition_slug', compSlugs); cq = cq.in('competition_slug', compSlugs); }
     var results = await Promise.all([jq, lq, cq]);
     var jRes = results[0], lRes = results[1], cRes = results[2];
@@ -567,7 +573,7 @@
       .concat((lRes.data || []).map(function(l){ return {ts: l.approved_at, html: logoCard(l, l.teams)}; }))
       .concat((cRes.data || []).map(function(l){ return {ts: l.approved_at, html: compLogoCard(l, l.competitions)}; }));
     items.sort(function(a,b){ return new Date(b.ts) - new Date(a.ts); });
-    items = items.slice(0, 6);
+    items = items.slice(0, RECENT_LIMIT);
     if(!items.length) return '';
     var cards = items.map(function(i){ return i.html; }).join('');
     return '<div class="section-head" style="margin-top:34px;"><h2>Recently added</h2></div><div class="jersey-grid">'+cards+'</div>';
