@@ -621,8 +621,8 @@
     }).join('');
     var recentHtml = await recentJerseysHtml(null);
     var highestRatedSectionHtml = await highestRatedHtml(null);
-    // Six items is enough to show the home page is alive without turning
-    // it into an endless feed — anyone who wants to see everything else
+    // 12 is enough to show the home page is alive without turning it
+    // into an endless feed — anyone who wants to see everything else
     // that's gone up recently gets a dedicated page instead, same idea
     // as FKA's "Latest Updates" button under its own recent grid.
     var updatesButtonHtml = recentHtml
