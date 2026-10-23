@@ -2227,6 +2227,30 @@
       var tagRes = await supabaseClient.from('jersey_competitions').select('jersey_id, competitions(slug, name)').in('jersey_id', jerseyIds);
       (tagRes.data || []).forEach(function(r){ extraCompByJersey[r.jersey_id] = r.competitions; });
     }
+
+    // Same team+season+type(+format) check checkDuplicateJersey() runs at
+    // upload time, but run here against every pending jersey up front so
+    // moderators see it without having to re-check each one by hand - a
+    // duplicate is still only a hint (not auto-rejected), since a real
+    // alternate/reprint of the exact same kit is rare but does happen.
+    var dupInfoByJersey = {};
+    if(pendingJerseys.length){
+      var dupTeamIds = pendingJerseys.map(function(j){ return j.team_id; }).filter(function(v, i, a){ return a.indexOf(v) === i; });
+      var dupRes = await supabaseClient.from('jerseys')
+        .select('id, team_id, season, type, format, status')
+        .in('team_id', dupTeamIds).neq('status', 'rejected');
+      var bySig = {};
+      (dupRes.data || []).forEach(function(r){
+        var sig = r.team_id + '\u0001' + r.season + '\u0001' + r.type + '\u0001' + (r.format || '');
+        if(!bySig[sig]) bySig[sig] = [];
+        bySig[sig].push(r);
+      });
+      pendingJerseys.forEach(function(j){
+        var sig = j.team_id + '\u0001' + j.season + '\u0001' + j.type + '\u0001' + (j.format || '');
+        var matches = (bySig[sig] || []).filter(function(r){ return r.id !== j.id; });
+        if(matches.length) dupInfoByJersey[j.id] = matches.filter(function(r){ return r.status === 'approved'; })[0] || matches[0];
+      });
+    }
     var allCompsRes = await supabaseClient.from('competitions').select('slug, sport_slug, name').order('tier', {ascending:false}).order('name');
     var allComps = allCompsRes.data || [];
 
@@ -2320,7 +2344,12 @@
         : '';
       var editId = 'mod-edit-'+j.id;
       var rejectId = 'mod-reject-'+j.id;
+      var dup = dupInfoByJersey[j.id];
+      var dupHtml = dup
+        ? '<div class="dup-warning">&#9888; Possible duplicate &mdash; this team already has a<a href="#/jersey/'+dup.id+'" target="_blank" rel="noopener">'+(dup.status === 'approved' ? ' approved' : ' pending')+' '+esc(j.season)+' '+esc(j.type)+'</a> jersey logged.</div>'
+        : '';
       return '<div class="mod-card">' +
+        dupHtml +
         '<div class="jersey-thumb">'+thumb+'</div>' +
         '<div class="mod-info">' +
           '<strong>'+j.season+' '+esc(team.name)+' '+esc(j.type)+'</strong>' +
