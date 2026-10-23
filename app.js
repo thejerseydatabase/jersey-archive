@@ -344,7 +344,7 @@
       // team page, and stacking a zoom action on top of that would fight
       // the card's own click-to-navigate behavior.
       var triggerClass = large ? ' lightbox-trigger' : '';
-      return '<div class="team-swatch team-swatch-logo'+sizeClass+'"><img class="'+triggerClass.trim()+'" src="'+esc(publicLogoUrl(team.logo_path))+'" alt=""></div>';
+      return '<div class="team-swatch team-swatch-logo'+sizeClass+'"><img class="'+triggerClass.trim()+'" src="'+esc(publicLogoUrl(team.logo_path))+'" alt="" loading="lazy"></div>';
     }
     return '<div class="team-swatch'+sizeClass+'"><div class="a" style="background:'+esc(team.primary_color)+'"></div><div class="b" style="background:'+esc(team.secondary_color)+'"></div></div>';
   }
@@ -356,7 +356,7 @@
     var large = opts && opts.large;
     var sizeClass = large ? ' team-swatch-lg' : '';
     var triggerClass = large ? ' lightbox-trigger' : '';
-    return '<div class="team-swatch team-swatch-logo'+sizeClass+'"><img class="'+triggerClass.trim()+'" src="'+esc(publicLogoUrl(comp.logo_path))+'" alt=""></div>';
+    return '<div class="team-swatch team-swatch-logo'+sizeClass+'"><img class="'+triggerClass.trim()+'" src="'+esc(publicLogoUrl(comp.logo_path))+'" alt="" loading="lazy"></div>';
   }
 
   // The photo labeled "Front" should always be what a visitor sees first,
@@ -374,7 +374,7 @@
   function jerseyThumb(jersey, team){
     var images = sortImagesForDisplay(jersey.jersey_images);
     if(images.length){
-      return '<img src="'+esc(publicImageUrl(images[0].storage_path))+'" alt="">';
+      return '<img src="'+esc(publicImageUrl(images[0].storage_path))+'" alt="" loading="lazy">';
     }
     return '<div class="thumb-placeholder" style="background:linear-gradient(135deg,'+esc(team.primary_color)+','+esc(team.secondary_color)+')"><span>No photo yet</span></div>';
   }
@@ -429,7 +429,7 @@
     var dateHtml = (opts && opts.ts) ? '<span>'+esc(relativeTimeLabel(opts.ts))+'</span>' : '';
     var sportSlug = team.competitions.sport_slug;
     return '<a class="jersey-card" href="#/sport/'+sportSlug+'/'+team.competition_slug+'/team/'+team.slug+'">' +
-      '<div class="jersey-thumb"><img src="'+esc(publicLogoUrl(logo.storage_path))+'" alt=""></div>' +
+      '<div class="jersey-thumb"><img src="'+esc(publicLogoUrl(logo.storage_path))+'" alt="" loading="lazy"></div>' +
       '<div class="jersey-label"><strong>'+esc(team.name)+'</strong><span>'+esc(label)+'</span>'+dateHtml+'</div>' +
     '</a>';
   }
@@ -438,7 +438,7 @@
     var label = (opts && opts.label) || (logo.is_current === false ? 'Logo added (historical)' : 'New logo');
     var dateHtml = (opts && opts.ts) ? '<span>'+esc(relativeTimeLabel(opts.ts))+'</span>' : '';
     return '<a class="jersey-card" href="#/sport/'+comp.sport_slug+'/'+comp.slug+'">' +
-      '<div class="jersey-thumb"><img src="'+esc(publicLogoUrl(logo.storage_path))+'" alt=""></div>' +
+      '<div class="jersey-thumb"><img src="'+esc(publicLogoUrl(logo.storage_path))+'" alt="" loading="lazy"></div>' +
       '<div class="jersey-label"><strong>'+esc(comp.name)+'</strong><span>'+esc(label)+'</span>'+dateHtml+'</div>' +
     '</a>';
   }
@@ -1140,7 +1140,7 @@
     var images = j.jersey_images && j.jersey_images.length ? sortImagesForDisplay(j.jersey_images) : null;
     var mainHtml = images ? '<img class="lightbox-trigger" src="'+esc(publicImageUrl(images[0].storage_path))+'" alt="">' : jerseyThumb(j, team);
     var thumbs = images ? images.map(function(img,i){
-      return '<button class="gallery-thumb'+(i===0?' is-active':'')+'" data-idx="'+i+'" type="button" title="'+esc(img.label)+'"><img src="'+esc(publicImageUrl(img.storage_path))+'" alt=""></button>';
+      return '<button class="gallery-thumb'+(i===0?' is-active':'')+'" data-idx="'+i+'" type="button" title="'+esc(img.label)+'"><img src="'+esc(publicImageUrl(img.storage_path))+'" alt="" loading="lazy"></button>';
     }).join('') : '';
 
     var rating = await fetchRating(id);
@@ -1270,7 +1270,7 @@
     // to delete down to zero from here.
     var relabelHtml = (images && images.length > 1)
       ? '<label class="rate-label">Photo labels</label><div class="logo-history-grid lightbox-group">' + images.map(function(img){
-          return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicImageUrl(img.storage_path))+'" alt="">' +
+          return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicImageUrl(img.storage_path))+'" alt="" loading="lazy">' +
             '<select class="photo-label-select" data-image-id="'+img.id+'">' +
               ['Front','Back','Other'].map(function(l){ return '<option value="'+l+'"'+(img.label===l?' selected':'')+'>'+l+'</option>'; }).join('') +
             '</select>' +
@@ -2321,7 +2321,7 @@
       var uploader = uploaderNames[j.uploaded_by] || 'unknown';
       var images = sortImagesForDisplay(j.jersey_images);
       var thumb = images.length
-        ? '<img class="lightbox-trigger" src="'+esc(publicImageUrl(images[0].storage_path))+'" alt="">'
+        ? '<img class="lightbox-trigger" src="'+esc(publicImageUrl(images[0].storage_path))+'" alt="" loading="lazy">'
         : '<div class="thumb-placeholder" style="background:var(--surface-2)"><span>No photo</span></div>';
       // All submitted photos, not just the first — admin needs to check
       // every one for wrong/bad images before approving, not just the
@@ -2334,7 +2334,7 @@
       // delete down to zero.
       var allPhotosHtml = images.length > 1
         ? '<div class="logo-history-grid lightbox-group" style="margin-top:8px;">' + images.map(function(img){
-            return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicImageUrl(img.storage_path))+'" alt="">' +
+            return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicImageUrl(img.storage_path))+'" alt="" loading="lazy">' +
               '<select class="photo-label-select" data-image-id="'+img.id+'">' +
                 ['Front','Back','Other'].map(function(l){ return '<option value="'+l+'"'+(img.label===l?' selected':'')+'>'+l+'</option>'; }).join('') +
               '</select>' +
@@ -2381,7 +2381,7 @@
       var j = img.jerseys, team = j ? j.teams : null;
       var uploader = uploaderNames[img.uploaded_by] || 'unknown';
       return '<div class="mod-card">' +
-        '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(publicImageUrl(img.storage_path))+'" alt=""></div>' +
+        '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(publicImageUrl(img.storage_path))+'" alt="" loading="lazy"></div>' +
         '<div class="mod-info">' +
           '<strong>'+esc(img.label)+' photo for '+(j ? j.season+' '+esc(team.name)+' '+esc(j.type) : 'a jersey')+'</strong>' +
           '<span>proposed by '+esc(uploader)+'</span>' +
@@ -2404,7 +2404,7 @@
       var reporter = uploaderNames[r.reported_by] || (r.reported_by ? 'unknown' : 'anonymous');
       var link = reportLink(r);
       var thumb = r.attachment_path
-        ? '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(toCdnUrl(supabaseClient.storage.from('report-attachments').getPublicUrl(r.attachment_path).data.publicUrl))+'" alt=""></div>'
+        ? '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(toCdnUrl(supabaseClient.storage.from('report-attachments').getPublicUrl(r.attachment_path).data.publicUrl))+'" alt="" loading="lazy"></div>'
         : '';
       var useAsLogoBtn = (r.attachment_path && r.page_type === 'team')
         ? '<button class="btn" data-type="report-logo" data-action="use" data-id="'+r.id+'" data-team-id="'+esc(r.page_ref)+'" data-path="'+esc(r.attachment_path)+'" type="button">Use as team logo</button>'
@@ -2427,7 +2427,7 @@
       var proposer = uploaderNames[l.proposed_by] || 'unknown';
       var willReplace = l.make_current !== false;
       return '<div class="mod-card">' +
-        '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(l.storage_path))+'" alt=""></div>' +
+        '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(l.storage_path))+'" alt="" loading="lazy"></div>' +
         '<div class="mod-info">' +
           '<strong>Logo for '+(l.teams ? esc(l.teams.name) : 'a team')+'</strong>' +
           '<span>proposed by '+esc(proposer)+'</span>' +
@@ -2445,7 +2445,7 @@
       var proposer = uploaderNames[l.proposed_by] || 'unknown';
       var willReplace = l.make_current !== false;
       return '<div class="mod-card">' +
-        '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(l.storage_path))+'" alt=""></div>' +
+        '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(l.storage_path))+'" alt="" loading="lazy"></div>' +
         '<div class="mod-info">' +
           '<strong>Logo for '+(l.competitions ? esc(l.competitions.name) : 'a competition')+'</strong>' +
           '<span>proposed by '+esc(proposer)+'</span>' +
@@ -2885,7 +2885,7 @@
           // the live logo from here, so there's never a team/competition
           // left pointing at a storage_path that no longer exists.
           var deleteBtn = (isAdmin && !r.is_current) ? ' <button class="btn btn-reject delete-logo-btn" type="button" data-logo-id="'+r.id+'" data-path="'+esc(r.storage_path)+'" style="padding:2px 8px;font-size:12px;">Delete</button>' : '';
-          return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(r.storage_path))+'" alt="">' +
+          return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(r.storage_path))+'" alt="" loading="lazy">' +
             '<div class="spec-value-row"><span>'+caption+'</span>'+editBtn+makeCurrentBtn+deleteBtn+'</div></div>';
         }).join('') + '</div>'
       : '<div class="empty-note">No logo history yet.</div>';
