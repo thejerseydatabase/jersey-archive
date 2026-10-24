@@ -1726,7 +1726,7 @@
     var thisYear = new Date().getFullYear();
 
     return '<div class="section-head"><h2>Upload a jersey</h2></div>' +
-      '<p style="font-family:\'JetBrains Mono\',monospace;font-size:11.5px;color:var(--text-dim2);margin:-10px 0 22px;">* required &mdash; and at least one photo</p>' +
+      '<p style="font-family:\'Courier Prime\',monospace;font-size:11.5px;color:var(--text-dim2);margin:-10px 0 22px;">* required &mdash; and at least one photo</p>' +
       '<form id="upload-form" novalidate>' +
         '<div class="upload-grid">' +
           '<div class="field"><label for="f-sport">Sport *</label><select id="f-sport" required>'+sportOptions+'</select></div>' +
