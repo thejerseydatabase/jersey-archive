@@ -4742,7 +4742,18 @@
     var justSignedIn = (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && !wasSignedIn && currentUser;
     if(justSignedIn || event === 'SIGNED_OUT'){
       var currentRoute = location.hash.replace(/^#\/?/,'').split('/')[0];
-      if(REAUTH_RERENDER_ROUTES.indexOf(currentRoute) > -1) render();
+      if(REAUTH_RERENDER_ROUTES.indexOf(currentRoute) > -1){
+        // Moderate's gate also needs currentProfile.is_admin, which
+        // syncCurrentUser() above never sets - only refreshAuthUI()
+        // fetches the profile. Awaiting it here (unlike the general
+        // case below) before render() was the piece still missing:
+        // without it, render() re-ran viewModerate() with currentUser
+        // now set but currentProfile still null, so "Not authorized"
+        // stuck around exactly as before.
+        await refreshAuthUI();
+        render();
+        return;
+      }
     }
     // Not awaited - keeps the header's profile/pending-count badge in
     // sync, same as always, just without blocking the render decision
