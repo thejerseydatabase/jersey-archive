@@ -210,6 +210,12 @@
   .more-toggle{background:none;border:1px dashed var(--line);}
   .jersey-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;}
   .chip-row{display:flex;flex-wrap:wrap;gap:10px;}
+  .contributor-list{display:flex;flex-direction:column;gap:6px;}
+  .contributor-row{display:flex;align-items:center;gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:11px 16px;text-decoration:none;color:var(--text);}
+  .contributor-row:hover{border-color:var(--accent);}
+  .contributor-rank{font-family:'Courier Prime',monospace;font-size:13px;color:var(--text-dim2);width:28px;flex-shrink:0;}
+  .contributor-name{flex:1;font-weight:600;font-size:14.5px;}
+  .contributor-points{font-family:'Courier Prime',monospace;font-size:13px;}
 
   .comp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:12px;}
   .comp-card{display:flex;flex-direction:column;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:15px 16px;text-decoration:none;color:var(--text);transition:border-color .15s ease,transform .15s ease;}
@@ -362,6 +368,7 @@
     <div class="top-controls">
       <a class="nav-link" href="https://thejerseydatabase.com/trackers.html" target="_blank" rel="noopener">Jersey Tracker</a>
       <a class="nav-link" href="#/upload">Upload</a>
+      <a class="nav-link" href="#/contributors">Contributors</a>
       <form class="search-form" id="search-form">
         <input id="search-input" type="text" placeholder="Search team, year..." aria-label="Search jerseys" autocomplete="off">
         <div class="combo-panel" id="search-suggest-panel" hidden></div>
@@ -422,6 +429,6 @@
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="config.js?v=94"></script>
-<script src="app.js?v=127"></script>
+<script src="app.js?v=128"></script>
 </body>
 </html>
