@@ -3972,11 +3972,13 @@
     wireNewCancel(teamSelect, teamNewRow, teamNew, true);
     // Team gets its own overlay instead of the generic wireComboOverlay -
     // every other combo field searches a fixed, already-loaded option
-    // list, but Team needs to search EVERY team in the sport (not just
-    // the selected competition's), so someone who knows the club but not
-    // its competition ("South Melbourne" - which league is that again?)
-    // can find it and have Competition fill itself in, instead of being
-    // stuck picking a competition first on a guess.
+    // list, but with no competition picked yet, Team needs to search
+    // EVERY team in the sport, so someone who knows the club but not its
+    // competition ("South Melbourne" - which league is that again?) can
+    // find it and have Competition fill itself in. Once a competition
+    // IS picked, though, this scopes strictly to that competition's own
+    // teams - same as every other competition's team picker - rather
+    // than mixing in matches from elsewhere in the sport.
     (function wireTeamComboOverlay(){
       var wrap = document.getElementById('f-team-combo-wrap');
       var panel = document.getElementById('f-team-panel');
@@ -4021,46 +4023,30 @@
         var q = normalizeText(raw);
         var hasComp = !!compSelect.value && compSelect.value !== '__new__';
         var rows = [];
-        // The current competition's own teams - unchanged from before,
-        // shown immediately with no fetch and no character minimum.
         if(hasComp){
+          // Competition already chosen - scope strictly to its own teams
+          // (shown in full, no fetch and no 10-item cap, so a big roster
+          // like A-League's isn't cropped before the user can scroll).
           inCompOptions().filter(function(o){ return !q || normalizeText(o.label).indexOf(q) > -1; })
             .forEach(function(o){ rows.push({name: o.name, comp: compSelect.value, html: esc(o.label)}); });
-        }
-        // Once a competition is picked, its own teams are shown in full below -
-        // the 10-item cap only applies to the broader cross-competition search
-        // results appended after them, so a competition with a large roster
-        // (e.g. A-League) doesn't get cropped before the user can scroll to it.
-        var inCompCount = rows.length;
-        if(q.length >= MIN_SPORT_CHARS){
+        } else if(q.length >= MIN_SPORT_CHARS){
+          // No competition picked yet - search every team in the sport instead.
           var teams = await loadSportTeams();
           if(normalizeText(teamInput.value) !== q) return; // query moved on while that fetch was in flight
-          var already = {}; rows.forEach(function(r){ already[r.name+'|'+r.comp] = true; });
           teams.filter(function(t){ return normalizeText(t.name).indexOf(q) > -1; })
             .forEach(function(t){
               var compName = t.competitions.name;
-              if(already[t.name+'|'+compName]) return;
               rows.push({name: t.name, comp: compName, html: esc(t.name)+' <span class="meta">&middot; '+esc(compName)+'</span>'});
             });
+          rows = rows.slice(0, 10);
         } else if(normalizeText(teamInput.value) !== q) return;
-        rows = rows.slice(0, inCompCount).concat(rows.slice(inCompCount, inCompCount + 10));
 
         activeIdx = -1;
-        function rowHtml(r, i){ return '<div class="combo-option search-suggest-row" data-i="'+i+'" data-name="'+esc(r.name)+'" data-comp="'+esc(r.comp)+'"><span>'+r.html+'</span></div>'; }
-        var html;
-        if(rows.length){
-          var compRows = rows.slice(0, inCompCount), otherRows = rows.slice(inCompCount);
-          html = compRows.map(function(r, i){ return rowHtml(r, i); }).join('');
-          // Only needs a divider when both groups are actually present - a
-          // flat list of in-competition matches (or, with no competition
-          // picked, a flat cross-sport list) reads fine with no heading.
-          if(hasComp && compRows.length && otherRows.length) html += '<div class="combo-divider">Other competitions</div>';
-          html += otherRows.map(function(r, i){ return rowHtml(r, inCompCount + i); }).join('');
-        } else {
-          html = hasComp || q.length >= MIN_SPORT_CHARS
-            ? '<div class="combo-empty">No matches'+(hasComp ? '' : ' - pick a competition above to add a brand new team')+'</div>'
-            : '<div class="combo-empty">Type at least '+MIN_SPORT_CHARS+' letters to search every team in this sport, or pick a competition above first</div>';
-        }
+        var html = rows.length
+          ? rows.map(function(r, i){ return '<div class="combo-option search-suggest-row" data-i="'+i+'" data-name="'+esc(r.name)+'" data-comp="'+esc(r.comp)+'"><span>'+r.html+'</span></div>'; }).join('')
+          : (hasComp || q.length >= MIN_SPORT_CHARS
+              ? '<div class="combo-empty">No matches'+(hasComp ? '' : ' - pick a competition above to add a brand new team')+'</div>'
+              : '<div class="combo-empty">Type at least '+MIN_SPORT_CHARS+' letters to search every team in this sport, or pick a competition above first</div>');
         if(hasComp) html += '<div class="combo-option is-new" data-i="'+rows.length+'" data-new="1">+ Add a new team&hellip;</div>';
         panel.innerHTML = html;
       }
