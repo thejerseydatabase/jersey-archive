@@ -1281,6 +1281,117 @@
     });
   }
 
+  // Lets a moderator tighten a photo's framing in place instead of
+  // rejecting/asking for a re-upload over a crop that's otherwise fine.
+  // Downloads the file through the authenticated storage client (not an
+  // <img crossorigin> pointed at the public CDN URL) so the canvas never
+  // risks being tainted by a cross-origin read — same bucket, just
+  // sidestepping any CORS question entirely. Saving re-uploads to the
+  // exact same storage_path with upsert, so every place that already
+  // links to this photo (approved jersey page, moderation queue) picks
+  // up the cropped version with no DB change needed.
+  async function openCropModal(storagePath){
+    var overlay = document.createElement('div');
+    overlay.className = 'crop-modal';
+    overlay.innerHTML =
+      '<div class="crop-modal-inner">' +
+        '<div class="crop-stage"><div class="crop-loading">Loading image&hellip;</div></div>' +
+        '<p class="field-hint">Drag the box to choose what to keep, then save.</p>' +
+        '<div class="crop-modal-actions">' +
+          '<button class="btn btn-secondary" type="button" data-crop-cancel>Cancel</button>' +
+          '<button class="btn" type="button" data-crop-save disabled>Save crop</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    var stage = overlay.querySelector('.crop-stage');
+    var saveBtn = overlay.querySelector('[data-crop-save]');
+    var objectUrl = null;
+    function closeModal(){ if(objectUrl) URL.revokeObjectURL(objectUrl); overlay.remove(); }
+    overlay.querySelector('[data-crop-cancel]').addEventListener('click', closeModal);
+    overlay.addEventListener('click', function(e){ if(e.target === overlay) closeModal(); });
+
+    var dl = await supabaseClient.storage.from('jersey-photos').download(storagePath);
+    if(dl.error){ stage.innerHTML = '<div class="empty-note">Couldn\'t load image: '+esc(dl.error.message)+'</div>'; return; }
+    objectUrl = URL.createObjectURL(dl.data);
+    stage.innerHTML = '<img id="crop-img" src="'+objectUrl+'" alt="">' +
+      '<div class="crop-rect">' +
+        '<div class="crop-handle" data-handle="nw"></div><div class="crop-handle" data-handle="ne"></div>' +
+        '<div class="crop-handle" data-handle="sw"></div><div class="crop-handle" data-handle="se"></div>' +
+      '</div>';
+    var img = stage.querySelector('#crop-img');
+    var rect = stage.querySelector('.crop-rect');
+    var box = {x:0, y:0, w:0, h:0};
+
+    function setRectBox(x, y, w, h){
+      var stageW = stage.clientWidth, stageH = stage.clientHeight;
+      w = Math.max(30, Math.min(w, stageW));
+      h = Math.max(30, Math.min(h, stageH));
+      x = Math.max(0, Math.min(x, stageW - w));
+      y = Math.max(0, Math.min(y, stageH - h));
+      box = {x:x, y:y, w:w, h:h};
+      rect.style.left = x+'px'; rect.style.top = y+'px'; rect.style.width = w+'px'; rect.style.height = h+'px';
+    }
+    function initRect(){
+      var w = stage.clientWidth * 0.8, h = stage.clientHeight * 0.8;
+      setRectBox((stage.clientWidth - w) / 2, (stage.clientHeight - h) / 2, w, h);
+      saveBtn.disabled = false;
+    }
+    if(img.complete && img.naturalWidth) initRect(); else img.addEventListener('load', initRect);
+
+    var dragMode = null, startPt = null, startBox = null;
+    function onPointerMove(e){
+      var dx = e.clientX - startPt.x, dy = e.clientY - startPt.y;
+      if(dragMode === 'move'){ setRectBox(startBox.x + dx, startBox.y + dy, startBox.w, startBox.h); return; }
+      var x = startBox.x, y = startBox.y, w = startBox.w, h = startBox.h;
+      if(dragMode.indexOf('n') > -1){ y = startBox.y + dy; h = startBox.h - dy; }
+      if(dragMode.indexOf('s') > -1){ h = startBox.h + dy; }
+      if(dragMode.indexOf('w') > -1){ x = startBox.x + dx; w = startBox.w - dx; }
+      if(dragMode.indexOf('e') > -1){ w = startBox.w + dx; }
+      setRectBox(x, y, w, h);
+    }
+    function onPointerUp(){
+      dragMode = null;
+      document.removeEventListener('pointermove', onPointerMove);
+      document.removeEventListener('pointerup', onPointerUp);
+    }
+    function startDrag(mode){
+      return function(e){
+        e.preventDefault();
+        dragMode = mode; startPt = {x:e.clientX, y:e.clientY}; startBox = {x:box.x, y:box.y, w:box.w, h:box.h};
+        document.addEventListener('pointermove', onPointerMove);
+        document.addEventListener('pointerup', onPointerUp);
+      };
+    }
+    rect.addEventListener('pointerdown', function(e){ if(e.target === rect) startDrag('move')(e); });
+    rect.querySelectorAll('.crop-handle').forEach(function(h){ h.addEventListener('pointerdown', startDrag(h.dataset.handle)); });
+
+    saveBtn.addEventListener('click', async function(){
+      saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+      try {
+        var scaleX = img.naturalWidth / stage.clientWidth, scaleY = img.naturalHeight / stage.clientHeight;
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(box.w * scaleX));
+        canvas.height = Math.max(1, Math.round(box.h * scaleY));
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, box.x*scaleX, box.y*scaleY, box.w*scaleX, box.h*scaleY, 0, 0, canvas.width, canvas.height);
+        var mime = /\.png$/i.test(storagePath) ? 'image/png' : 'image/jpeg';
+        var blob = await new Promise(function(resolve){ canvas.toBlob(resolve, mime, 0.92); });
+        var up = await supabaseClient.storage.from('jersey-photos').upload(storagePath, blob, {upsert: true, contentType: mime});
+        if(up.error) throw up.error;
+        closeModal();
+        render();
+      } catch(err){
+        alert('Error: ' + err.message);
+        saveBtn.disabled = false; saveBtn.textContent = 'Save crop';
+      }
+    });
+  }
+  function wireCropButtons(scope){
+    (scope || document).querySelectorAll('.photo-crop-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){ openCropModal(btn.dataset.path); });
+    });
+  }
+
   // Tucked away like the team page's own admin panel — fixes a mislabeled
   // front/back photo (which also fixes which one shows as the main image,
   // since that's always whichever is labeled "Front") and reassigns a
@@ -1291,13 +1402,19 @@
     // always needs at least one — that's the same condition already
     // gating whether this grid renders at all, so there's never a way
     // to delete down to zero from here.
-    var relabelHtml = (images && images.length > 1)
-      ? '<label class="rate-label">Photo labels</label><div class="logo-history-grid lightbox-group">' + images.map(function(img){
+    // Crop always shows, even for a single photo — label/delete stay
+    // gated to images.length > 1 as before (a lone photo can't conflict
+    // with another, and a jersey always needs at least one left).
+    var relabelHtml = (images && images.length)
+      ? '<label class="rate-label">Photos</label><div class="logo-history-grid lightbox-group">' + images.map(function(img){
           return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicImageUrl(img.storage_path))+'" alt="" loading="lazy">' +
-            '<select class="photo-label-select" data-image-id="'+img.id+'">' +
-              ['Front','Back','Other'].map(function(l){ return '<option value="'+l+'"'+(img.label===l?' selected':'')+'>'+l+'</option>'; }).join('') +
-            '</select>' +
-            '<button type="button" class="photo-delete-btn" data-image-id="'+img.id+'" title="Delete this photo">&#10005;</button>' +
+            (images.length > 1 ? (
+              '<select class="photo-label-select" data-image-id="'+img.id+'">' +
+                ['Front','Back','Other'].map(function(l){ return '<option value="'+l+'"'+(img.label===l?' selected':'')+'>'+l+'</option>'; }).join('') +
+              '</select>'
+            ) : '') +
+            '<button type="button" class="photo-crop-btn" data-path="'+esc(img.storage_path)+'">Crop</button>' +
+            (images.length > 1 ? '<button type="button" class="photo-delete-btn" data-image-id="'+img.id+'" title="Delete this photo">&#10005;</button>' : '') +
           '</div>';
         }).join('') + '</div>'
       : '';
@@ -2405,13 +2522,18 @@
       // submission instead of rejecting the whole jersey — only shows
       // once there's more than one photo, so there's never a way to
       // delete down to zero.
-      var allPhotosHtml = images.length > 1
+      // Crop always shows, even for a single pending photo (the common
+      // case) — label/delete stay gated to images.length > 1 as before.
+      var allPhotosHtml = images.length
         ? '<div class="logo-history-grid lightbox-group" style="margin-top:8px;">' + images.map(function(img){
             return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicImageUrl(img.storage_path))+'" alt="" loading="lazy">' +
-              '<select class="photo-label-select" data-image-id="'+img.id+'">' +
-                ['Front','Back','Other'].map(function(l){ return '<option value="'+l+'"'+(img.label===l?' selected':'')+'>'+l+'</option>'; }).join('') +
-              '</select>' +
-              '<button type="button" class="photo-delete-btn" data-image-id="'+img.id+'" title="Delete this photo">&#10005;</button>' +
+              (images.length > 1 ? (
+                '<select class="photo-label-select" data-image-id="'+img.id+'">' +
+                  ['Front','Back','Other'].map(function(l){ return '<option value="'+l+'"'+(img.label===l?' selected':'')+'>'+l+'</option>'; }).join('') +
+                '</select>'
+              ) : '') +
+              '<button type="button" class="photo-crop-btn" data-path="'+esc(img.storage_path)+'">Crop</button>' +
+              (images.length > 1 ? '<button type="button" class="photo-delete-btn" data-image-id="'+img.id+'" title="Delete this photo">&#10005;</button>' : '') +
             '</div>';
           }).join('') + '</div>'
         : '';
@@ -2461,6 +2583,7 @@
         '</div>' +
         '<div class="mod-actions">' +
           (j ? '<a class="btn btn-secondary" href="#/jersey/'+j.id+'" target="_blank" style="text-decoration:none;">View jersey</a>' : '') +
+          '<button type="button" class="photo-crop-btn" data-path="'+esc(img.storage_path)+'">Crop</button>' +
           '<button class="btn" data-type="photo" data-action="approve" data-id="'+img.id+'" type="button">Approve</button>' +
           '<button class="btn btn-reject" data-type="photo" data-action="reject" data-id="'+img.id+'" data-path="'+esc(img.storage_path)+'" type="button">Reject</button>' +
         '</div>' +
@@ -2885,6 +3008,7 @@
               render();
             });
           });
+          wireCropButtons(panel);
           wireJerseyReassignControl('jersey-reassign', panel.dataset.sportSlug, function(){ render(); });
           wireJerseyExtraCompsControl(parts[1], panel.dataset.sportSlug);
           return;
@@ -3330,6 +3454,7 @@
         render();
       });
     });
+    wireCropButtons(document);
     document.querySelectorAll('.mod-edit-toggle').forEach(function(toggle){
       toggle.addEventListener('click', function(){
         var panel = document.getElementById(toggle.dataset.target);
