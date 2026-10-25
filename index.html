@@ -62,7 +62,7 @@
   .auth-panel{position:absolute;top:calc(100% + 8px);right:0;width:260px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;z-index:20;box-shadow:0 8px 24px rgba(0,0,0,.2);}
   .auth-panel p{font-size:12.5px;color:var(--text-dim);margin:0 0 12px;line-height:1.5;}
   .auth-panel input{width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:13px;padding:9px 11px;margin-bottom:10px;}
-  .auth-msg{font-family:'Courier Prime',monospace;font-size:11px;color:var(--accent);margin-top:10px;}
+  .auth-msg{font-family:'Courier Prime',monospace;font-size:12.5px;color:var(--accent);margin-top:10px;}
   /* On mobile the topbar's controls wrap onto multiple lines, so #auth-area
      (the panel's anchor) can land almost anywhere horizontally - a panel
      positioned relative to it (right:0) could run off either edge of the
@@ -102,7 +102,7 @@
      never shown - the combo-wrap above it is the only thing visible. */
   .combo-source{display:none;}
   .field-full{grid-column:1/-1;}
-  .field-hint{font-family:'Courier Prime',monospace;font-size:10.5px;margin:1px 0 0;min-height:13px;color:var(--text-dim2);}
+  .field-hint{font-family:'Courier Prime',monospace;font-size:12px;margin:1px 0 0;min-height:13px;color:var(--text-dim2);}
   .field-hint.is-match{color:var(--accent);}
   .field-error{font-family:'Courier Prime',monospace;font-size:11.5px;color:var(--danger);margin:10px 0 0;}
   .dropzone{border:1.5px dashed var(--line);border-radius:14px;padding:32px 16px;text-align:center;background:var(--surface-2);cursor:pointer;color:var(--text-dim2);}
@@ -113,7 +113,7 @@
   .photo-preview-item{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px;position:relative;}
   .photo-preview-thumb{aspect-ratio:1/1;border-radius:6px;overflow:hidden;background:var(--surface-2);}
   .photo-preview-thumb img{width:100%;height:100%;object-fit:cover;}
-  .photo-label-select{font-family:'Courier Prime',monospace;font-size:11px;background:var(--surface-2);border:1px solid var(--line);border-radius:6px;color:var(--text);padding:5px;width:100%;}
+  .photo-label-select{font-family:'Courier Prime',monospace;font-size:12.5px;background:var(--surface-2);border:1px solid var(--line);border-radius:6px;color:var(--text);padding:5px;width:100%;}
   .photo-remove-btn{position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;background:var(--surface);border:1px solid var(--line);color:var(--text-dim2);cursor:pointer;font-size:11px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0;}
   .photo-remove-btn:hover{border-color:var(--danger);color:var(--danger);}
   .btn{font-family:'Inter',sans-serif;font-weight:700;font-size:13.5px;letter-spacing:.02em;background:var(--accent);color:var(--accent-ink);border:none;border-radius:9px;padding:13px 22px;cursor:pointer;text-transform:uppercase;}
@@ -151,7 +151,7 @@
      the full grid row instead of trying to fit inside one cell. */
   .logo-history-item.is-editing{grid-column:1/-1;flex-direction:row;justify-content:flex-start;}
   .logo-history-item.is-editing .spec-value-row{flex:1;}
-  .photo-delete-btn{border:1px solid var(--line);background:var(--surface);color:var(--text-dim2);border-radius:6px;font-size:11px;line-height:1;padding:4px 8px;cursor:pointer;}
+  .photo-delete-btn{border:1px solid var(--line);background:var(--surface);color:var(--text-dim2);border-radius:6px;font-size:12px;line-height:1;padding:4px 8px;cursor:pointer;}
   .photo-delete-btn:hover{border-color:var(--danger);color:var(--danger);}
   .rate-label{display:block;font-family:'Courier Prime',monospace;font-size:10px;color:var(--text-dim2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;}
   .stars-row{display:flex;gap:2px;}
@@ -169,7 +169,7 @@
   .mod-card .jersey-thumb{width:64px;height:64px;flex-shrink:0;}
   .mod-info{display:flex;flex-direction:column;gap:3px;flex:1;min-width:180px;}
   .mod-info strong{font-size:13.5px;}
-  .mod-info span{font-family:'Courier Prime',monospace;font-size:11px;color:var(--text-dim2);}
+  .mod-info span{font-family:'Courier Prime',monospace;font-size:12.5px;color:var(--text-dim2);}
   .mod-info .comp-move-toggle,.mod-info .mod-edit-toggle,.mod-info .mod-reassign-toggle{align-self:flex-start;margin-top:4px;}
   .mod-actions{display:flex;gap:8px;}
   .btn-reject{background:transparent;border:1px solid var(--danger);color:var(--danger);}
@@ -236,8 +236,8 @@
   .team-swatch-lg img{padding:8px;}
   .team-info h3{font-size:13.5px;font-weight:700;margin:0;line-height:1.3;}
   .upcoming-note{display:block;font-family:'Courier Prime',monospace;font-size:10.5px;color:var(--accent);margin-top:3px;}
-  .team-jersey-count{display:block;font-family:'Courier Prime',monospace;font-size:10.5px;color:var(--text-dim2);margin-top:3px;}
-  .team-context{display:block;font-family:'Courier Prime',monospace;font-size:10.5px;color:var(--text-dim2);margin-top:2px;}
+  .team-jersey-count{display:block;font-family:'Courier Prime',monospace;font-size:12px;color:var(--text-dim2);margin-top:3px;}
+  .team-context{display:block;font-family:'Courier Prime',monospace;font-size:12px;color:var(--text-dim2);margin-top:2px;}
 
   /* Compact team rows — used for search results, where a common name
      (e.g. "Sydney") can match dozens of teams and full-size cards mean
@@ -249,7 +249,7 @@
   .team-row-compact:hover{background:var(--surface-2);}
   .team-row-compact .team-swatch{width:20px;height:20px;border-radius:5px;flex-shrink:0;}
   .team-row-compact .team-row-name{font-size:12.5px;font-weight:600;flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .team-row-compact .team-row-comp{font-family:'Courier Prime',monospace;font-size:10px;color:var(--text-dim2);flex-shrink:0;white-space:nowrap;margin-left:10px;}
+  .team-row-compact .team-row-comp{font-family:'Courier Prime',monospace;font-size:11.5px;color:var(--text-dim2);flex-shrink:0;white-space:nowrap;margin-left:10px;}
 
   /* Two sports side by side in search results instead of one long
      stacked column — saves scrolling on a broad match. A hairline down
@@ -314,7 +314,7 @@
   .inline-save-btn:hover{color:var(--accent);}
   .inline-cancel-btn:hover{color:var(--danger);}
   .report-block{margin-top:8px;}
-  .report-btn{display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:var(--text-dim2);font-family:'Courier Prime',monospace;font-size:11px;letter-spacing:.03em;text-transform:uppercase;cursor:pointer;padding:0;}
+  .report-btn{display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:var(--text-dim2);font-family:'Courier Prime',monospace;font-size:12px;letter-spacing:.03em;text-transform:uppercase;cursor:pointer;padding:0;}
   .report-btn:hover{color:var(--danger);}
   .report-panel{margin-top:10px;padding:14px;background:var(--surface);border:1px solid var(--line);border-radius:10px;max-width:420px;}
   .hp-field{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;}
