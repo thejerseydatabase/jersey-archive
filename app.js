@@ -3479,8 +3479,13 @@
     }
     function syncAll(){ syncVisibility(); syncDisplay(); }
 
-    function renderPanel(){
-      var q = normalizeText(input.value);
+    // showAll skips filtering by whatever text is currently in the box -
+    // used on focus, so clicking into a field that already has a value
+    // picked shows every option (to pick something else) rather than
+    // filtering down to just that one already-matching value, which is
+    // all you'd otherwise ever see without first clearing the field.
+    function renderPanel(showAll){
+      var q = showAll ? '' : normalizeText(input.value);
       var matches = q ? options().filter(function(o){ return normalizeText(o.label).indexOf(q) > -1; }) : options();
       activeIdx = -1;
       var rows = matches.length
@@ -3489,7 +3494,7 @@
       if(newLabel) rows += '<div class="combo-option is-new" data-value="__new__" data-i="'+matches.length+'">'+esc(newLabel)+'</div>';
       panel.innerHTML = rows;
     }
-    function openPanel(){ renderPanel(); panel.hidden = false; }
+    function openPanel(showAll){ renderPanel(showAll); panel.hidden = false; }
     function closePanel(){ panel.hidden = true; activeIdx = -1; }
     function setActive(i){
       var rows = panel.querySelectorAll('.combo-option');
@@ -3505,11 +3510,11 @@
       closePanel();
     }
 
-    input.addEventListener('focus', openPanel);
-    input.addEventListener('input', openPanel);
+    input.addEventListener('focus', function(){ openPanel(true); });
+    input.addEventListener('input', function(){ openPanel(false); });
     input.addEventListener('keydown', function(e){
       if(panel.hidden){
-        if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){ e.preventDefault(); openPanel(); }
+        if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){ e.preventDefault(); openPanel(true); }
         return;
       }
       var rows = panel.querySelectorAll('.combo-option');
@@ -3755,8 +3760,14 @@
       // today) always shows, format filter or not - only a competition
       // that HAS formats tagged gets narrowed, and only down to the ones
       // that actually include the one picked (an ODI shouldn't be able
-      // to pick a T20 league as its competition).
-      if(opts.format) comps = comps.filter(function(c){ return !c.formats || !c.formats.length || c.formats.indexOf(opts.format) > -1; });
+      // to pick a T20 league as its competition). "All Formats" is the
+      // jersey TYPE field's own catch-all for kit not tied to any one
+      // format (training gear, warm-ups) - it was never meant to be a
+      // real format tag, and no competition's formats array contains it,
+      // so filtering by it literally would wrongly hide every
+      // format-tagged competition (International included) instead of
+      // showing all of them.
+      if(opts.format && opts.format !== 'All Formats') comps = comps.filter(function(c){ return !c.formats || !c.formats.length || c.formats.indexOf(opts.format) > -1; });
       return comps;
     }
     async function refreshComps(){
@@ -4078,8 +4089,8 @@
       }
       function syncAll(){ syncVisibility(); syncDisplay(); }
 
-      async function renderPanel(){
-        var raw = teamInput.value;
+      async function renderPanel(showAll){
+        var raw = showAll ? '' : teamInput.value;
         var q = normalizeText(raw);
         var hasComp = !!compSelect.value && compSelect.value !== '__new__';
         var rows = [];
@@ -4092,14 +4103,14 @@
         } else if(q.length >= MIN_SPORT_CHARS){
           // No competition picked yet - search every team in the sport instead.
           var teams = await loadSportTeams();
-          if(normalizeText(teamInput.value) !== q) return; // query moved on while that fetch was in flight
+          if(!showAll && normalizeText(teamInput.value) !== q) return; // query moved on while that fetch was in flight
           teams.filter(function(t){ return normalizeText(t.name).indexOf(q) > -1; })
             .forEach(function(t){
               var compName = t.competitions.name;
               rows.push({name: t.name, comp: compName, html: esc(t.name)+' <span class="meta">&middot; '+esc(compName)+'</span>'});
             });
           rows = rows.slice(0, 10);
-        } else if(normalizeText(teamInput.value) !== q) return;
+        } else if(!showAll && normalizeText(teamInput.value) !== q) return;
 
         activeIdx = -1;
         var html = rows.length
@@ -4110,7 +4121,7 @@
         if(hasComp) html += '<div class="combo-option is-new" data-i="'+rows.length+'" data-new="1">+ Add a new team&hellip;</div>';
         panel.innerHTML = html;
       }
-      function openPanel(){ renderPanel(); panel.hidden = false; }
+      function openPanel(showAll){ renderPanel(showAll); panel.hidden = false; }
       function closePanel(){ panel.hidden = true; activeIdx = -1; }
       function setActive(i){
         var opts = panel.querySelectorAll('.combo-option');
@@ -4140,11 +4151,11 @@
         saveDraft();
       }
 
-      teamInput.addEventListener('focus', openPanel);
-      teamInput.addEventListener('input', openPanel);
+      teamInput.addEventListener('focus', function(){ openPanel(true); });
+      teamInput.addEventListener('input', function(){ openPanel(false); });
       teamInput.addEventListener('keydown', function(e){
         if(panel.hidden){
-          if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){ e.preventDefault(); openPanel(); }
+          if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){ e.preventDefault(); openPanel(true); }
           return;
         }
         var opts = panel.querySelectorAll('.combo-option');
