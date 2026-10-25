@@ -4704,9 +4704,17 @@
   // INITIAL_SESSION is the odd one out: it's how a hard refresh reports
   // "a signed-in session was restored from storage", but it fires AFTER
   // the page's own first render() call below (currentUser is still null
-  // at that point) — on the Upload page specifically, that first render
-  // already locked in "Sign in first", and without this it never gets
-  // a second chance to re-render now that currentUser is actually set.
+  // at that point) — on a page that gates on currentUser/currentProfile
+  // (Upload's "Sign in first", Moderate's "Not authorized" for an admin
+  // whose profile hadn't loaded yet), that first render already locked
+  // in the signed-out/unauthorized version, and without this it never
+  // gets a second chance to re-render now that currentUser is actually
+  // set. Listed explicitly rather than re-rendering on every route,
+  // since a full re-render also wipes any in-progress state on the
+  // current page (photos already picked for an upload, an open
+  // edit/reject panel) — only worth the risk on pages that would
+  // otherwise be stuck showing the wrong thing.
+  var REAUTH_RERENDER_ROUTES = ['upload', 'moderate'];
   supabaseClient.auth.onAuthStateChange(async function(event){
     // Awaited deliberately: syncCurrentUser's own getSession() call always
     // defers at least one microtask even when the answer's already known -
@@ -4733,7 +4741,8 @@
     // an explicit action and the page genuinely needs to reflect it.
     var justSignedIn = (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && !wasSignedIn && currentUser;
     if(justSignedIn || event === 'SIGNED_OUT'){
-      if(location.hash.replace(/^#\/?/,'') === 'upload') render();
+      var currentRoute = location.hash.replace(/^#\/?/,'').split('/')[0];
+      if(REAUTH_RERENDER_ROUTES.indexOf(currentRoute) > -1) render();
     }
     // Not awaited - keeps the header's profile/pending-count badge in
     // sync, same as always, just without blocking the render decision
