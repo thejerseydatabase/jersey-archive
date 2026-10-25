@@ -260,8 +260,14 @@
   // on into the next one, so it's the more recent of the two, same as
   // 2024-25 being newer than 2024 but older than 2025 - +0.5 places it
   // exactly between its two years without needing a second pass.
+  // "Unknown" (the upload form's "I'm not sure of the exact year" option)
+  // has no digits to parse, so it used to fall through to the 0 fallback -
+  // the oldest possible key, burying it at the very bottom of every
+  // newest-first list instead of surfacing it for a moderator to
+  // investigate. Infinity instead puts it at the very top everywhere.
   function seasonSortKey(s){
     var str = String(s);
+    if(str === 'Unknown') return Infinity;
     var base = parseInt(str, 10) || 0;
     return /-/.test(str) ? base + 0.5 : base;
   }
@@ -1986,7 +1992,11 @@
             '<p class="field-hint is-match" id="f-team-also-see-hint" hidden></p>' +
           '</div>' +
           '<div class="field"><label for="f-season">Season * <small>a single year, or a range for split-year comps</small></label>' +
-            '<input type="text" id="f-season" placeholder="e.g. '+thisYear+' or '+thisYear+'-'+String(thisYear+1).slice(-2)+'" required></div>' +
+            '<input type="text" id="f-season" placeholder="e.g. '+thisYear+' or '+thisYear+'-'+String(thisYear+1).slice(-2)+'" required>' +
+            '<label class="field-hint" style="display:block;margin-top:6px;cursor:pointer;">' +
+              '<input type="checkbox" id="f-season-unknown" style="vertical-align:middle;margin-right:6px;">I\'m not sure of the exact year' +
+            '</label>' +
+          '</div>' +
           '<div class="field"><label for="f-type-input">Jersey type *</label>' +
             '<div class="combo-wrap" id="f-type-combo-wrap">' +
               '<input type="text" id="f-type-input" placeholder="e.g. Home, Away, Alternate" autocomplete="off" required>' +
@@ -3829,6 +3839,7 @@
     var teamNewRow = document.getElementById('f-team-new-row');
     var teamNew = document.getElementById('f-team-new');
     var seasonInput = document.getElementById('f-season');
+    var seasonUnknownCheckbox = document.getElementById('f-season-unknown');
     var typeSelect = document.getElementById('f-type-select');
     var typeNewRow = document.getElementById('f-type-new-row');
     var typeNew = document.getElementById('f-type-new');
@@ -4273,7 +4284,8 @@
       // competition list, so it needs the new sport's (blank) format
       // already in place rather than the previous sport's leftover one.
       refreshFormat(); refreshComps(); refreshMfrTypeOptions(); refreshPlaceholders();
-      seasonInput.value = '';
+      seasonUnknownCheckbox.checked = false;
+      applySeasonUnknownState();
       var alsoSeeHint = document.getElementById('f-team-also-see-hint');
       if(alsoSeeHint) alsoSeeHint.hidden = true;
       var dupHint = document.getElementById('f-duplicate-hint');
@@ -4285,6 +4297,29 @@
     typeSelect.addEventListener('change', function(){ syncNewVisibility(typeSelect, typeNewRow, typeNew, true); refreshTypeSubVisibility(); checkDuplicateJersey(); saveDraft(); });
     typeSubSelect.addEventListener('change', function(){ syncNewVisibility(typeSubSelect, typeSubNewRow, typeSubNew, false); checkDuplicateJersey(); saveDraft(); });
     seasonInput.addEventListener('input', checkDuplicateJersey);
+    // Checking this sets the season to the literal string "Unknown"
+    // rather than leaving the field blank, so an uploader who genuinely
+    // doesn't know the year isn't tempted to guess one that might be
+    // wrong and go unnoticed - it sorts to the very top everywhere
+    // (see seasonSortKey) so it's easy for a moderator to spot and
+    // investigate, and reads fine wherever a season is shown as plain
+    // text (e.g. "Unknown · Home").
+    function applySeasonUnknownState(){
+      if(seasonUnknownCheckbox.checked){
+        seasonInput.value = 'Unknown';
+        seasonInput.disabled = true;
+        seasonInput.required = false;
+      } else {
+        if(seasonInput.value === 'Unknown') seasonInput.value = '';
+        seasonInput.disabled = false;
+        seasonInput.required = true;
+      }
+    }
+    seasonUnknownCheckbox.addEventListener('change', function(){
+      applySeasonUnknownState();
+      checkDuplicateJersey();
+      saveDraft();
+    });
     typeNew.addEventListener('input', checkDuplicateJersey);
     typeSubNew.addEventListener('input', checkDuplicateJersey);
     mfrSelect.addEventListener('change', function(){ syncNewVisibility(mfrSelect, mfrNewRow, mfrNew, true); saveDraft(); });
@@ -4498,7 +4533,11 @@
           teamNew.value = restoredDraft.team.n || '';
           checkTeamAlsoSee();
         }
-        if(restoredDraft.season) seasonInput.value = restoredDraft.season;
+        if(restoredDraft.season){
+          seasonInput.value = restoredDraft.season;
+          seasonUnknownCheckbox.checked = restoredDraft.season === 'Unknown';
+          applySeasonUnknownState();
+        }
         if(restoredDraft.type){
           typeSelect.value = restoredDraft.type.v || '';
           syncNewVisibility(typeSelect, typeNewRow, typeNew, true);
@@ -4526,7 +4565,7 @@
       if(!form.reportValidity()) return;
 
       var seasonVal = seasonInput.value.trim();
-      if(!/^\d{4}(-\d{2})?$/.test(seasonVal)){
+      if(!seasonUnknownCheckbox.checked && !/^\d{4}(-\d{2})?$/.test(seasonVal)){
         // A slash instead of a dash (2026/27) is by far the most common
         // slip — call it out specifically rather than just the generic
         // format message, since "invalid" alone doesn't tell you what
