@@ -176,7 +176,11 @@
 
   /* ================= helpers ================= */
   function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-  function normalizeText(s){ return (s || '').toString().normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim(); }
+  // Strips apostrophes/periods too (not just accents+case) - search is
+  // substring-based, so "O'Neills" needs to become "oneills" or typing
+  // "on" (a natural way to start that name) would never match, since
+  // "on" doesn't appear contiguously in "o'neills".
+  function normalizeText(s){ return (s || '').toString().normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[‘’'.]/g,'').trim(); }
   function fmtDate(iso){ try{ return new Date(iso).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}); }catch(e){ return ''; } }
   function slugify(s){ return String(s).toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'') || 'x'; }
   // Every photo/logo upload runs through this before it ever reaches
