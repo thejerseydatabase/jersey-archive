@@ -48,7 +48,9 @@
     'ice-hockey': 'e.g. Toronto Maple Leafs, Melbourne Ice',
     'netball': 'e.g. NSW Swifts, Melbourne Vixens',
     'field-hockey': 'e.g. Australia, Netherlands',
-    'volleyball': 'e.g. Australia, Brazil'
+    'volleyball': 'e.g. Australia, Brazil',
+    'lacrosse': 'e.g. Australia, Canada',
+    'gaelic-football': 'e.g. Dublin, Kerry'
   };
   var DEFAULT_TEAM_PLACEHOLDER = 'e.g. Manchester United, Melbourne Storm';
   var COMPETITION_PLACEHOLDER_BY_SPORT = {
@@ -63,7 +65,9 @@
     'ice-hockey': 'e.g. NHL, International',
     'netball': 'e.g. International, Suncorp Super Netball',
     'field-hockey': 'e.g. International',
-    'volleyball': 'e.g. AVL, International'
+    'volleyball': 'e.g. AVL, International',
+    'lacrosse': 'e.g. International',
+    'gaelic-football': 'e.g. All-Ireland Championship'
   };
   var DEFAULT_COMPETITION_PLACEHOLDER = 'e.g. NRL, Premier League';
   // Every sport gets these (Training always last — see below); sports in
@@ -166,6 +170,9 @@
   // expanded list) shows it already open instead of re-collapsing —
   // a fresh visit still starts collapsed and needs the click.
   var expandedSportComps = {};
+  // Same idea, for the homepage's own "More sports" toggle - no per-page
+  // keying needed since there's only one home page.
+  var expandedHomeSports = false;
 
   /* ================= helpers ================= */
   function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -608,17 +615,28 @@
     return '<div class="section-head" style="margin-top:34px;"><h2>Highest rated</h2></div><div class="jersey-grid">'+cards+'</div>';
   }
 
+  function sportCard(s){
+    return '<a class="sport-card" href="#/sport/'+s.slug+'">' +
+      '<div class="sport-icon">'+sportIcon(s.slug)+'</div>' +
+      '<div><div class="sport-name">'+esc(s.name)+'</div></div>' +
+    '</a>';
+  }
   async function viewHome(){
     setCrumbs([{label:'Home', href:'#/'}]);
     var res = await supabaseClient.from('sports').select('*').order('sort_order');
     if(res.error) throw res.error;
     var sports = res.data || [];
-    var cards = sports.map(function(s){
-      return '<a class="sport-card" href="#/sport/'+s.slug+'">' +
-        '<div class="sport-icon">'+sportIcon(s.slug)+'</div>' +
-        '<div><div class="sport-name">'+esc(s.name)+'</div></div>' +
-      '</a>';
-    }).join('');
+    // Same top/more split as a sport's own "More competitions" - the
+    // curated main grid stays exactly as it looks today, and anything
+    // niche (Lacrosse, Gaelic Football, ...) sits one click away instead
+    // of crowding it or needing its own hidden page.
+    var topSports = sports.filter(function(s){ return s.tier !== 'more'; });
+    var moreSports = sports.filter(function(s){ return s.tier === 'more'; });
+    var cards = topSports.map(sportCard).join('');
+    var moreSportsHtml = moreSports.length
+      ? '<button class="chip more-toggle" id="more-sports-btn" type="button">'+(expandedHomeSports ? 'Show fewer ↑' : 'More sports ↓')+'</button>' +
+        '<div id="more-sports"'+(expandedHomeSports ? '' : ' hidden')+' style="margin-top:12px;"><div class="sport-grid">'+moreSports.map(sportCard).join('')+'</div></div>'
+      : '';
     var recentHtml = await recentJerseysHtml(null);
     var highestRatedSectionHtml = await highestRatedHtml(null);
     // 12 is enough to show the home page is alive without turning it
@@ -635,6 +653,7 @@
       '</header>' +
       '<div class="section-head"><h2>Browse by sport</h2></div>' +
       '<div class="sport-grid">'+(cards || '<div class="empty-note">No sports found &mdash; has schema.sql been run?</div>')+'</div>' +
+      moreSportsHtml +
       recentHtml + highestRatedSectionHtml + updatesButtonHtml;
   }
 
@@ -2676,6 +2695,15 @@
           if(panel.hidden) delete expandedSportComps[parts[1]];
           else expandedSportComps[parts[1]] = true;
         }
+      });
+    }
+    var moreSportsBtn = document.getElementById('more-sports-btn');
+    if(moreSportsBtn){
+      moreSportsBtn.addEventListener('click', function(){
+        var panel = document.getElementById('more-sports');
+        panel.hidden = !panel.hidden;
+        moreSportsBtn.textContent = panel.hidden ? 'More sports ↓' : 'Show fewer ↑';
+        expandedHomeSports = !panel.hidden;
       });
     }
     var thumbsWrap = document.getElementById('gallery-thumbs');
