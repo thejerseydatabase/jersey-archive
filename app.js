@@ -3790,20 +3790,30 @@
       if(opts.format && opts.format !== 'All Formats') comps = comps.filter(function(c){ return !c.formats || !c.formats.length || c.formats.indexOf(opts.format) > -1; });
       return comps;
     }
-    async function refreshComps(){
+    // preserveSelection is only passed true from the format-change handler:
+    // an International jersey's Competition/Team should carry over when
+    // switching T20I/ODI/Test between uploads for the same team, since
+    // International is tagged with all of them anyway. A sport switch or a
+    // manual competition pick still resets to blank as before - those
+    // really are a different competition/team list.
+    async function refreshComps(preserveSelection){
       var formatVal = FORMATS_BY_SPORT[sportSel.value] ? formatSel.value : '';
+      var prevComp = preserveSelection ? compSelect.value : '';
       var comps = await competitionsForSport(sportSel.value, {format: formatVal || undefined});
+      var prevCompValid = !!prevComp && prevComp !== '__new__' && comps.some(function(c){ return c.name.toLowerCase() === prevComp.toLowerCase(); });
       compSelect.innerHTML = '<option value="">Select a competition</option>' +
         comps.map(function(c){ return '<option value="'+esc(c.name)+'">'+esc(c.name)+'</option>'; }).join('') +
         '<option value="__new__">+ Add a new competition…</option>';
       compSelect.hidden = false; compNewRow.hidden = true; compNew.value = ''; compNew.required = false;
-      await refreshTeams();
+      if(prevCompValid) compSelect.value = prevComp;
+      await refreshTeams(prevCompValid);
       await refreshExtraComps();
     }
-    async function refreshTeams(){
+    async function refreshTeams(preserveSelection){
       var alsoSeeHint = document.getElementById('f-team-also-see-hint');
       if(alsoSeeHint) alsoSeeHint.hidden = true;
       var val = compSelect.value;
+      var prevTeam = preserveSelection ? teamSelect.value : '';
       if(!val){
         teamSelect.innerHTML = '<option value="">Select a competition first</option>';
         teamSelect.hidden = false; teamNewRow.hidden = true; teamNew.required = false;
@@ -3823,6 +3833,7 @@
         teams.map(function(t){ return '<option value="'+esc(t.name)+'">'+esc(t.name)+'</option>'; }).join('') +
         '<option value="__new__">+ Add a new team…</option>';
       teamSelect.hidden = false; teamNewRow.hidden = true; teamNew.value = ''; teamNew.required = false;
+      if(prevTeam && prevTeam !== '__new__' && teams.some(function(t){ return t.name.toLowerCase() === prevTeam.toLowerCase(); })) teamSelect.value = prevTeam;
     }
     // Warns when the picked team also has a row under another
     // competition in the same sport (Penrith Panthers exists under both
@@ -4045,10 +4056,11 @@
     typeSubNew.addEventListener('input', checkDuplicateJersey);
     mfrSelect.addEventListener('change', function(){ syncNewVisibility(mfrSelect, mfrNewRow, mfrNew, true); saveDraft(); });
     // Changing the format re-filters which competitions are offered (an
-    // ODI shouldn't be able to pick a T20 league), which means whatever
-    // was already selected may no longer be valid - refreshComps rebuilds
-    // the list from scratch and clears the pick, same as a sport change.
-    formatSel.addEventListener('change', function(){ refreshComps(); checkDuplicateJersey(); saveDraft(); });
+    // ODI shouldn't be able to pick a T20 league), but International
+    // itself is tagged with every format - so a Competition/Team already
+    // picked (e.g. International/Australia) should carry over to the next
+    // format instead of being wiped, since it's almost always still valid.
+    formatSel.addEventListener('change', function(){ refreshComps(true); checkDuplicateJersey(); saveDraft(); });
     extraCompToggle.addEventListener('change', function(){
       extraCompRow.hidden = !extraCompToggle.checked;
       if(!extraCompToggle.checked){
