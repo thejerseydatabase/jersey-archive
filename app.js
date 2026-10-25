@@ -1290,7 +1290,7 @@
   // exact same storage_path with upsert, so every place that already
   // links to this photo (approved jersey page, moderation queue) picks
   // up the cropped version with no DB change needed.
-  async function openCropModal(storagePath){
+  async function openCropModal(storagePath, imageId){
     var overlay = document.createElement('div');
     overlay.className = 'crop-modal';
     overlay.innerHTML =
@@ -1381,10 +1381,27 @@
         canvas.height = Math.max(1, Math.round(box.h * scaleY));
         var ctx = canvas.getContext('2d');
         ctx.drawImage(img, box.x*scaleX, box.y*scaleY, box.w*scaleX, box.h*scaleY, 0, 0, canvas.width, canvas.height);
-        var mime = /\.png$/i.test(storagePath) ? 'image/png' : 'image/jpeg';
+        var ext = (storagePath.match(/\.(\w+)$/) || [,''])[1].toLowerCase();
+        var mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
         var blob = await new Promise(function(resolve){ canvas.toBlob(resolve, mime, 0.92); });
-        var up = await supabaseClient.storage.from('jersey-photos').upload(storagePath, blob, {upsert: true, contentType: mime});
+        // upload(..., {upsert:true}) onto an existing path fails RLS on
+        // this project even with a maximally permissive policy (upsert
+        // clearly isn't going through a plain UPDATE the way the docs
+        // suggest) - uploading to a new path and only then repointing
+        // the DB row sidesteps that entirely, using just a plain insert
+        // (new path, never conflicts) and a plain table update, both of
+        // which already work everywhere else in the app. It's also
+        // safer than overwrite-in-place would have been: if anything
+        // fails before the DB row is repointed, the original photo is
+        // untouched instead of silently gone.
+        var newPath = storagePath.replace(/(\.\w+)$/, '-crop-' + Date.now() + '$1');
+        var up = await supabaseClient.storage.from('jersey-photos').upload(newPath, blob, {contentType: mime});
         if(up.error) throw up.error;
+        if(imageId){
+          var upd = await supabaseClient.from('jersey_images').update({storage_path: newPath}).eq('id', imageId);
+          if(upd.error) throw upd.error;
+        }
+        await supabaseClient.storage.from('jersey-photos').remove([storagePath]); // best-effort cleanup of the old file
         closeModal();
         render();
       } catch(err){
@@ -1395,7 +1412,7 @@
   }
   function wireCropButtons(scope){
     (scope || document).querySelectorAll('.photo-crop-btn').forEach(function(btn){
-      btn.addEventListener('click', function(){ openCropModal(btn.dataset.path); });
+      btn.addEventListener('click', function(){ openCropModal(btn.dataset.path, btn.dataset.imageId); });
     });
   }
 
@@ -1420,7 +1437,7 @@
                 ['Front','Back','Other'].map(function(l){ return '<option value="'+l+'"'+(img.label===l?' selected':'')+'>'+l+'</option>'; }).join('') +
               '</select>'
             ) : '') +
-            '<button type="button" class="photo-crop-btn" data-path="'+esc(img.storage_path)+'">Crop</button>' +
+            '<button type="button" class="photo-crop-btn" data-path="'+esc(img.storage_path)+'" data-image-id="'+img.id+'">Crop</button>' +
             (images.length > 1 ? '<button type="button" class="photo-delete-btn" data-image-id="'+img.id+'" title="Delete this photo">&#10005;</button>' : '') +
           '</div>';
         }).join('') + '</div>'
@@ -2539,7 +2556,7 @@
                   ['Front','Back','Other'].map(function(l){ return '<option value="'+l+'"'+(img.label===l?' selected':'')+'>'+l+'</option>'; }).join('') +
                 '</select>'
               ) : '') +
-              '<button type="button" class="photo-crop-btn" data-path="'+esc(img.storage_path)+'">Crop</button>' +
+              '<button type="button" class="photo-crop-btn" data-path="'+esc(img.storage_path)+'" data-image-id="'+img.id+'">Crop</button>' +
               (images.length > 1 ? '<button type="button" class="photo-delete-btn" data-image-id="'+img.id+'" title="Delete this photo">&#10005;</button>' : '') +
             '</div>';
           }).join('') + '</div>'
@@ -2590,7 +2607,7 @@
         '</div>' +
         '<div class="mod-actions">' +
           (j ? '<a class="btn btn-secondary" href="#/jersey/'+j.id+'" target="_blank" style="text-decoration:none;">View jersey</a>' : '') +
-          '<button type="button" class="photo-crop-btn" data-path="'+esc(img.storage_path)+'">Crop</button>' +
+          '<button type="button" class="photo-crop-btn" data-path="'+esc(img.storage_path)+'" data-image-id="'+img.id+'">Crop</button>' +
           '<button class="btn" data-type="photo" data-action="approve" data-id="'+img.id+'" type="button">Approve</button>' +
           '<button class="btn btn-reject" data-type="photo" data-action="reject" data-id="'+img.id+'" data-path="'+esc(img.storage_path)+'" type="button">Reject</button>' +
         '</div>' +
