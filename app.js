@@ -4046,11 +4046,21 @@
         rows = rows.slice(0, inCompCount).concat(rows.slice(inCompCount, inCompCount + 10));
 
         activeIdx = -1;
-        var html = rows.length
-          ? rows.map(function(r, i){ return '<div class="combo-option search-suggest-row" data-i="'+i+'" data-name="'+esc(r.name)+'" data-comp="'+esc(r.comp)+'"><span>'+r.html+'</span></div>'; }).join('')
-          : (hasComp || q.length >= MIN_SPORT_CHARS
-              ? '<div class="combo-empty">No matches'+(hasComp ? '' : ' - pick a competition above to add a brand new team')+'</div>'
-              : '<div class="combo-empty">Type at least '+MIN_SPORT_CHARS+' letters to search every team in this sport, or pick a competition above first</div>');
+        function rowHtml(r, i){ return '<div class="combo-option search-suggest-row" data-i="'+i+'" data-name="'+esc(r.name)+'" data-comp="'+esc(r.comp)+'"><span>'+r.html+'</span></div>'; }
+        var html;
+        if(rows.length){
+          var compRows = rows.slice(0, inCompCount), otherRows = rows.slice(inCompCount);
+          html = compRows.map(function(r, i){ return rowHtml(r, i); }).join('');
+          // Only needs a divider when both groups are actually present - a
+          // flat list of in-competition matches (or, with no competition
+          // picked, a flat cross-sport list) reads fine with no heading.
+          if(hasComp && compRows.length && otherRows.length) html += '<div class="combo-divider">Other competitions</div>';
+          html += otherRows.map(function(r, i){ return rowHtml(r, inCompCount + i); }).join('');
+        } else {
+          html = hasComp || q.length >= MIN_SPORT_CHARS
+            ? '<div class="combo-empty">No matches'+(hasComp ? '' : ' - pick a competition above to add a brand new team')+'</div>'
+            : '<div class="combo-empty">Type at least '+MIN_SPORT_CHARS+' letters to search every team in this sport, or pick a competition above first</div>';
+        }
         if(hasComp) html += '<div class="combo-option is-new" data-i="'+rows.length+'" data-new="1">+ Add a new team&hellip;</div>';
         panel.innerHTML = html;
       }
