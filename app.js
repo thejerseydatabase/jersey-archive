@@ -1607,7 +1607,10 @@
 
   // Ranked by points (same tally that already drives the tier chip next
   // to a signed-in user's own name) - no profile pictures, just who's
-  // actually contributed, highest first.
+  // actually contributed, highest first. Reachable only from a user's
+  // own page (see viewUserProfile's "Full leaderboard" link), not from
+  // the main nav - a flat list of every contributor doesn't need a
+  // permanent slot up there.
   async function viewContributors(){
     setCrumbs([{label:'Home', href:'#/'},{label:'Contributors', href:'#/contributors'}]);
     var res = await supabaseClient.from('profiles').select('username, points')
@@ -1619,7 +1622,7 @@
       return '<div class="section-head"><h2>Contributors</h2></div><div class="empty-note">Nobody&rsquo;s had an upload approved yet.</div>';
     }
     var listHtml = rows.map(function(p, i){
-      return '<a class="contributor-row" href="#/contributor/'+encodeURIComponent(p.username)+'">' +
+      return '<a class="contributor-row" href="#/user/'+encodeURIComponent(p.username)+'">' +
           '<span class="contributor-rank">'+(i+1)+'</span>' +
           '<span class="contributor-name">'+esc(p.username)+'</span>' +
           '<span class="contributor-points">'+pointsChip(p.points)+'</span>' +
@@ -1627,24 +1630,6 @@
     }).join('');
     return '<div class="section-head"><h2>Contributors</h2><span class="count">'+rows.length+'</span></div>' +
       '<div class="contributor-list">'+listHtml+'</div>';
-  }
-
-  async function viewContributor(username){
-    setCrumbs([{label:'Home', href:'#/'},{label:'Contributors', href:'#/contributors'},{label:username, href:'#'}]);
-    var profRes = await supabaseClient.from('profiles').select('id, username, points').eq('username', username).maybeSingle();
-    if(profRes.error) throw profRes.error;
-    var profile = profRes.data;
-    if(!profile){
-      return '<div class="section-head"><h2>'+esc(username)+'</h2></div><div class="empty-note">No contributor found with that name.</div>';
-    }
-    var header = '<div class="section-head"><h2>'+esc(profile.username)+'</h2><span class="count">'+pointsChip(profile.points)+'</span></div>';
-    var jerseys = await fetchAllRows('jerseys', '*, jersey_images(*), teams(*, competitions(*, sports(*))), jersey_competitions(competitions(name))', function(q){
-      return q.eq('uploaded_by', profile.id).eq('status', 'approved');
-    });
-    if(!jerseys.length){
-      return header + '<div class="empty-note">No approved jerseys yet.</div>';
-    }
-    return header + renderGroupedBySport(jerseys);
   }
 
   async function viewManufacturer(name){
@@ -2598,6 +2583,7 @@
     }
 
     return '<div class="section-head"><h2>'+esc(profile.username)+' '+pointsChip(profile.points)+'</h2><span class="count">'+totalJerseys+' upload'+(totalJerseys===1?'':'s')+'</span></div>' +
+      '<p style="margin:-10px 0 18px;"><a class="spec-link" href="#/contributors">See the full leaderboard &rarr;</a></p>' +
       (cards ? '<div class="jersey-grid">'+cards+'</div>' : '<div class="empty-note">No approved uploads yet.</div>') +
       pagerHtml +
       logoSectionHtml;
@@ -2628,7 +2614,6 @@
       else if(parts[0]==='manufacturers' && parts.length===1){ html = await viewManufacturers(); }
       else if(parts[0]==='manufacturer' && parts[1]){ html = await viewManufacturer(parts[1]); }
       else if(parts[0]==='contributors' && parts.length===1){ html = await viewContributors(); }
-      else if(parts[0]==='contributor' && parts[1]){ html = await viewContributor(parts[1]); }
       else if(parts[0]==='format' && parts[1]){ html = await viewFormat(parts[1]); }
       else if(parts[0]==='updates' && parts.length===1){ html = await viewUpdates(); }
       else if(parts[0]==='types' && parts.length===1){ html = await viewTypes(); }
