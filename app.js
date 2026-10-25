@@ -1663,15 +1663,17 @@
   // Same idea for the different words sports/clubs use for what's
   // functionally the same kind of jersey: AFL's "Dreamtime" guernsey,
   // "First Nations", and "Indigenous" are all the same special-edition
-  // jersey honouring Indigenous culture, and "Clash" (AFL again, and
+  // jersey honouring Indigenous culture; "Clash" (AFL again, and
   // occasionally other sports) is just an away-colours kit worn when the
-  // normal one would clash with the opponent's. A team might use a
-  // different one of these words each year, so without this clicking
-  // into whichever one shows on a given season would miss every other
-  // year that used a different word for the same thing. Each jersey
-  // still displays its own actual type text everywhere else (jerseyCard
-  // etc.) - this only affects the browse/grouping family.
-  var TYPE_SYNONYMS = {'first nations':'Indigenous', 'dreamtime':'Indigenous', 'clash':'Away'};
+  // normal one would clash with the opponent's; and the NRL's Cowboys
+  // call their ANZAC Day jersey "Defence" rather than "ANZAC" like most
+  // other clubs. A team might use a different one of these words each
+  // year, so without this clicking into whichever one shows on a given
+  // season would miss every other year that used a different word for
+  // the same thing. Each jersey still displays its own actual type text
+  // everywhere else (jerseyCard etc.) - this only affects the
+  // browse/grouping family.
+  var TYPE_SYNONYMS = {'first nations':'Indigenous', 'dreamtime':'Indigenous', 'clash':'Away', 'defence':'ANZAC'};
   function baseJerseyType(t){
     var s = String(t || '');
     var stripped = s.replace(/\s+(v\.?\s*\d+|\d+)$/i, '').replace(/\s+-\s+.+$/, '').trim();
