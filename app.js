@@ -1308,7 +1308,14 @@
     var objectUrl = null;
     function closeModal(){ if(objectUrl) URL.revokeObjectURL(objectUrl); overlay.remove(); }
     overlay.querySelector('[data-crop-cancel]').addEventListener('click', closeModal);
-    overlay.addEventListener('click', function(e){ if(e.target === overlay) closeModal(); });
+    // pointerdown, not click - a click event's target resolves to the
+    // nearest common ancestor of its mousedown and mouseup targets, so a
+    // drag that starts on the rect/a handle but ends (pointerup) over
+    // the backdrop was firing a click targeted at the overlay itself,
+    // silently closing the whole modal mid-drag. pointerdown always
+    // targets exactly what was under the cursor at press time, so this
+    // only fires on an actual backdrop click.
+    overlay.addEventListener('pointerdown', function(e){ if(e.target === overlay) closeModal(); });
 
     var dl = await supabaseClient.storage.from('jersey-photos').download(storagePath);
     if(dl.error){ stage.innerHTML = '<div class="empty-note">Couldn\'t load image: '+esc(dl.error.message)+'</div>'; return; }
