@@ -1715,6 +1715,9 @@
         '<div class="section-head" style="margin-top:30px;"><h2>Spotted a mistake?</h2></div>' +
         '<p>Every jersey, team, and competition page has a &ldquo;Report a problem&rdquo; button at the bottom &mdash; use it for anything wrong (wrong season, wrong team, bad photo) and it goes straight to moderation. You can also just <a class="spec-link" href="https://thejerseydatabase.com/contact.html" target="_blank" rel="noopener">get in touch</a> directly.</p>' +
 
+        '<div class="section-head" style="margin-top:30px;"><h2>Don&rsquo;t see your sport?</h2></div>' +
+        '<p>The sport list keeps growing &mdash; if yours isn&rsquo;t here yet (Golf, Tennis, F1, Table Tennis, Cycling, Darts, whatever it is), <a class="spec-link" href="https://thejerseydatabase.com/contact.html" target="_blank" rel="noopener">get in touch</a> and it can be added.</p>' +
+
       '</div>';
   }
 
