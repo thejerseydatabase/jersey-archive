@@ -253,7 +253,18 @@
   // unrelated club that happens to share a word.
   // Season is text now ("2024-25" for split-year comps), so sorting can't
   // just subtract the values — pull the leading year out to compare.
-  function seasonSortKey(s){ return parseInt(String(s), 10) || 0; }
+  // That alone used to leave "2024" and "2024-25" tied (both just parse
+  // to 2024), so which one displayed first came down to whatever order
+  // they happened to arrive from the DB in, not anything chronological.
+  // A split season starts the same year as its leading number but runs
+  // on into the next one, so it's the more recent of the two, same as
+  // 2024-25 being newer than 2024 but older than 2025 - +0.5 places it
+  // exactly between its two years without needing a second pass.
+  function seasonSortKey(s){
+    var str = String(s);
+    var base = parseInt(str, 10) || 0;
+    return /-/.test(str) ? base + 0.5 : base;
+  }
 
   // Canonical jersey-type ordering, per sport (and for the NBA, per era —
   // Association/Icon/Statement/Classic/City only from 2017-18 on; earlier
