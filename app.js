@@ -571,7 +571,12 @@
     // anything narrower, since .jersey-grid already wraps responsively)
     // gives a better sense of what's actually just been added.
     var RECENT_LIMIT = 12;
-    var jq = supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*), jersey_competitions(competitions(name))').order('created_at', {ascending:false}).limit(RECENT_LIMIT);
+    // status filter matters here even though RLS already hides pending/
+    // rejected rows from a normal visitor - an admin viewing this same
+    // grid can see every status, so without it "Recently added" would
+    // mix in their own pending/rejected submissions right alongside
+    // actually-approved ones.
+    var jq = supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*), jersey_competitions(competitions(name))').eq('status', 'approved').order('created_at', {ascending:false}).limit(RECENT_LIMIT);
     // Every logo that's actually been added, not just whichever one is
     // currently live - a history-only add (e.g. a backdated logo) is
     // still something that just happened and belongs in "recently added".
@@ -2430,6 +2435,20 @@
     if(jRes.error) throw jRes.error;
     var pendingJerseys = jRes.data || [];
 
+    // Rejecting a jersey already strips its photos (see the reject
+    // handler below) - what's left is just the bare row, kept around so
+    // the uploader can see why on their own copy and so a moderator
+    // doesn't lose the paper trail immediately. It still shows up
+    // everywhere an admin's own view isn't filtered to "approved" only
+    // (e.g. "Recently added" used to leak these - now fixed by filtering
+    // there instead), so a review list here lets rejections actually get
+    // cleared out once they've been seen, rather than just accumulating.
+    var rejRes = await supabaseClient.from('jerseys')
+      .select('id, season, type, rejection_reason, created_at, teams(name, competitions(name, sports(name)))')
+      .eq('status', 'rejected').order('created_at', {ascending:false});
+    if(rejRes.error) throw rejRes.error;
+    var rejectedJerseys = rejRes.data || [];
+
     // Extra-competition tag per pending jersey (e.g. "Also used in: Rugby
     // League World Cup") — shown up front on the card, not hidden behind
     // a click, since it's easy to lose track of what was tagged at
@@ -2526,8 +2545,33 @@
       '<div id="ban-user-results"></div>' +
     '</section>';
 
-    if(!pendingJerseys.length && !pendingPhotos.length && !openReports.length && !pendingLogos.length && !pendingCompLogos.length){
-      return '<div class="section-head"><h2>Moderation queue</h2></div><div class="empty-note">Nothing waiting for review.</div>' + usersPanelHtml + moderatorsPanelHtml;
+    var rejectedCards = rejectedJerseys.map(function(j){
+      var team = j.teams, comp = team ? team.competitions : null, sport = comp ? comp.sports : null;
+      return '<div class="mod-card">' +
+        '<div class="mod-info">' +
+          '<strong>'+j.season+' '+esc(team ? team.name : 'unknown team')+' '+esc(j.type)+'</strong>' +
+          (comp && sport ? '<span>'+esc(comp.name)+' &middot; '+esc(sport.name)+'</span>' : '') +
+          '<span>Rejected '+fmtDate(j.created_at)+(j.rejection_reason ? ' &mdash; '+esc(j.rejection_reason) : ' &mdash; no reason given')+'</span>' +
+        '</div>' +
+        '<div class="mod-actions">' +
+          '<button class="btn btn-reject" data-type="rejected-jersey" data-action="delete" data-id="'+j.id+'" type="button">Delete</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+    // Appended to both return paths below, same as usersPanelHtml/
+    // moderatorsPanelHtml - clearing out old rejections shouldn't need
+    // something else to also be pending first.
+    var rejectedSectionHtml = rejectedJerseys.length
+      ? '<section class="block"><div class="section-head">' +
+          '<div><h2 style="display:inline;">Rejected jerseys</h2> <span class="count">'+rejectedJerseys.length+'</span></div>' +
+          '<button class="btn btn-secondary" id="delete-all-rejected-btn" type="button">Delete all</button>' +
+        '</div>' +
+          '<div class="mod-list">'+rejectedCards+'</div>' +
+        '</section>'
+      : '';
+
+    if(!pendingJerseys.length && !pendingPhotos.length && !openReports.length && !pendingLogos.length && !pendingCompLogos.length && !rejectedJerseys.length){
+      return '<div class="section-head"><h2>Moderation queue</h2></div><div class="empty-note">Nothing waiting for review.</div>' + rejectedSectionHtml + usersPanelHtml + moderatorsPanelHtml;
     }
 
     var jerseyCards = pendingJerseys.map(function(j){
@@ -2695,6 +2739,7 @@
       '<section class="block"><div class="section-head"><h2>Reports</h2><span class="count">'+openReports.length+' open</span></div>' +
         (reportCards ? '<div class="mod-list">'+reportCards+'</div>' : '<div class="empty-note">None open.</div>') +
       '</section>' +
+      rejectedSectionHtml +
       usersPanelHtml + moderatorsPanelHtml;
   }
 
@@ -3588,6 +3633,13 @@
               var pdel = await supabaseClient.from('jersey_images').delete().eq('id', id);
               if(pdel.error) throw pdel.error;
             }
+          } else if(type === 'rejected-jersey'){
+            if(!confirm('Permanently delete this rejected jersey? This can\'t be undone.')){
+              siblingButtons.forEach(function(b){ b.disabled = false; });
+              return;
+            }
+            var rjdel = await supabaseClient.from('jerseys').delete().eq('id', id);
+            if(rjdel.error) throw rjdel.error;
           } else {
             // the only other data-action button on a jersey card is approve —
             // reject is handled separately above via the reason panel, since
@@ -3603,6 +3655,23 @@
         }
       });
     });
+    var deleteAllRejectedBtn = document.getElementById('delete-all-rejected-btn');
+    if(deleteAllRejectedBtn){
+      deleteAllRejectedBtn.addEventListener('click', async function(){
+        var cards = document.querySelectorAll('.mod-card [data-type="rejected-jersey"]');
+        if(!cards.length) return;
+        if(!confirm('Permanently delete all '+cards.length+' rejected jerseys shown here? This can\'t be undone.')) return;
+        deleteAllRejectedBtn.disabled = true; deleteAllRejectedBtn.textContent = 'Deleting…';
+        var ids = [].slice.call(cards).map(function(b){ return b.dataset.id; });
+        var res = await supabaseClient.from('jerseys').delete().in('id', ids);
+        if(res.error){
+          deleteAllRejectedBtn.disabled = false; deleteAllRejectedBtn.textContent = 'Delete all';
+          alert('Error: ' + res.error.message);
+          return;
+        }
+        render();
+      });
+    }
   }
 
   // Type-to-search front end for a "pick or add new" <select> field (see
