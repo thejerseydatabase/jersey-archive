@@ -2834,22 +2834,37 @@
     }
 
     // Jerseys this person has marked as ones they personally own (the
-    // jersey detail page's "Add to your collection" toggle) - public the
-    // same way uploads/points/logos already are. Shown on page 1 only,
-    // same as the logo section, rather than repeating on every uploads
-    // page. Filtered to approved in case a collected jersey was since
-    // unapproved (reassigned, say) - collection_items itself carries no
-    // status of its own to check.
+    // jersey detail page's "Add to your collection" toggle). Unlike
+    // uploads/points/logos, this one has a per-user public/private
+    // choice (collection_public, default true) - skip the query
+    // entirely for a private collection unless it's the owner's own
+    // profile, since nobody else is allowed to see it anyway. Shown on
+    // page 1 only, same as the logo section. Filtered to approved in
+    // case a collected jersey was since unapproved (reassigned, say) -
+    // collection_items itself carries no status of its own to check.
+    var isOwnProfile = !!(currentUser && currentUser.id === profile.id);
     var collectionSectionHtml = '';
-    if(page === 1){
+    if(page === 1 && (isOwnProfile || profile.collection_public)){
       var colJRes = await supabaseClient.from('collection_items')
         .select('jerseys!inner(*, jersey_images(*), teams(name, slug, primary_color, secondary_color, competition_slug))')
         .eq('user_id', profile.id).eq('jerseys.status', 'approved').order('created_at', {ascending:false});
       var collectionJerseys = (colJRes.data || []).map(function(r){ return r.jerseys; }).filter(Boolean);
       var collectionCards = collectionJerseys.map(function(j){ return jerseyCard(j, j.teams, {showTeam:true}); });
-      collectionSectionHtml = collectionCards.length
-        ? '<div class="section-head" style="margin-top:34px;"><h2>Collection</h2><span class="count">'+collectionCards.length+'</span></div>' + limitedJerseyGrid(collectionCards)
+      // Only the profile's own owner gets the toggle - visibility is
+      // their call, nobody else's.
+      var collectionToggleHtml = isOwnProfile
+        ? '<label class="field-hint" style="display:block;cursor:pointer;margin:-10px 0 14px;">' +
+            '<input type="checkbox" id="collection-visibility-toggle" '+(profile.collection_public ? 'checked' : '')+' style="vertical-align:middle;margin-right:6px;">' +
+            'Make my collection visible to other visitors' +
+          '</label>'
         : '';
+      if(collectionCards.length){
+        collectionSectionHtml = '<div class="section-head" style="margin-top:34px;"><h2>Collection</h2><span class="count">'+collectionCards.length+'</span></div>' +
+          collectionToggleHtml + limitedJerseyGrid(collectionCards);
+      } else if(isOwnProfile){
+        collectionSectionHtml = '<div class="section-head" style="margin-top:34px;"><h2>Collection</h2></div>' +
+          collectionToggleHtml + '<div class="empty-note">Nothing added yet &mdash; add a jersey to your collection from its own page.</div>';
+      }
     }
 
     return '<div class="section-head"><h2>'+esc(profile.username)+' '+pointsChip(profile.points)+'</h2><span class="count">'+totalJerseys+' upload'+(totalJerseys===1?'':'s')+'</span></div>' +
@@ -3065,6 +3080,19 @@
       collectionHelpBtn.addEventListener('click', function(){
         var text = document.getElementById('collection-help-text');
         if(text) text.hidden = !text.hidden;
+      });
+    }
+
+    var collectionVisibilityToggle = document.getElementById('collection-visibility-toggle');
+    if(collectionVisibilityToggle && currentUser){
+      collectionVisibilityToggle.addEventListener('change', async function(){
+        collectionVisibilityToggle.disabled = true;
+        var res = await supabaseClient.from('profiles').update({collection_public: collectionVisibilityToggle.checked}).eq('id', currentUser.id);
+        if(res.error){
+          collectionVisibilityToggle.checked = !collectionVisibilityToggle.checked;
+          alert('Error: ' + res.error.message);
+        }
+        collectionVisibilityToggle.disabled = false;
       });
     }
 
