@@ -2725,6 +2725,14 @@
           '</div>' +
         '</div>' +
         '<div class="mod-actions">' +
+          // Lets a moderator reach the jersey's own page - and its
+          // Messages box - without approving or rejecting first, e.g.
+          // to ask for a better photo while leaving it pending. Nothing
+          // here linked to the jersey itself before (only a duplicate
+          // warning or an already-existing message thread happened to),
+          // so there was no way to start that conversation from the
+          // queue at all.
+          '<a class="btn btn-secondary" href="#/jersey/'+j.id+'" target="_blank" rel="noopener" style="text-decoration:none;">View / message</a>' +
           '<button class="btn" data-type="jersey" data-action="approve" data-id="'+j.id+'" type="button">Approve</button>' +
           '<button class="btn btn-reject mod-reject-toggle" data-target="'+rejectId+'" type="button">Reject</button>' +
         '</div>' +
