@@ -1970,6 +1970,9 @@
           '<li>Submit. After it&rsquo;s approved, the sport/competition/team/season/manufacturer stay filled in so you can upload the next kit for the same team (say, the away or alternate jersey) without retyping everything &mdash; just swap the photo and jersey type.</li>' +
         '</ol>' +
 
+        '<div class="section-head" style="margin-top:30px;"><h2>Didn&rsquo;t get your sign-in email?</h2></div>' +
+        '<p>If you try to sign in and get an error instead of the email arriving &mdash; especially something mentioning a &ldquo;rate limit&rdquo; &mdash; it&rsquo;s not your account, and nothing&rsquo;s wrong on your end. There&rsquo;s a cap on how many sign-in emails the whole site can send out per hour, shared across everyone trying to sign in at the same time, and it&rsquo;s occasionally possible to land right when that cap&rsquo;s been reached. Just wait about an hour and try again &mdash; it&rsquo;ll go through once the next window opens up. If it keeps happening well after that, <a class="spec-link" href="https://thejerseydatabase.com/contact.html" target="_blank" rel="noopener">get in touch</a>.</p>' +
+
         '<div class="section-head" style="margin-top:30px;"><h2>Uploading training or warm-up kit</h2></div>' +
         '<p>Pick &ldquo;Training&rdquo; as the jersey type &mdash; a sub-field then appears so you can say which one it is (a specific kind like warm up or captain&rsquo;s run, or just a number if it&rsquo;s another plain training top).</p>' +
         '<p>For cricket specifically, also set Format to &ldquo;All Formats&rdquo; rather than Test, ODI, T20, etc. &mdash; training kit isn&rsquo;t tied to any one match format, and picking a specific one (like ODI) narrows the Competition field down to only ODI competitions, which can hide the one you actually want.</p>' +
