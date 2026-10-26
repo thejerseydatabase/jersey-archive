@@ -1190,9 +1190,12 @@
 
     var rating = await fetchRating(id);
     var myRatingVal = null;
+    var inCollection = false;
     if(currentUser){
       var mine = await supabaseClient.from('ratings').select('value').eq('jersey_id', id).eq('user_id', currentUser.id).maybeSingle();
       if(!mine.error && mine.data) myRatingVal = mine.data.value;
+      var colRes = await supabaseClient.from('collection_items').select('id').eq('jersey_id', id).eq('user_id', currentUser.id).maybeSingle();
+      inCollection = !colRes.error && !!colRes.data;
     }
 
     var uploaderHtml = '';
@@ -1246,6 +1249,17 @@
         creditHtml +
         '<div class="stat-row"><span>logged '+fmtDate(j.created_at)+'</span>'+uploaderHtml+'</div>' +
         '<div class="rate-block"><span class="rate-label">Rate this jersey</span><div id="rating-widget" data-jersey-id="'+j.id+'">'+ratingWidgetHtml(rating, myRatingVal)+'</div></div>' +
+        (j.status === 'approved' ? (
+          '<div class="collection-block">' +
+            (!currentUser
+              ? '<p class="field-hint">Sign in to add this to your collection.</p>'
+              : (currentProfile && currentProfile.is_banned)
+                ? '<p class="field-hint">Your account is banned from using collections.</p>'
+                : '<button class="btn btn-secondary collection-toggle-btn" type="button" data-jersey-id="'+j.id+'" data-in-collection="'+(inCollection?'true':'false')+'">'+(inCollection?'&#10003; In your collection':'+ Add to your collection')+'</button> ' +
+                  '<button type="button" class="help-icon-btn" id="collection-help-btn" title="Keep track of jerseys you personally own &mdash; add any jersey to your collection, then see everything you&rsquo;ve collected on your profile page." aria-label="What&rsquo;s this?">?</button>' +
+                  '<p class="field-hint collection-help-text" id="collection-help-text" hidden>Keep track of jerseys you personally own &mdash; add any jersey to your collection, then see everything you&rsquo;ve collected on your profile page.</p>') +
+          '</div>'
+        ) : '') +
         (j.status === 'approved' ? (
           !currentUser
             ? '<div class="add-photos-block"><p class="field-hint">Sign in to add more photos to this jersey.</p></div>'
@@ -2819,10 +2833,30 @@
         : '';
     }
 
+    // Jerseys this person has marked as ones they personally own (the
+    // jersey detail page's "Add to your collection" toggle) - public the
+    // same way uploads/points/logos already are. Shown on page 1 only,
+    // same as the logo section, rather than repeating on every uploads
+    // page. Filtered to approved in case a collected jersey was since
+    // unapproved (reassigned, say) - collection_items itself carries no
+    // status of its own to check.
+    var collectionSectionHtml = '';
+    if(page === 1){
+      var colJRes = await supabaseClient.from('collection_items')
+        .select('jerseys!inner(*, jersey_images(*), teams(name, slug, primary_color, secondary_color, competition_slug))')
+        .eq('user_id', profile.id).eq('jerseys.status', 'approved').order('created_at', {ascending:false});
+      var collectionJerseys = (colJRes.data || []).map(function(r){ return r.jerseys; }).filter(Boolean);
+      var collectionCards = collectionJerseys.map(function(j){ return jerseyCard(j, j.teams, {showTeam:true}); });
+      collectionSectionHtml = collectionCards.length
+        ? '<div class="section-head" style="margin-top:34px;"><h2>Collection</h2><span class="count">'+collectionCards.length+'</span></div>' + limitedJerseyGrid(collectionCards)
+        : '';
+    }
+
     return '<div class="section-head"><h2>'+esc(profile.username)+' '+pointsChip(profile.points)+'</h2><span class="count">'+totalJerseys+' upload'+(totalJerseys===1?'':'s')+'</span></div>' +
       '<p style="margin:-10px 0 18px;"><a class="spec-link" href="#/contributors">See the full leaderboard &rarr;</a></p>' +
       (cards ? '<div class="jersey-grid">'+cards+'</div>' : '<div class="empty-note">No approved uploads yet.</div>') +
       pagerHtml +
+      collectionSectionHtml +
       logoSectionHtml;
   }
 
@@ -2999,6 +3033,38 @@
         if(res.error){ ratingWidget.insertAdjacentHTML('beforeend', '<p class="field-error">'+esc(res.error.message)+'</p>'); return; }
         var fresh = await fetchRating(jerseyId);
         ratingWidget.innerHTML = ratingWidgetHtml(fresh, value);
+      });
+    }
+
+    var collectionToggleBtn = document.querySelector('.collection-toggle-btn');
+    if(collectionToggleBtn && currentUser){
+      collectionToggleBtn.addEventListener('click', async function(){
+        collectionToggleBtn.disabled = true;
+        var jerseyId = collectionToggleBtn.dataset.jerseyId;
+        var inCollection = collectionToggleBtn.dataset.inCollection === 'true';
+        try {
+          if(inCollection){
+            var del = await supabaseClient.from('collection_items').delete().eq('user_id', currentUser.id).eq('jersey_id', jerseyId);
+            if(del.error) throw del.error;
+          } else {
+            var ins = await supabaseClient.from('collection_items').insert({user_id: currentUser.id, jersey_id: jerseyId});
+            if(ins.error) throw ins.error;
+          }
+          collectionToggleBtn.dataset.inCollection = (!inCollection).toString();
+          collectionToggleBtn.textContent = !inCollection ? '✓ In your collection' : '+ Add to your collection';
+        } catch(err){
+          alert('Error: ' + (err.message || err));
+        }
+        collectionToggleBtn.disabled = false;
+      });
+    }
+    var collectionHelpBtn = document.getElementById('collection-help-btn');
+    if(collectionHelpBtn){
+      // Native title attribute already covers hover for desktop - this
+      // adds a click toggle too, since title does nothing useful on touch.
+      collectionHelpBtn.addEventListener('click', function(){
+        var text = document.getElementById('collection-help-text');
+        if(text) text.hidden = !text.hidden;
       });
     }
 
