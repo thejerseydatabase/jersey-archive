@@ -490,6 +490,27 @@
     return '<div class="stars-row">'+stars+'</div><p class="rating-summary">'+summary+'</p>';
   }
 
+  // Shared between the jersey page's initial render and the "Send"
+  // button's refresh (see wireViewEvents) so both build the exact same
+  // markup from a fresh fetch, same split as fetchRating/ratingWidgetHtml
+  // above.
+  async function jerseyMessagesThreadHtml(jerseyId){
+    var msgRes = await supabaseClient.from('jersey_messages').select('*').eq('jersey_id', jerseyId).order('created_at');
+    var messages = msgRes.data || [];
+    var senderIds = messages.map(function(m){ return m.sender_id; }).filter(function(v,i,a){ return a.indexOf(v) === i; });
+    var senderInfo = {};
+    if(senderIds.length){
+      var sendersRes = await supabaseClient.from('profiles').select('id, username, is_admin').in('id', senderIds);
+      (sendersRes.data || []).forEach(function(p){ senderInfo[p.id] = p; });
+    }
+    return messages.length ? messages.map(function(m){
+      var sender = senderInfo[m.sender_id];
+      var name = sender ? sender.username : 'unknown';
+      var roleTag = sender && sender.is_admin ? ' <span class="chip is-active" style="pointer-events:none;padding:2px 8px;">Moderator</span>' : '';
+      return '<div class="jersey-message"><div class="jersey-message-meta"><strong>'+esc(name)+'</strong>'+roleTag+' <span class="field-hint">'+fmtDate(m.created_at)+'</span></div><p>'+esc(m.message)+'</p></div>';
+    }).join('') : '<p class="field-hint">No messages yet.</p>';
+  }
+
   function renderReportButton(pageType, pageRef, pageLabel){
     var uid = pageType + '-' + pageRef;
     return '<div class="report-block">' +
@@ -1212,6 +1233,24 @@
         ? '<div class="pending-banner">This jersey is '+esc(j.status)+' &mdash; only you and moderators can see it until it’s approved.</div>' : '');
 
     var isAdmin = currentProfile && currentProfile.is_admin;
+    // A small private back-and-forth scoped to this one jersey - lets a
+    // moderator ask "can you find a better photo?" instead of either
+    // approving as-is or flat-out rejecting over something fixable.
+    // RLS on jersey_messages already restricts this to the uploader and
+    // admins; the isUploader/isAdmin check here just avoids querying
+    // (and rendering an empty section) for anyone else.
+    var isUploader = !!(currentUser && j.uploaded_by === currentUser.id);
+    var messagesHtml = '';
+    if(isUploader || isAdmin){
+      var threadHtml = await jerseyMessagesThreadHtml(j.id);
+      messagesHtml = '<div class="jersey-messages-block">' +
+        '<label class="rate-label">Messages</label>' +
+        '<div class="jersey-messages-thread" id="jersey-messages-thread">'+threadHtml+'</div>' +
+        (currentProfile && currentProfile.is_banned
+          ? '<p class="field-hint">Your account is banned from sending messages.</p>'
+          : '<div class="jersey-message-form"><textarea id="jersey-message-input" rows="2" placeholder="'+(isAdmin ? 'Ask the uploader something, e.g. ‘Can you find a clearer photo?’' : 'Reply to the moderator…')+'"></textarea><button class="btn btn-secondary" id="jersey-message-send" type="button" data-jersey-id="'+j.id+'">Send</button></div>') +
+      '</div>';
+    }
     function specItem(label, valueHtml, editData){
       var editBtn = (isAdmin && editData) ? ' <button class="edit-pencil-btn" type="button" data-edit=\''+esc(JSON.stringify(editData))+'\'>'+ICON_PENCIL+'</button>' : '';
       return '<div class="spec-item"><span>'+esc(label)+'</span><div class="spec-value-row"><strong>'+valueHtml+'</strong>'+editBtn+'</div></div>';
@@ -1268,6 +1307,7 @@
               : '<div class="add-photos-block"><button class="btn btn-secondary" id="add-photos-toggle" data-jersey-id="'+j.id+'" type="button">+ Add more photos</button><div id="add-photos-panel" hidden></div></div>'
         ) : '') +
         renderReportButton('jersey', j.id, j.season+' '+team.name+' '+j.type) +
+        messagesHtml +
         (isAdmin ? renderJerseyAdminBlock(j, images, sport.slug) : '') +
       '</div>' +
     '</div>';
@@ -2519,6 +2559,16 @@
         if(matches.length) dupInfoByJersey[j.id] = matches.filter(function(r){ return r.status === 'approved'; })[0] || matches[0];
       });
     }
+    // Message count per pending jersey (see jerseyMessagesThreadHtml /
+    // the jersey page's own thread) - a jersey a moderator left a
+    // question on stays pending (and so keeps showing up here) until
+    // it's resolved, so this is the hint that it's not a fresh
+    // submission but one already mid-conversation.
+    var msgCountByJersey = {};
+    if(pendingJerseys.length){
+      var msgCountRes = await supabaseClient.from('jersey_messages').select('jersey_id').in('jersey_id', pendingJerseys.map(function(j){ return j.id; }));
+      (msgCountRes.data || []).forEach(function(m){ msgCountByJersey[m.jersey_id] = (msgCountByJersey[m.jersey_id] || 0) + 1; });
+    }
     var allCompsRes = await supabaseClient.from('competitions').select('slug, sport_slug, name').order('tier', {ascending:false}).order('name');
     var allComps = allCompsRes.data || [];
 
@@ -2658,6 +2708,7 @@
           (j.image_credit ? '<span>Image credit: '+esc(j.image_credit)+'</span>' : '') +
           (extraCompByJersey[j.id] ? '<span>Also used in: '+esc(extraCompByJersey[j.id].name)+'</span>' : '') +
           allPhotosHtml +
+          (msgCountByJersey[j.id] ? '<a class="chip" href="#/jersey/'+j.id+'" target="_blank" rel="noopener">&#128172; '+msgCountByJersey[j.id]+' message'+(msgCountByJersey[j.id]===1?'':'s')+'</a>' : '') +
           '<button class="chip mod-edit-toggle" data-target="'+editId+'" type="button">Edit upload</button>' +
           '<div class="comp-move-panel" id="'+editId+'" hidden style="max-width:420px;" data-jersey-id="'+j.id+'" data-team-id="'+team.id+'" data-sport-slug="'+esc(sport.slug)+'">' +
             renderModEditControl(editId, j, team, comp, sport, extraCompByJersey, allComps) +
@@ -3093,6 +3144,27 @@
           alert('Error: ' + res.error.message);
         }
         collectionVisibilityToggle.disabled = false;
+      });
+    }
+
+    var jerseyMessageSendBtn = document.getElementById('jersey-message-send');
+    if(jerseyMessageSendBtn && currentUser){
+      jerseyMessageSendBtn.addEventListener('click', async function(){
+        var input = document.getElementById('jersey-message-input');
+        var text = input.value.trim();
+        if(!text) return;
+        jerseyMessageSendBtn.disabled = true;
+        var jerseyId = jerseyMessageSendBtn.dataset.jerseyId;
+        var res = await supabaseClient.from('jersey_messages').insert({jersey_id: jerseyId, sender_id: currentUser.id, message: text});
+        if(res.error){
+          jerseyMessageSendBtn.disabled = false;
+          alert('Error: ' + res.error.message);
+          return;
+        }
+        input.value = '';
+        var thread = document.getElementById('jersey-messages-thread');
+        if(thread) thread.innerHTML = await jerseyMessagesThreadHtml(jerseyId);
+        jerseyMessageSendBtn.disabled = false;
       });
     }
 
