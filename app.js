@@ -1299,12 +1299,19 @@
                   '<p class="field-hint collection-help-text" id="collection-help-text" hidden>Keep track of jerseys you personally own &mdash; add any jersey to your collection, then see everything you&rsquo;ve collected on your profile page.</p>') +
           '</div>'
         ) : '') +
-        (j.status === 'approved' ? (
+        // Open to anyone once the jersey's approved (an extra photo goes
+        // through its own pending/review step first - see
+        // wireAddPhotosPanel). Before approval, only the uploader or an
+        // admin can add one at all (jersey_images RLS enforces the same
+        // split), and since it's going straight onto a submission that
+        // isn't live yet anyway, it's added immediately rather than
+        // needing a second moderation pass on top of the jersey's own.
+        ((j.status === 'approved' || isUploader || isAdmin) ? (
           !currentUser
             ? '<div class="add-photos-block"><p class="field-hint">Sign in to add more photos to this jersey.</p></div>'
             : (currentProfile && currentProfile.is_banned)
               ? '<div class="add-photos-block"><p class="field-hint">Your account is banned from adding photos.</p></div>'
-              : '<div class="add-photos-block"><button class="btn btn-secondary" id="add-photos-toggle" data-jersey-id="'+j.id+'" type="button">+ Add more photos</button><div id="add-photos-panel" hidden></div></div>'
+              : '<div class="add-photos-block"><button class="btn btn-secondary" id="add-photos-toggle" data-jersey-id="'+j.id+'" data-immediate="'+(j.status !== 'approved' ? 'true' : 'false')+'" type="button">+ Add more photos</button><div id="add-photos-panel" hidden></div></div>'
         ) : '') +
         renderReportButton('jersey', j.id, j.season+' '+team.name+' '+j.type) +
         messagesHtml +
@@ -3172,10 +3179,11 @@
     if(addPhotosToggle){
       addPhotosToggle.addEventListener('click', function(){
         var panel = document.getElementById('add-photos-panel');
+        var immediate = addPhotosToggle.dataset.immediate === 'true';
         if(!panel.dataset.wired){
           panel.dataset.wired = '1';
-          panel.innerHTML = renderAddPhotosPanel();
-          wireAddPhotosPanel(addPhotosToggle.dataset.jerseyId);
+          panel.innerHTML = renderAddPhotosPanel(immediate);
+          wireAddPhotosPanel(addPhotosToggle.dataset.jerseyId, immediate);
         }
         panel.hidden = !panel.hidden;
       });
@@ -3433,7 +3441,11 @@
     });
   }
 
-  function renderAddPhotosPanel(){
+  // immediate (true for the jersey's own uploader or an admin adding to
+  // a jersey that isn't approved yet) skips the "goes through review"
+  // framing, since there's no separate photo-level moderation step in
+  // that case - see wireAddPhotosPanel.
+  function renderAddPhotosPanel(immediate){
     return '<div class="dropzone" id="ap-dropzone" tabindex="0" role="button" aria-label="Add photos">' +
         ICON_PHOTO +
         '<p>Drop photos here, or click to choose</p>' +
@@ -3441,11 +3453,11 @@
       '</div>' +
       '<div class="photo-previews" id="ap-photo-previews"></div>' +
       '<p class="field-error" id="ap-photo-error" hidden>Add at least one photo before submitting.</p>' +
-      '<div style="margin-top:14px;"><button class="btn" id="ap-submit-btn" type="button">Submit for review</button></div>' +
+      '<div style="margin-top:14px;"><button class="btn" id="ap-submit-btn" type="button">'+(immediate ? 'Add photos' : 'Submit for review')+'</button></div>' +
       '<div id="ap-result"></div>';
   }
 
-  function wireAddPhotosPanel(jerseyId){
+  function wireAddPhotosPanel(jerseyId, immediate){
     var selected = [];
     var compressionPromises = [];
     var dropzone = document.getElementById('ap-dropzone');
@@ -3519,19 +3531,22 @@
           var up = await supabaseClient.storage.from('jersey-photos').upload(path, p.file);
           if(up.error) throw up.error;
           var ins = await supabaseClient.from('jersey_images').insert({
-            jersey_id: jerseyId, storage_path: path, label: p.label, status: 'pending', uploaded_by: currentUser.id
+            jersey_id: jerseyId, storage_path: path, label: p.label, status: immediate ? 'approved' : 'pending', uploaded_by: currentUser.id
           });
           if(ins.error) throw ins.error;
         }
-        document.getElementById('ap-result').innerHTML = '<p class="field-hint is-match" style="margin-top:10px;">Submitted for review — thanks!</p>';
+        document.getElementById('ap-result').innerHTML = immediate
+          ? '<p class="field-hint is-match" style="margin-top:10px;">Added.</p>'
+          : '<p class="field-hint is-match" style="margin-top:10px;">Submitted for review — thanks!</p>';
         selected.forEach(function(p){ URL.revokeObjectURL(p.url); });
         selected.length = 0;
         compressionPromises.length = 0;
         renderPreviews();
+        if(immediate) render();
       } catch(err) {
         document.getElementById('ap-result').innerHTML = errorBox(err);
       } finally {
-        btn.disabled = false; btn.textContent = 'Submit for review';
+        btn.disabled = false; btn.textContent = immediate ? 'Add photos' : 'Submit for review';
       }
     });
   }
