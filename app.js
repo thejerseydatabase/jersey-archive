@@ -165,6 +165,7 @@
   }
 
   var currentUser = null, currentProfile = null, pendingCount = 0;
+  var unreadMsgCount = 0, unreadMsgJerseyId = null;
   // Remembers which sport pages had "More competitions" expanded, so
   // navigating back to one (e.g. after clicking into a team from the
   // expanded list) shows it already open instead of re-collapsing —
@@ -1246,6 +1247,13 @@
     var messagesHtml = '';
     if(isUploader || isAdmin){
       var threadHtml = await jerseyMessagesThreadHtml(j.id);
+      // Viewing the thread marks it read - the topbar's unread badge
+      // (see refreshAuthUI/my_unread_jersey_messages) is what actually
+      // tells either side a reply came in, so this is what clears it.
+      var readUpsert = await supabaseClient.from('jersey_message_reads').upsert(
+        {jersey_id: j.id, user_id: currentUser.id, last_read_at: new Date().toISOString()}, {onConflict:'jersey_id,user_id'}
+      );
+      if(!readUpsert.error && unreadMsgCount) await refreshAuthUI();
       messagesHtml = '<div class="jersey-messages-block">' +
         '<label class="rate-label">Messages</label>' +
         '<div class="jersey-messages-thread" id="jersey-messages-thread">'+threadHtml+'</div>' +
@@ -2851,7 +2859,7 @@
   // (the whole point of a profile page like this) would otherwise dump
   // every single one into one enormous grid. Not a heavily-used page,
   // so simple Previous/Next beats a full numbered pager.
-  var USER_UPLOADS_PAGE_SIZE = 50;
+  var USER_UPLOADS_PAGE_SIZE = 30;
   async function viewUserProfile(username, pageParam){
     var page = Math.max(1, parseInt(pageParam, 10) || 1);
     setCrumbs([{label:'Home', href:'#/'},{label:username, href:'#'}]);
@@ -2936,12 +2944,26 @@
       }
     }
 
+    // A tab up top (next to the leaderboard link) rather than making
+    // the collection something you only find by scrolling past however
+    // many pages of uploads there are. Both panels are already in the
+    // page - this just shows/hides between them client-side, no reload.
+    var profileTabsHtml = collectionSectionHtml
+      ? '<div class="profile-tabs">' +
+          '<button class="chip profile-tab-btn is-active" data-tab="uploads" type="button">Uploads</button>' +
+          '<button class="chip profile-tab-btn" data-tab="collection" type="button">Collection</button>' +
+        '</div>'
+      : '';
+
     return '<div class="section-head"><h2>'+esc(profile.username)+' '+pointsChip(profile.points)+'</h2><span class="count">'+totalJerseys+' upload'+(totalJerseys===1?'':'s')+'</span></div>' +
       '<p style="margin:-10px 0 18px;"><a class="spec-link" href="#/contributors">See the full leaderboard &rarr;</a></p>' +
-      (cards ? '<div class="jersey-grid">'+cards+'</div>' : '<div class="empty-note">No approved uploads yet.</div>') +
-      pagerHtml +
-      collectionSectionHtml +
-      logoSectionHtml;
+      profileTabsHtml +
+      '<div id="profile-tab-uploads">' +
+        (cards ? '<div class="jersey-grid">'+cards+'</div>' : '<div class="empty-note">No approved uploads yet.</div>') +
+        pagerHtml +
+        logoSectionHtml +
+      '</div>' +
+      (collectionSectionHtml ? '<div id="profile-tab-collection" hidden>'+collectionSectionHtml+'</div>' : '');
   }
 
   function viewNotFound(){
@@ -5078,8 +5100,14 @@
       var points = currentProfile ? currentProfile.points : 0;
       var modLink = (currentProfile && currentProfile.is_admin)
         ? '<a href="#/moderate" style="text-decoration:underline;">Moderate'+(pendingCount ? ' ('+pendingCount+')' : '')+'</a>' : '';
+      // A reply on either side of a jersey_messages thread - links
+      // straight to the most recent one with something new, since
+      // there's rarely more than one or two at a time.
+      var msgLink = unreadMsgCount
+        ? '<a href="#/jersey/'+unreadMsgJerseyId+'" style="text-decoration:underline;color:var(--accent);">&#128172; '+unreadMsgCount+'</a>'
+        : '';
       el.innerHTML =
-        '<div class="auth-status">'+modLink+'<span><a class="spec-link" href="#/user/'+encodeURIComponent(username)+'">'+esc(username)+'</a> '+pointsChip(points)+'</span>' +
+        '<div class="auth-status">'+modLink+msgLink+'<span><a class="spec-link" href="#/user/'+encodeURIComponent(username)+'">'+esc(username)+'</a> '+pointsChip(points)+'</span>' +
         '<button id="edit-username-btn" type="button">Edit</button>' +
         '<button id="sign-out-btn" type="button">Sign out</button></div>';
       document.getElementById('sign-out-btn').addEventListener('click', async function(){
@@ -5151,6 +5179,7 @@
   async function refreshAuthUI(){
     await syncCurrentUser();
     pendingCount = 0;
+    unreadMsgCount = 0; unreadMsgJerseyId = null;
     if(currentUser){
       var profRes = await supabaseClient.from('profiles').select('*').eq('id', currentUser.id).maybeSingle();
       currentProfile = profRes.data || null;
@@ -5166,6 +5195,15 @@
           safeCount(supabaseClient.from('team_logo_proposals').select('id', {count:'exact', head:true}).eq('status', 'pending'))
         ]);
         pendingCount = results.reduce(function(sum, r){ return sum + (r && !r.error ? (r.count || 0) : 0); }, 0);
+      }
+      // Any signed-in user (not just admins) can have a reply waiting -
+      // either side of a jersey_messages thread. Wrapped since the view
+      // may not exist yet on an install that hasn't run
+      // jersey_message_unread.sql.
+      var unreadRes = await safeCount(supabaseClient.from('my_unread_jersey_messages').select('jersey_id, latest_at').order('latest_at', {ascending:false}));
+      if(unreadRes && !unreadRes.error && unreadRes.data){
+        unreadMsgCount = unreadRes.data.length;
+        unreadMsgJerseyId = unreadRes.data.length ? unreadRes.data[0].jersey_id : null;
       }
     } else {
       currentProfile = null;
@@ -5320,6 +5358,17 @@
     if(anchorBtn){
       var scrollTarget = document.getElementById(anchorBtn.dataset.scrollTarget);
       if(scrollTarget) scrollTarget.scrollIntoView({behavior:'smooth', block:'start'});
+    }
+    // Profile page's Uploads/Collection tabs - both panels are already
+    // in the page, this just shows one and hides the other.
+    var profileTabBtn = e.target.closest('.profile-tab-btn');
+    if(profileTabBtn){
+      var tabsWrap = profileTabBtn.closest('.profile-tabs');
+      if(tabsWrap) tabsWrap.querySelectorAll('.profile-tab-btn').forEach(function(b){ b.classList.toggle('is-active', b === profileTabBtn); });
+      var uploadsPanel = document.getElementById('profile-tab-uploads');
+      var collectionPanel = document.getElementById('profile-tab-collection');
+      if(uploadsPanel) uploadsPanel.hidden = profileTabBtn.dataset.tab !== 'uploads';
+      if(collectionPanel) collectionPanel.hidden = profileTabBtn.dataset.tab !== 'collection';
     }
   });
   document.getElementById('lightbox-close-btn').addEventListener('click', closeLightbox);
