@@ -196,11 +196,14 @@
   // small or already heavily-compressed source), it keeps the original
   // rather than uploading the bigger file.
   var MAX_UPLOAD_DIMENSION = 2000;
-  var UPLOAD_WEBP_QUALITY = 0.82;
-  // Logos default to a higher quality than jersey photos: a badge's sharp
-  // edges (text, thin outlines) show lossy-compression ringing much more
-  // readily than a photo's soft gradients do, so it's worth spending a
-  // bit more file size to keep them crisp.
+  // Used to be 0.82, reasoned as "lower than a logo's 0.92 needs, since
+  // a logo's sharp edges/text show lossy ringing more than a photo's
+  // soft gradients do" - but a jersey photo is full of exactly that
+  // kind of sharp detail too (sponsor text, crests, numbers, piping),
+  // so 0.82 was visibly artifacting on any photo with a lot of that -
+  // "some uploads look HQ, some don't" from the very same uploader was
+  // this, not inconsistent source quality. Matches LOGO_WEBP_QUALITY now.
+  var UPLOAD_WEBP_QUALITY = 0.92;
   var LOGO_WEBP_QUALITY = 0.92;
   function compressImageForUpload(file, quality){
     return new Promise(function(resolve){
