@@ -2489,7 +2489,7 @@
       ? {history: 'team_logos', main: 'teams', refCol: 'team_id', idCol: 'id'}
       : {history: 'competition_logos', main: 'competitions', refCol: 'competition_slug', idCol: 'slug'};
   }
-  async function setLogo(kind, refId, path, yearsUsed, proposedBy){
+  async function setLogo(kind, refId, path, yearsUsed, proposedBy, note){
     var t = logoTables(kind);
     // never overwrite history — the previous logo just stops being "current"
     var unmark = await supabaseClient.from(t.history).update({is_current:false}).eq(t.refCol, refId).eq('is_current', true);
@@ -2497,6 +2497,7 @@
     var histRow = {storage_path: path, is_current: true};
     if(yearsUsed) histRow.years_used = yearsUsed;
     if(proposedBy) histRow.proposed_by = proposedBy;
+    if(note) histRow.note = note;
     histRow[t.refCol] = refId;
     var histIns = await supabaseClient.from(t.history).insert(histRow);
     if(histIns.error) throw histIns.error;
@@ -2506,11 +2507,12 @@
   // For a proposal submitted with "Make this the current logo" unticked -
   // a backdated/one-off logo (a past-years special edition, say) that
   // should sit in history without touching whatever's actually live now.
-  async function addLogoToHistory(kind, refId, path, yearsUsed, proposedBy){
+  async function addLogoToHistory(kind, refId, path, yearsUsed, proposedBy, note){
     var t = logoTables(kind);
     var histRow = {storage_path: path, is_current: false};
     if(yearsUsed) histRow.years_used = yearsUsed;
     if(proposedBy) histRow.proposed_by = proposedBy;
+    if(note) histRow.note = note;
     histRow[t.refCol] = refId;
     var histIns = await supabaseClient.from(t.history).insert(histRow);
     if(histIns.error) throw histIns.error;
@@ -2845,10 +2847,11 @@
           '<strong>Logo for '+(l.teams ? esc(l.teams.name) : 'a team')+'</strong>' +
           '<span>proposed by '+esc(proposer)+'</span>' +
           (l.years_used ? '<span>Years used: '+esc(l.years_used)+'</span>' : '') +
+          (l.note ? '<span>Note: '+esc(l.note)+'</span>' : '') +
           '<label class="field-hint" style="display:block;cursor:pointer;"><input type="checkbox" id="'+makeCurrentId+'" '+(willReplace ? 'checked' : '')+' style="vertical-align:middle;margin-right:6px;">Make this the current logo</label>' +
         '</div>' +
         '<div class="mod-actions">' +
-          '<button class="btn" data-type="logo" data-action="approve" data-id="'+l.id+'" data-team-id="'+l.team_id+'" data-path="'+esc(l.storage_path)+'" data-years="'+esc(l.years_used || '')+'" data-make-current-id="'+makeCurrentId+'" data-proposed-by="'+esc(l.proposed_by || '')+'" type="button">Approve</button>' +
+          '<button class="btn" data-type="logo" data-action="approve" data-id="'+l.id+'" data-team-id="'+l.team_id+'" data-path="'+esc(l.storage_path)+'" data-years="'+esc(l.years_used || '')+'" data-note="'+esc(l.note || '')+'" data-make-current-id="'+makeCurrentId+'" data-proposed-by="'+esc(l.proposed_by || '')+'" type="button">Approve</button>' +
           '<button class="btn btn-reject" data-type="logo" data-action="reject" data-id="'+l.id+'" data-path="'+esc(l.storage_path)+'" type="button">Reject</button>' +
         '</div>' +
       '</div>';
@@ -2864,10 +2867,11 @@
           '<strong>Logo for '+(l.competitions ? esc(l.competitions.name) : 'a competition')+'</strong>' +
           '<span>proposed by '+esc(proposer)+'</span>' +
           (l.years_used ? '<span>Years used: '+esc(l.years_used)+'</span>' : '') +
+          (l.note ? '<span>Note: '+esc(l.note)+'</span>' : '') +
           '<label class="field-hint" style="display:block;cursor:pointer;"><input type="checkbox" id="'+makeCurrentId+'" '+(willReplace ? 'checked' : '')+' style="vertical-align:middle;margin-right:6px;">Make this the current logo</label>' +
         '</div>' +
         '<div class="mod-actions">' +
-          '<button class="btn" data-type="comp-logo" data-action="approve" data-id="'+l.id+'" data-comp-slug="'+esc(l.competition_slug)+'" data-path="'+esc(l.storage_path)+'" data-years="'+esc(l.years_used || '')+'" data-make-current-id="'+makeCurrentId+'" data-proposed-by="'+esc(l.proposed_by || '')+'" type="button">Approve</button>' +
+          '<button class="btn" data-type="comp-logo" data-action="approve" data-id="'+l.id+'" data-comp-slug="'+esc(l.competition_slug)+'" data-path="'+esc(l.storage_path)+'" data-years="'+esc(l.years_used || '')+'" data-note="'+esc(l.note || '')+'" data-make-current-id="'+makeCurrentId+'" data-proposed-by="'+esc(l.proposed_by || '')+'" type="button">Approve</button>' +
           '<button class="btn btn-reject" data-type="comp-logo" data-action="reject" data-id="'+l.id+'" data-path="'+esc(l.storage_path)+'" type="button">Reject</button>' +
         '</div>' +
       '</div>';
@@ -3427,6 +3431,7 @@
     panel.innerHTML = rows.length
       ? '<div class="logo-history-grid lightbox-group">' + rows.map(function(r){
           var caption = r.years_used ? esc(r.years_used) : (r.is_current ? 'Current' : 'Added '+fmtDate(r.approved_at));
+          var noteHtml = r.note ? '<span style="display:block;color:var(--accent);font-weight:600;">'+esc(r.note)+'</span>' : '';
           var editBtn = isAdmin ? ' <button class="edit-pencil-btn" type="button" data-logo-id="'+r.id+'" data-current="'+esc(r.years_used || '')+'">'+ICON_PENCIL+'</button>' : '';
           // Lets an admin swap back to an older logo (e.g. a one-off
           // anniversary logo this year, back to the regular one next
@@ -3441,7 +3446,7 @@
             ? '<span style="font-size:10.5px;color:var(--text-dim2);">by '+esc(uploaderNamesById[r.proposed_by])+'</span>'
             : '';
           return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(r.storage_path))+'" alt="" loading="lazy">' +
-            '<div class="spec-value-row"><span>'+caption+'</span>'+editBtn+makeCurrentBtn+deleteBtn+'</div>' + creditHtml + '</div>';
+            '<div class="spec-value-row"><span>'+caption+'</span>'+editBtn+makeCurrentBtn+deleteBtn+'</div>' + noteHtml + creditHtml + '</div>';
         }).join('') + '</div>'
       : '<div class="empty-note">No logo history yet.</div>';
     panel.querySelectorAll('.make-current-btn').forEach(function(btn){
@@ -3649,6 +3654,8 @@
       // that for whoever approves it.
       '<div class="field" style="margin-top:14px;"><label for="pl-years-used">Years used <small>optional &mdash; e.g. 1990&ndash;1999, or just 2026 for a one-off</small></label>' +
         '<input type="text" id="pl-years-used" placeholder="e.g. 2026, or 1990-1999"></div>' +
+      '<div class="field" style="margin-top:14px;"><label for="pl-note">Special occasion <small>optional &mdash; e.g. &ldquo;90th Anniversary&rdquo;, worth flagging if this one looks different to the regular logo either side of it</small></label>' +
+        '<input type="text" id="pl-note" placeholder="e.g. 90th Anniversary"></div>' +
       '<label style="display:block;margin-top:14px;text-transform:none;letter-spacing:normal;"><input type="checkbox" id="pl-make-current" style="width:auto;margin-right:8px;">Make this the current logo <small>only tick this if it&rsquo;s what the team/competition actually uses right now &mdash; leave it unticked for a past/historical logo, which just adds it to history without changing what&rsquo;s currently shown</small></label>' +
       '<div style="margin-top:14px;"><button class="btn" id="pl-submit-btn" type="button" disabled>Submit for review</button></div>' +
       '<div id="pl-result"></div>';
@@ -3701,8 +3708,9 @@
         var up = await supabaseClient.storage.from('team-logos').upload(path, picked.file);
         if(up.error) throw up.error;
         var yearsUsed = document.getElementById('pl-years-used').value.trim() || null;
+        var note = document.getElementById('pl-note').value.trim() || null;
         var makeCurrent = document.getElementById('pl-make-current').checked;
-        var proposalRow = {storage_path: path, proposed_by: currentUser.id, years_used: yearsUsed, make_current: makeCurrent};
+        var proposalRow = {storage_path: path, proposed_by: currentUser.id, years_used: yearsUsed, note: note, make_current: makeCurrent};
         proposalRow[refCol] = refId;
         var ins = await supabaseClient.from(proposalTable).insert(proposalRow);
         if(ins.error) throw ins.error;
@@ -3894,8 +3902,8 @@
             if(btn.dataset.action === 'approve'){
               var makeCurrentCb = document.getElementById(btn.dataset.makeCurrentId);
               var willMakeCurrent = !makeCurrentCb || makeCurrentCb.checked;
-              if(!willMakeCurrent) await addLogoToHistory(logoKind, logoRefId, btn.dataset.path, btn.dataset.years || null, btn.dataset.proposedBy || null);
-              else await setLogo(logoKind, logoRefId, btn.dataset.path, btn.dataset.years || null, btn.dataset.proposedBy || null);
+              if(!willMakeCurrent) await addLogoToHistory(logoKind, logoRefId, btn.dataset.path, btn.dataset.years || null, btn.dataset.proposedBy || null, btn.dataset.note || null);
+              else await setLogo(logoKind, logoRefId, btn.dataset.path, btn.dataset.years || null, btn.dataset.proposedBy || null, btn.dataset.note || null);
               // status update (not delete) so the award_logo_point trigger
               // fires and the proposer gets their point, same as a jersey.
               var logoApprove = await supabaseClient.from(logoProposalTable).update({status:'approved'}).eq('id', id);
