@@ -165,7 +165,7 @@
   }
 
   var currentUser = null, currentProfile = null, pendingCount = 0;
-  var unreadMsgCount = 0, unreadMsgJerseyId = null;
+  var unreadMsgCount = 0, unreadMsgLink = null;
   // Remembers which sport pages had "More competitions" expanded, so
   // navigating back to one (e.g. after clicking into a team from the
   // expanded list) shows it already open instead of re-collapsing —
@@ -527,6 +527,77 @@
       var roleTag = sender && sender.is_admin ? ' <span class="chip is-active" style="pointer-events:none;padding:2px 8px;">Moderator</span>' : '';
       return '<div class="jersey-message"><div class="jersey-message-meta"><strong>'+esc(name)+'</strong>'+roleTag+' <span class="field-hint">'+fmtDate(m.created_at)+'</span></div><p>'+esc(m.message)+'</p></div>';
     }).join('') : '<p class="field-hint">No messages yet.</p>';
+  }
+
+  // Same shape as jerseyMessagesThreadHtml, for a logo proposal's own
+  // thread instead - kind is 'team' or 'competition', matching which
+  // proposal_id column is set.
+  async function logoMessagesThreadHtml(kind, proposalId){
+    var col = kind === 'team' ? 'team_logo_proposal_id' : 'competition_logo_proposal_id';
+    var msgRes = await supabaseClient.from('logo_messages').select('*').eq(col, proposalId).order('created_at');
+    var messages = msgRes.data || [];
+    var senderIds = messages.map(function(m){ return m.sender_id; }).filter(function(v,i,a){ return a.indexOf(v) === i; });
+    var senderInfo = {};
+    if(senderIds.length){
+      var sendersRes = await supabaseClient.from('profiles').select('id, username, is_admin').in('id', senderIds);
+      (sendersRes.data || []).forEach(function(p){ senderInfo[p.id] = p; });
+    }
+    return messages.length ? messages.map(function(m){
+      var sender = senderInfo[m.sender_id];
+      var name = sender ? sender.username : 'unknown';
+      var roleTag = sender && sender.is_admin ? ' <span class="chip is-active" style="pointer-events:none;padding:2px 8px;">Moderator</span>' : '';
+      return '<div class="jersey-message"><div class="jersey-message-meta"><strong>'+esc(name)+'</strong>'+roleTag+' <span class="field-hint">'+fmtDate(m.created_at)+'</span></div><p>'+esc(m.message)+'</p></div>';
+    }).join('') : '<p class="field-hint">No messages yet.</p>';
+  }
+
+  // A logo proposal has nowhere else to live - unlike a jersey, it
+  // never gets its own public page once approved (it just becomes
+  // team.logo_path / a team_logos row, not a separately addressable
+  // thing), so this is purely a private destination for the proposer
+  // and admins to have the same kind of conversation a jersey's own
+  // page already supports. Not linked from anywhere public.
+  async function viewLogoProposal(kind, id){
+    setCrumbs([{label:'Home', href:'#/'},{label:'Moderate', href:'#/moderate'},{label:'Logo proposal', href:'#'}]);
+    var table = kind === 'team' ? 'team_logo_proposals' : 'competition_logo_proposals';
+    var selectCols = kind === 'team'
+      ? '*, teams(name, slug, competition_slug, competitions(sport_slug))'
+      : '*, competitions(name, slug, sport_slug)';
+    var res = await supabaseClient.from(table).select(selectCols).eq('id', id).maybeSingle();
+    if(res.error) throw res.error;
+    if(!res.data) return '<div class="empty-note">That logo proposal doesn&rsquo;t exist (it may have since been rejected).</div>';
+    var p = res.data;
+    var isUploader = !!(currentUser && p.proposed_by === currentUser.id);
+    var isAdmin = currentProfile && currentProfile.is_admin;
+    if(!isUploader && !isAdmin) return '<div class="empty-note">Not authorized.</div>';
+
+    var subjectName = kind === 'team' ? (p.teams ? p.teams.name : 'a team') : (p.competitions ? p.competitions.name : 'a competition');
+    var statusHtml = p.status && p.status !== 'pending'
+      ? '<div class="pending-banner">This proposal is '+esc(p.status)+'.</div>'
+      : '<div class="pending-banner">This proposal is pending review &mdash; only you and moderators can see this page.</div>';
+
+    var threadHtml = await logoMessagesThreadHtml(kind, id);
+    if(currentUser){
+      await supabaseClient.from('logo_message_reads').upsert(
+        {kind: kind, proposal_id: id, user_id: currentUser.id, last_read_at: new Date().toISOString()},
+        {onConflict: 'kind,proposal_id,user_id'}
+      );
+    }
+    var messagesHtml = '<div class="jersey-messages-block">' +
+      '<label class="rate-label">Messages</label>' +
+      '<div class="jersey-messages-thread" id="logo-messages-thread">'+threadHtml+'</div>' +
+      (currentProfile && currentProfile.is_banned
+        ? '<p class="field-hint">Your account is banned from sending messages.</p>'
+        : '<div class="jersey-message-form"><textarea id="logo-message-input" rows="2" placeholder="'+(isAdmin ? 'Ask the proposer something, e.g. ‘Can you find a higher-res version?’' : 'Reply to the moderator…')+'"></textarea><button class="btn btn-secondary" id="logo-message-send" type="button" data-kind="'+kind+'" data-proposal-id="'+id+'">Send</button></div>') +
+    '</div>';
+
+    return statusHtml +
+      '<div class="jersey-thumb" style="max-width:220px;"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(p.storage_path))+'" alt="" loading="lazy"></div>' +
+      '<div class="spec-list" style="margin-top:18px;">' +
+        '<div class="spec-item"><span>Logo for</span><div class="spec-value-row"><strong>'+esc(subjectName)+'</strong></div></div>' +
+        (p.years_used ? '<div class="spec-item"><span>Years used</span><div class="spec-value-row"><strong>'+esc(p.years_used)+'</strong></div></div>' : '') +
+        (p.note ? '<div class="spec-item"><span>Note</span><div class="spec-value-row"><strong>'+esc(p.note)+'</strong></div></div>' : '') +
+      '</div>' +
+      messagesHtml;
   }
 
   function renderReportButton(pageType, pageRef, pageLabel){
@@ -2894,6 +2965,7 @@
           '<label class="field-hint" style="display:block;cursor:pointer;"><input type="checkbox" id="'+makeCurrentId+'" '+(willReplace ? 'checked' : '')+' style="vertical-align:middle;margin-right:6px;">Make this the current logo</label>' +
         '</div>' +
         '<div class="mod-actions">' +
+          '<a class="btn btn-secondary" href="#/logo-proposal/team/'+l.id+'" target="_blank" rel="noopener" style="text-decoration:none;">View / message</a>' +
           '<button class="btn" data-type="logo" data-action="approve" data-id="'+l.id+'" data-team-id="'+l.team_id+'" data-path="'+esc(l.storage_path)+'" data-years="'+esc(l.years_used || '')+'" data-note="'+esc(l.note || '')+'" data-make-current-id="'+makeCurrentId+'" data-proposed-by="'+esc(l.proposed_by || '')+'" type="button">Approve</button>' +
           '<button class="btn btn-reject" data-type="logo" data-action="reject" data-id="'+l.id+'" data-path="'+esc(l.storage_path)+'" type="button">Reject</button>' +
         '</div>' +
@@ -2914,6 +2986,7 @@
           '<label class="field-hint" style="display:block;cursor:pointer;"><input type="checkbox" id="'+makeCurrentId+'" '+(willReplace ? 'checked' : '')+' style="vertical-align:middle;margin-right:6px;">Make this the current logo</label>' +
         '</div>' +
         '<div class="mod-actions">' +
+          '<a class="btn btn-secondary" href="#/logo-proposal/competition/'+l.id+'" target="_blank" rel="noopener" style="text-decoration:none;">View / message</a>' +
           '<button class="btn" data-type="comp-logo" data-action="approve" data-id="'+l.id+'" data-comp-slug="'+esc(l.competition_slug)+'" data-path="'+esc(l.storage_path)+'" data-years="'+esc(l.years_used || '')+'" data-note="'+esc(l.note || '')+'" data-make-current-id="'+makeCurrentId+'" data-proposed-by="'+esc(l.proposed_by || '')+'" type="button">Approve</button>' +
           '<button class="btn btn-reject" data-type="comp-logo" data-action="reject" data-id="'+l.id+'" data-path="'+esc(l.storage_path)+'" type="button">Reject</button>' +
         '</div>' +
@@ -3084,6 +3157,7 @@
       else if(parts[0]==='help'){ html = viewHelp(); }
       else if(parts[0]==='moderate'){ html = await viewModerate(); }
       else if(parts[0]==='user' && parts[1]){ html = await viewUserProfile(parts[1], parts[2]); }
+      else if(parts[0]==='logo-proposal' && parts[1] && parts[2]){ html = await viewLogoProposal(parts[1], parts[2]); }
       else { html = viewNotFound(); }
       app.innerHTML = html;
       wireViewEvents(parts);
@@ -3290,6 +3364,30 @@
         var thread = document.getElementById('jersey-messages-thread');
         if(thread) thread.innerHTML = await jerseyMessagesThreadHtml(jerseyId);
         jerseyMessageSendBtn.disabled = false;
+      });
+    }
+
+    var logoMessageSendBtn = document.getElementById('logo-message-send');
+    if(logoMessageSendBtn && currentUser){
+      logoMessageSendBtn.addEventListener('click', async function(){
+        var input = document.getElementById('logo-message-input');
+        var text = input.value.trim();
+        if(!text) return;
+        logoMessageSendBtn.disabled = true;
+        var kind = logoMessageSendBtn.dataset.kind;
+        var proposalId = logoMessageSendBtn.dataset.proposalId;
+        var row = {sender_id: currentUser.id, message: text, kind: kind};
+        row[kind === 'team' ? 'team_logo_proposal_id' : 'competition_logo_proposal_id'] = proposalId;
+        var res = await supabaseClient.from('logo_messages').insert(row);
+        if(res.error){
+          logoMessageSendBtn.disabled = false;
+          alert('Error: ' + res.error.message);
+          return;
+        }
+        input.value = '';
+        var thread = document.getElementById('logo-messages-thread');
+        if(thread) thread.innerHTML = await logoMessagesThreadHtml(kind, proposalId);
+        logoMessageSendBtn.disabled = false;
       });
     }
 
@@ -5285,7 +5383,7 @@
       // straight to the most recent one with something new, since
       // there's rarely more than one or two at a time.
       var msgLink = unreadMsgCount
-        ? '<a href="#/jersey/'+unreadMsgJerseyId+'" style="text-decoration:underline;color:var(--danger);font-weight:700;">&#9993; '+unreadMsgCount+'</a>'
+        ? '<a href="'+unreadMsgLink+'" style="text-decoration:underline;color:var(--danger);font-weight:700;">&#9993; '+unreadMsgCount+'</a>'
         : '';
       el.innerHTML =
         '<div class="auth-status">'+modLink+msgLink+'<span><a class="spec-link" href="#/user/'+encodeURIComponent(username)+'">'+esc(username)+'</a> '+pointsChip(points)+'</span>' +
@@ -5360,7 +5458,7 @@
   async function refreshAuthUI(){
     await syncCurrentUser();
     pendingCount = 0;
-    unreadMsgCount = 0; unreadMsgJerseyId = null;
+    unreadMsgCount = 0; unreadMsgLink = null;
     if(currentUser){
       var profRes = await supabaseClient.from('profiles').select('*').eq('id', currentUser.id).maybeSingle();
       currentProfile = profRes.data || null;
@@ -5378,13 +5476,24 @@
         pendingCount = results.reduce(function(sum, r){ return sum + (r && !r.error ? (r.count || 0) : 0); }, 0);
       }
       // Any signed-in user (not just admins) can have a reply waiting -
-      // either side of a jersey_messages thread. Wrapped since the view
-      // may not exist yet on an install that hasn't run
-      // jersey_message_unread.sql.
-      var unreadRes = await safeCount(supabaseClient.from('my_unread_jersey_messages').select('jersey_id, latest_at').order('latest_at', {ascending:false}));
-      if(unreadRes && !unreadRes.error && unreadRes.data){
-        unreadMsgCount = unreadRes.data.length;
-        unreadMsgJerseyId = unreadRes.data.length ? unreadRes.data[0].jersey_id : null;
+      // either side of a jersey_messages or logo_messages thread.
+      // Wrapped since either view may not exist yet on an install that
+      // hasn't run the matching migration. Combined into one badge/
+      // count - whichever thread has the most recent reply wins the
+      // link, since there's rarely more than one or two unread at once.
+      var unreadResults = await Promise.all([
+        safeCount(supabaseClient.from('my_unread_jersey_messages').select('jersey_id, latest_at').order('latest_at', {ascending:false})),
+        safeCount(supabaseClient.from('my_unread_logo_messages').select('kind, proposal_id, latest_at').order('latest_at', {ascending:false}))
+      ]);
+      var unreadJerseyRes = unreadResults[0], unreadLogoRes = unreadResults[1];
+      var unreadJerseyRows = (unreadJerseyRes && !unreadJerseyRes.error) ? unreadJerseyRes.data || [] : [];
+      var unreadLogoRows = (unreadLogoRes && !unreadLogoRes.error) ? unreadLogoRes.data || [] : [];
+      unreadMsgCount = unreadJerseyRows.length + unreadLogoRows.length;
+      var newestJersey = unreadJerseyRows[0], newestLogo = unreadLogoRows[0];
+      if(newestJersey && (!newestLogo || new Date(newestJersey.latest_at) >= new Date(newestLogo.latest_at))){
+        unreadMsgLink = '#/jersey/'+newestJersey.jersey_id;
+      } else if(newestLogo){
+        unreadMsgLink = '#/logo-proposal/'+newestLogo.kind+'/'+newestLogo.proposal_id;
       }
     } else {
       currentProfile = null;
