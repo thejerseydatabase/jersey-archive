@@ -79,7 +79,7 @@
   var CURATED_TYPES_BASE = ['Home','Away','Third','Alternate','Heritage'];
   var CURATED_TYPES = CURATED_TYPES_BASE.concat(['Training']); // pre-mount placeholder only, see viewUpload
   var EXTRA_TYPES_BY_SPORT = {
-    'rugby-league': ['Indigenous','ANZAC'],
+    'rugby-league': ['Indigenous','ANZAC','Nines'],
     'rugby-union': ['Indigenous','ANZAC'],
     afl: ['Indigenous','ANZAC'],
     netball: ['Indigenous'],
@@ -590,6 +590,31 @@
         : '<div class="jersey-message-form"><textarea id="logo-message-input" rows="2" placeholder="'+(isAdmin ? 'Ask the proposer something, e.g. ‘Can you find a higher-res version?’' : 'Reply to the moderator…')+'"></textarea><button class="btn btn-secondary" id="logo-message-send" type="button" data-kind="'+kind+'" data-proposal-id="'+id+'">Send</button></div>') +
     '</div>';
 
+    // Lets a moderator handle the whole "this logo's wrong, let's sort
+    // it out" conversation in one place rather than bouncing back to
+    // Moderate for the actual approve/reject - swap in a better photo
+    // (same new-path-then-repoint approach as the crop tool, since
+    // upload(..., {upsert:true}) onto an existing path doesn't work on
+    // this project), then approve or reject right here, reusing the
+    // exact same setLogo/addLogoToHistory calls Moderate's own
+    // approve button uses.
+    var refId = kind === 'team' ? p.team_id : p.competition_slug;
+    var makeCurrentId = 'lp-make-current';
+    var willReplace = p.make_current !== false;
+    var adminActionsHtml = (isAdmin && (!p.status || p.status === 'pending'))
+      ? '<div class="jersey-messages-block" style="margin-top:18px;">' +
+          '<label class="rate-label">Moderator actions</label>' +
+          '<div class="field" style="margin-top:10px;"><label for="lp-replace-input">Replace this photo <small>upload a better quality image before approving &mdash; the old one is removed once this is saved</small></label>' +
+            '<input type="file" id="lp-replace-input" accept="image/*"></div>' +
+          '<p class="field-hint" id="lp-replace-status" hidden></p>' +
+          '<label class="field-hint" style="display:block;margin-top:10px;cursor:pointer;"><input type="checkbox" id="'+makeCurrentId+'" '+(willReplace ? 'checked' : '')+' style="vertical-align:middle;margin-right:6px;">Make this the current logo</label>' +
+          '<div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">' +
+            '<button class="btn" id="lp-approve-btn" type="button" data-kind="'+kind+'" data-id="'+id+'" data-ref-id="'+esc(refId)+'" data-path="'+esc(p.storage_path)+'" data-years="'+esc(p.years_used || '')+'" data-note="'+esc(p.note || '')+'" data-proposed-by="'+esc(p.proposed_by || '')+'" data-make-current-id="'+makeCurrentId+'">Approve</button>' +
+            '<button class="btn btn-reject" id="lp-reject-btn" type="button" data-kind="'+kind+'" data-id="'+id+'" data-path="'+esc(p.storage_path)+'">Reject</button>' +
+          '</div>' +
+        '</div>'
+      : '';
+
     return statusHtml +
       '<div class="jersey-thumb" style="max-width:220px;"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(p.storage_path))+'" alt="" loading="lazy"></div>' +
       '<div class="spec-list" style="margin-top:18px;">' +
@@ -597,6 +622,7 @@
         (p.years_used ? '<div class="spec-item"><span>Years used</span><div class="spec-value-row"><strong>'+esc(p.years_used)+'</strong></div></div>' : '') +
         (p.note ? '<div class="spec-item"><span>Note</span><div class="spec-value-row"><strong>'+esc(p.note)+'</strong></div></div>' : '') +
       '</div>' +
+      adminActionsHtml +
       messagesHtml;
   }
 
@@ -3390,6 +3416,82 @@
         var thread = document.getElementById('logo-messages-thread');
         if(thread) thread.innerHTML = await logoMessagesThreadHtml(kind, proposalId);
         logoMessageSendBtn.disabled = false;
+      });
+    }
+
+    var lpReplaceInput = document.getElementById('lp-replace-input');
+    if(lpReplaceInput){
+      lpReplaceInput.addEventListener('change', async function(){
+        var file = lpReplaceInput.files[0];
+        lpReplaceInput.value = '';
+        if(!file || !/^image\//.test(file.type)) return;
+        var statusEl = document.getElementById('lp-replace-status');
+        var approveBtn = document.getElementById('lp-approve-btn');
+        var oldPath = approveBtn.dataset.path;
+        var proposalKind = approveBtn.dataset.kind, proposalId = approveBtn.dataset.id;
+        statusEl.hidden = false; statusEl.textContent = 'Uploading…';
+        lpReplaceInput.disabled = true;
+        try {
+          var compressed = await compressImageForUpload(file, LOGO_WEBP_QUALITY);
+          var ext = (compressed.name.split('.').pop() || 'png').toLowerCase();
+          var newPath = oldPath.replace(/\/[^/]+$/, '') + '/logo-' + Date.now() + '.' + ext;
+          var up = await supabaseClient.storage.from('team-logos').upload(newPath, compressed);
+          if(up.error) throw up.error;
+          var table = proposalKind === 'team' ? 'team_logo_proposals' : 'competition_logo_proposals';
+          var upd = await supabaseClient.from(table).update({storage_path: newPath}).eq('id', proposalId);
+          if(upd.error) throw upd.error;
+          await supabaseClient.storage.from('team-logos').remove([oldPath]); // best-effort cleanup of the old file
+          render();
+        } catch(err){
+          statusEl.textContent = 'Error: ' + (err.message || err);
+          lpReplaceInput.disabled = false;
+        }
+      });
+    }
+
+    var lpApproveBtn = document.getElementById('lp-approve-btn');
+    if(lpApproveBtn){
+      lpApproveBtn.addEventListener('click', async function(){
+        var lpRejectBtn = document.getElementById('lp-reject-btn');
+        lpApproveBtn.disabled = true; if(lpRejectBtn) lpRejectBtn.disabled = true;
+        try {
+          var logoKind = lpApproveBtn.dataset.kind;
+          var proposalTable = logoKind === 'team' ? 'team_logo_proposals' : 'competition_logo_proposals';
+          var makeCurrentCb = document.getElementById(lpApproveBtn.dataset.makeCurrentId);
+          var willMakeCurrent = !makeCurrentCb || makeCurrentCb.checked;
+          if(!willMakeCurrent) await addLogoToHistory(logoKind, lpApproveBtn.dataset.refId, lpApproveBtn.dataset.path, lpApproveBtn.dataset.years || null, lpApproveBtn.dataset.proposedBy || null, lpApproveBtn.dataset.note || null, lpApproveBtn.dataset.id);
+          else await setLogo(logoKind, lpApproveBtn.dataset.refId, lpApproveBtn.dataset.path, lpApproveBtn.dataset.years || null, lpApproveBtn.dataset.proposedBy || null, lpApproveBtn.dataset.note || null, lpApproveBtn.dataset.id);
+          var approveRes = await supabaseClient.from(proposalTable).update({status:'approved'}).eq('id', lpApproveBtn.dataset.id);
+          if(approveRes.error) throw approveRes.error;
+          await refreshAuthUI();
+          render();
+        } catch(err){
+          alert('Error: ' + (err.message || err));
+          lpApproveBtn.disabled = false; if(lpRejectBtn) lpRejectBtn.disabled = false;
+        }
+      });
+    }
+
+    var lpRejectBtn = document.getElementById('lp-reject-btn');
+    if(lpRejectBtn){
+      lpRejectBtn.addEventListener('click', async function(){
+        if(!confirm('Reject this logo proposal?')) return;
+        var lpApproveBtnEl = document.getElementById('lp-approve-btn');
+        lpRejectBtn.disabled = true; if(lpApproveBtnEl) lpApproveBtnEl.disabled = true;
+        try {
+          var logoKind = lpRejectBtn.dataset.kind;
+          var proposalTable = logoKind === 'team' ? 'team_logo_proposals' : 'competition_logo_proposals';
+          if(lpRejectBtn.dataset.path){
+            var rm = await supabaseClient.storage.from('team-logos').remove([lpRejectBtn.dataset.path]);
+            if(rm.error) throw rm.error;
+          }
+          var delRes = await supabaseClient.from(proposalTable).delete().eq('id', lpRejectBtn.dataset.id);
+          if(delRes.error) throw delRes.error;
+          render();
+        } catch(err){
+          alert('Error: ' + (err.message || err));
+          lpRejectBtn.disabled = false; if(lpApproveBtnEl) lpApproveBtnEl.disabled = false;
+        }
       });
     }
 
