@@ -772,7 +772,7 @@
     // grid can see every status, so without it "Recently added" would
     // mix in their own pending/rejected submissions right alongside
     // actually-approved ones.
-    var jq = supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*), jersey_competitions(competitions(name))').eq('status', 'approved').order('created_at', {ascending:false}).limit(RECENT_LIMIT);
+    var jq = supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*), jersey_competitions(competitions(name))').eq('status', 'approved').order('approved_at', {ascending:false}).limit(RECENT_LIMIT);
     // Every logo that's actually been added, not just whichever one is
     // currently live - a history-only add (e.g. a backdated logo) is
     // still something that just happened and belongs in "recently added".
@@ -781,7 +781,7 @@
     if(compSlugs){ jq = jq.in('teams.competition_slug', compSlugs); lq = lq.in('teams.competition_slug', compSlugs); cq = cq.in('competition_slug', compSlugs); }
     var results = await Promise.all([jq, lq, cq]);
     var jRes = results[0], lRes = results[1], cRes = results[2];
-    var items = (jRes.data || []).map(function(j){ return {ts: j.created_at, html: jerseyCard(j, j.teams, {showTeam:true})}; })
+    var items = (jRes.data || []).map(function(j){ return {ts: j.approved_at, html: jerseyCard(j, j.teams, {showTeam:true})}; })
       .concat((lRes.data || []).map(function(l){ return {ts: l.approved_at, html: logoCard(l, l.teams)}; }))
       .concat((cRes.data || []).map(function(l){ return {ts: l.approved_at, html: compLogoCard(l, l.competitions)}; }));
     items.sort(function(a,b){ return new Date(b.ts) - new Date(a.ts); });
@@ -881,7 +881,7 @@
       ? [{label:'Home', href:'#/'},{label:sport.name, href:'#/sport/'+sportSlug},{label:'Latest Updates', href:'#'}]
       : [{label:'Home', href:'#/'},{label:'Latest Updates', href:'#'}]);
     var LIMIT = 60;
-    var jq = supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*), jersey_competitions(competitions(name))').order('created_at', {ascending:false}).limit(LIMIT);
+    var jq = supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*), jersey_competitions(competitions(name))').eq('status', 'approved').order('approved_at', {ascending:false}).limit(LIMIT);
     var lq = supabaseClient.from('team_logos').select('*, teams!inner(*, competitions!inner(sport_slug))').order('approved_at', {ascending:false}).limit(LIMIT);
     var cq = supabaseClient.from('competition_logos').select('*, competitions!inner(*)').order('approved_at', {ascending:false}).limit(LIMIT);
     if(compSlugs){
@@ -891,7 +891,7 @@
     }
     var results = compSlugs && !compSlugs.length ? [{data:[]}, {data:[]}, {data:[]}] : await Promise.all([jq, lq, cq]);
     var jRes = results[0], lRes = results[1], cRes = results[2];
-    var items = (jRes.data || []).map(function(j){ return {ts: j.created_at, html: jerseyCard(j, j.teams, {showTeam:true, ts:j.created_at})}; })
+    var items = (jRes.data || []).map(function(j){ return {ts: j.approved_at, html: jerseyCard(j, j.teams, {showTeam:true, ts:j.approved_at})}; })
       .concat((lRes.data || []).map(function(l){ return {ts: l.approved_at, html: logoCard(l, l.teams, {ts:l.approved_at})}; }))
       .concat((cRes.data || []).map(function(l){ return {ts: l.approved_at, html: compLogoCard(l, l.competitions, {ts:l.approved_at})}; }));
     items.sort(function(a,b){ return new Date(b.ts) - new Date(a.ts); });
