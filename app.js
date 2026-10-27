@@ -2062,7 +2062,8 @@
     var thisYear = new Date().getFullYear();
 
     return '<div class="section-head"><h2>Upload a jersey</h2></div>' +
-      '<p style="font-family:\'Courier Prime\',monospace;font-size:11.5px;color:var(--text-dim2);margin:-10px 0 22px;">* required &mdash; and at least one photo</p>' +
+      '<p style="font-family:\'Courier Prime\',monospace;font-size:11.5px;color:var(--text-dim2);margin:-10px 0 10px;">* required &mdash; and at least one photo</p>' +
+      '<p class="field-hint" style="margin:0 0 22px;">Please use a good quality image &mdash; a clear, full-size photo, not a small thumbnail or a screenshot of one. Blurry or low-resolution photos may be rejected.</p>' +
       '<form id="upload-form" novalidate>' +
         '<div class="upload-grid">' +
           '<div class="field"><label for="f-sport">Sport *</label><select id="f-sport" required>'+sportOptions+'</select></div>' +
@@ -3640,7 +3641,8 @@
   }
 
   function renderProposeLogoPanel(){
-    return '<div class="dropzone" id="pl-dropzone" tabindex="0" role="button" aria-label="Add a logo">' +
+    return '<p class="field-hint" style="margin:0 0 12px;">Please use a good quality image &mdash; a clear, full-size logo, not a small thumbnail or favicon. Low-resolution logos may be rejected.</p>' +
+      '<div class="dropzone" id="pl-dropzone" tabindex="0" role="button" aria-label="Add a logo">' +
         ICON_PHOTO +
         '<p>Drop a logo image here, or click to choose</p>' +
         '<input type="file" id="pl-logo-input" accept="image/*" style="display:none;">' +
@@ -3652,8 +3654,19 @@
       // one-off (an anniversary logo, say) that's going to get swapped
       // back later, this is also the easiest place to leave a note of
       // that for whoever approves it.
-      '<div class="field" style="margin-top:14px;"><label for="pl-years-used">Years used <small>optional &mdash; e.g. 1990&ndash;1999, or just 2026 for a one-off</small></label>' +
-        '<input type="text" id="pl-years-used" placeholder="e.g. 2026, or 1990-1999"></div>' +
+      // Two plain year numbers rather than one free-text field - typed
+      // years_used has come through as "2016-2025", "2016-25" and just
+      // "2016" for the same kind of range, with no way to tell which a
+      // given entry meant without reading it carefully. Built back into
+      // one consistent "YYYY-YYYY" (or just "YYYY" for a single year)
+      // string in wireProposeLogoPanel, so stored data stays one shape
+      // regardless of what the form looked like to fill in.
+      '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:14px;">' +
+        '<div class="field" style="flex:1;min-width:120px;"><label for="pl-year-first">First used <small>optional</small></label>' +
+          '<input type="number" id="pl-year-first" placeholder="e.g. 2016" min="1850" max="2100"></div>' +
+        '<div class="field" style="flex:1;min-width:160px;"><label for="pl-year-last">Last used <small>leave blank if only used for one year</small></label>' +
+          '<input type="number" id="pl-year-last" placeholder="e.g. 2025" min="1850" max="2100"></div>' +
+      '</div>' +
       '<div class="field" style="margin-top:14px;"><label for="pl-note">Special occasion <small>optional &mdash; e.g. &ldquo;90th Anniversary&rdquo;, worth flagging if this one looks different to the regular logo either side of it</small></label>' +
         '<input type="text" id="pl-note" placeholder="e.g. 90th Anniversary"></div>' +
       '<label style="display:block;margin-top:14px;text-transform:none;letter-spacing:normal;"><input type="checkbox" id="pl-make-current" style="width:auto;margin-right:8px;">Make this the current logo <small>only tick this if it&rsquo;s what the team/competition actually uses right now &mdash; leave it unticked for a past/historical logo, which just adds it to history without changing what&rsquo;s currently shown</small></label>' +
@@ -3707,7 +3720,12 @@
         var path = pathPrefix + '/logo-' + Date.now() + '.' + ext;
         var up = await supabaseClient.storage.from('team-logos').upload(path, picked.file);
         if(up.error) throw up.error;
-        var yearsUsed = document.getElementById('pl-years-used').value.trim() || null;
+        var firstUsed = document.getElementById('pl-year-first').value.trim();
+        var lastUsed = document.getElementById('pl-year-last').value.trim();
+        var yearsUsed = null;
+        if(firstUsed){
+          yearsUsed = (lastUsed && Number(lastUsed) > Number(firstUsed)) ? (firstUsed + '-' + lastUsed) : firstUsed;
+        }
         var note = document.getElementById('pl-note').value.trim() || null;
         var makeCurrent = document.getElementById('pl-make-current').checked;
         var proposalRow = {storage_path: path, proposed_by: currentUser.id, years_used: yearsUsed, note: note, make_current: makeCurrent};
