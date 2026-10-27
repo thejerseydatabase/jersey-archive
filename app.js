@@ -3857,7 +3857,7 @@
       '<div class="field" style="margin-top:14px;"><label for="pl-note">Special occasion <small>optional &mdash; e.g. &ldquo;90th Anniversary&rdquo;, worth flagging if this one looks different to the regular logo either side of it</small></label>' +
         '<input type="text" id="pl-note" placeholder="e.g. 90th Anniversary"></div>' +
       '<label style="display:block;margin-top:14px;text-transform:none;letter-spacing:normal;"><input type="checkbox" id="pl-make-current" style="width:auto;margin-right:8px;">Make this the current logo <small>only tick this if it&rsquo;s what the team/competition actually uses right now &mdash; leave it unticked for a past/historical logo, which just adds it to history without changing what&rsquo;s currently shown</small></label>' +
-      '<div style="margin-top:14px;"><button class="btn" id="pl-submit-btn" type="button" disabled>Submit for review</button></div>' +
+      '<div style="margin-top:14px;"><button class="btn" id="pl-submit-btn" type="button" disabled>'+((currentProfile && currentProfile.is_admin) ? 'Add logo' : 'Submit for review')+'</button></div>' +
       '<div id="pl-result"></div>';
   }
 
@@ -3896,11 +3896,18 @@
       if(e.dataTransfer && e.dataTransfer.files) setFile(e.dataTransfer.files[0]);
     });
 
+    // An admin skips the propose-then-approve-it-yourself round trip
+    // entirely - same reasoning as the jersey upload form's "immediate"
+    // add-photos path. Lets a moderator swap in a replacement for a
+    // low-res logo in one step, then delete the old entry from Logo
+    // History, instead of proposing it and switching to Moderate to
+    // approve their own submission.
+    var isAdmin = currentProfile && currentProfile.is_admin;
     submitBtn.addEventListener('click', async function(){
       var errorEl = document.getElementById('pl-logo-error');
       if(!picked){ errorEl.hidden = false; return; }
       errorEl.hidden = true;
-      submitBtn.disabled = true; submitBtn.textContent = 'Submitting…';
+      submitBtn.disabled = true; submitBtn.textContent = isAdmin ? 'Adding…' : 'Submitting…';
       try {
         await pickedCompression;
         var ext = (picked.file.name.split('.').pop() || 'png').toLowerCase();
@@ -3915,18 +3922,25 @@
         }
         var note = document.getElementById('pl-note').value.trim() || null;
         var makeCurrent = document.getElementById('pl-make-current').checked;
-        var proposalRow = {storage_path: path, proposed_by: currentUser.id, years_used: yearsUsed, note: note, make_current: makeCurrent};
-        proposalRow[refCol] = refId;
-        var ins = await supabaseClient.from(proposalTable).insert(proposalRow);
-        if(ins.error) throw ins.error;
-        document.getElementById('pl-result').innerHTML = '<p class="field-hint is-match" style="margin-top:10px;">Submitted for review — thanks!</p>';
+        if(isAdmin){
+          if(makeCurrent) await setLogo(kind, refId, path, yearsUsed, currentUser.id, note);
+          else await addLogoToHistory(kind, refId, path, yearsUsed, currentUser.id, note);
+          document.getElementById('pl-result').innerHTML = '<p class="field-hint is-match" style="margin-top:10px;">Added.</p>';
+        } else {
+          var proposalRow = {storage_path: path, proposed_by: currentUser.id, years_used: yearsUsed, note: note, make_current: makeCurrent};
+          proposalRow[refCol] = refId;
+          var ins = await supabaseClient.from(proposalTable).insert(proposalRow);
+          if(ins.error) throw ins.error;
+          document.getElementById('pl-result').innerHTML = '<p class="field-hint is-match" style="margin-top:10px;">Submitted for review — thanks!</p>';
+        }
         URL.revokeObjectURL(picked.url);
         picked = null;
         previewEl.innerHTML = '';
+        if(isAdmin) render();
       } catch(err) {
         document.getElementById('pl-result').innerHTML = errorBox(err);
       } finally {
-        submitBtn.disabled = false; submitBtn.textContent = 'Submit for review';
+        submitBtn.disabled = false; submitBtn.textContent = isAdmin ? 'Add logo' : 'Submit for review';
       }
     });
   }
