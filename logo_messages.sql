@@ -98,3 +98,12 @@ where lm.kind = 'competition' and lm.sender_id <> (select auth.uid())
     'epoch'::timestamptz
   )
 group by lm.competition_logo_proposal_id;
+
+-- Carries the proposal's own id through to the permanent history row on
+-- approval, same as proposed_by/note already do (logo_uploader_credit.sql,
+-- logo_occasion_note.sql) - without it there's no way back to
+-- #/logo-proposal/<kind>/<id> (and its Messages thread) once a logo's
+-- off the Moderate queue. Older history predates this and has none;
+-- the Logo History link just doesn't show for those.
+alter table team_logos add column if not exists proposal_id uuid references team_logo_proposals(id) on delete set null;
+alter table competition_logos add column if not exists proposal_id uuid references competition_logo_proposals(id) on delete set null;

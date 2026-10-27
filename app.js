@@ -2603,7 +2603,7 @@
       ? {history: 'team_logos', main: 'teams', refCol: 'team_id', idCol: 'id'}
       : {history: 'competition_logos', main: 'competitions', refCol: 'competition_slug', idCol: 'slug'};
   }
-  async function setLogo(kind, refId, path, yearsUsed, proposedBy, note){
+  async function setLogo(kind, refId, path, yearsUsed, proposedBy, note, proposalId){
     var t = logoTables(kind);
     // never overwrite history — the previous logo just stops being "current"
     var unmark = await supabaseClient.from(t.history).update({is_current:false}).eq(t.refCol, refId).eq('is_current', true);
@@ -2612,6 +2612,7 @@
     if(yearsUsed) histRow.years_used = yearsUsed;
     if(proposedBy) histRow.proposed_by = proposedBy;
     if(note) histRow.note = note;
+    if(proposalId) histRow.proposal_id = proposalId;
     histRow[t.refCol] = refId;
     var histIns = await supabaseClient.from(t.history).insert(histRow);
     if(histIns.error) throw histIns.error;
@@ -2621,12 +2622,13 @@
   // For a proposal submitted with "Make this the current logo" unticked -
   // a backdated/one-off logo (a past-years special edition, say) that
   // should sit in history without touching whatever's actually live now.
-  async function addLogoToHistory(kind, refId, path, yearsUsed, proposedBy, note){
+  async function addLogoToHistory(kind, refId, path, yearsUsed, proposedBy, note, proposalId){
     var t = logoTables(kind);
     var histRow = {storage_path: path, is_current: false};
     if(yearsUsed) histRow.years_used = yearsUsed;
     if(proposedBy) histRow.proposed_by = proposedBy;
     if(note) histRow.note = note;
+    if(proposalId) histRow.proposal_id = proposalId;
     histRow[t.refCol] = refId;
     var histIns = await supabaseClient.from(t.history).insert(histRow);
     if(histIns.error) throw histIns.error;
@@ -3625,8 +3627,14 @@
           var creditHtml = uploaderNamesById[r.proposed_by]
             ? '<span style="font-size:10.5px;color:var(--text-dim2);">by '+esc(uploaderNamesById[r.proposed_by])+'</span>'
             : '';
+          // Only set for a logo approved after logo_messages.sql's
+          // proposal_id column was added - older/manually-added history
+          // has no proposal to link back to, so no link shows for those.
+          var msgLinkHtml = (isAdmin && r.proposal_id)
+            ? ' <a class="spec-link" href="#/logo-proposal/'+kind+'/'+r.proposal_id+'" target="_blank" rel="noopener" style="font-size:10.5px;">View / message</a>'
+            : '';
           return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(r.storage_path))+'" alt="" loading="lazy">' +
-            '<div class="spec-value-row"><span>'+caption+'</span>'+editBtn+makeCurrentBtn+deleteBtn+'</div>' + noteHtml + creditHtml + '</div>';
+            '<div class="spec-value-row"><span>'+caption+'</span>'+editBtn+makeCurrentBtn+deleteBtn+'</div>' + noteHtml + creditHtml + msgLinkHtml + '</div>';
         }).join('') + '</div>'
       : '<div class="empty-note">No logo history yet.</div>';
     panel.querySelectorAll('.make-current-btn').forEach(function(btn){
@@ -4099,8 +4107,8 @@
             if(btn.dataset.action === 'approve'){
               var makeCurrentCb = document.getElementById(btn.dataset.makeCurrentId);
               var willMakeCurrent = !makeCurrentCb || makeCurrentCb.checked;
-              if(!willMakeCurrent) await addLogoToHistory(logoKind, logoRefId, btn.dataset.path, btn.dataset.years || null, btn.dataset.proposedBy || null, btn.dataset.note || null);
-              else await setLogo(logoKind, logoRefId, btn.dataset.path, btn.dataset.years || null, btn.dataset.proposedBy || null, btn.dataset.note || null);
+              if(!willMakeCurrent) await addLogoToHistory(logoKind, logoRefId, btn.dataset.path, btn.dataset.years || null, btn.dataset.proposedBy || null, btn.dataset.note || null, id);
+              else await setLogo(logoKind, logoRefId, btn.dataset.path, btn.dataset.years || null, btn.dataset.proposedBy || null, btn.dataset.note || null, id);
               // status update (not delete) so the award_logo_point trigger
               // fires and the proposer gets their point, same as a jersey.
               var logoApprove = await supabaseClient.from(logoProposalTable).update({status:'approved'}).eq('id', id);
