@@ -5540,7 +5540,13 @@
   // current page (photos already picked for an upload, an open
   // edit/reject panel) — only worth the risk on pages that would
   // otherwise be stuck showing the wrong thing.
-  var REAUTH_RERENDER_ROUTES = ['upload', 'moderate'];
+  // 'logo-proposal' hard-blocks with "Not authorized" the same way
+  // 'moderate' does if currentProfile hasn't loaded yet - same bug,
+  // just missed when that route was added. 'jersey' is softer (it's
+  // publicly viewable regardless of auth, just loses its admin-only
+  // sections silently until auth settles) but included for the same
+  // reason - no reason an admin's own page should flicker.
+  var REAUTH_RERENDER_ROUTES = ['upload', 'moderate', 'logo-proposal', 'jersey'];
   supabaseClient.auth.onAuthStateChange(async function(event){
     // Awaited deliberately: syncCurrentUser's own getSession() call always
     // defers at least one microtask even when the answer's already known -
