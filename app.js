@@ -3088,12 +3088,12 @@
     // (it's omitted from the DOM entirely when empty); Moderators is
     // owner-only, same gating as the panel itself.
     var modAnchorNavHtml = '<div class="anchor-nav">' +
-        '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-jerseys">New jerseys</button>' +
-        '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-photos">Proposed photos</button>' +
-        '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-team-logos">Team logos</button>' +
-        '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-comp-logos">Competition logos</button>' +
-        '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-reports">Reports</button>' +
-        (rejectedJerseys.length ? '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-rejected">Rejected jerseys</button>' : '') +
+        '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-jerseys">New jerseys ('+pendingJerseys.length+')</button>' +
+        '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-photos">Proposed photos ('+pendingPhotos.length+')</button>' +
+        '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-team-logos">Team logos ('+pendingLogos.length+')</button>' +
+        '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-comp-logos">Competition logos ('+pendingCompLogos.length+')</button>' +
+        '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-reports">Reports ('+openReports.length+')</button>' +
+        (rejectedJerseys.length ? '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-rejected">Rejected jerseys ('+rejectedJerseys.length+')</button>' : '') +
         '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-users">Users</button>' +
         (currentProfile.is_owner ? '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-moderators">Moderators</button>' : '') +
       '</div>';
