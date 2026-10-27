@@ -276,6 +276,27 @@
     return /-/.test(str) ? base + 0.5 : base;
   }
 
+  // The propose-logo form always builds years_used as "YYYY-YYYY" (see
+  // wireProposeLogoPanel), but the free-text pencil-edit on Logo History
+  // takes anything typed - "1978-90" (a shortened end year) crept back
+  // in that way and now reads inconsistently next to properly-built
+  // entries like "2014-2018". Expands a short two-digit end year back
+  // to four digits using the start year's century (rolling over to the
+  // next century if the short year is earlier than the start year's own
+  // last two digits, e.g. "1999-02" -> "1999-2002"); anything else
+  // (already four digits, a single year, free text) passes through
+  // unchanged.
+  function normalizeYearsUsed(str){
+    if(!str) return str;
+    var trimmed = str.trim();
+    var m = trimmed.match(/^(\d{4})-(\d{1,2})$/);
+    if(!m) return trimmed;
+    var startYear = Number(m[1]);
+    var endYear = Math.floor(startYear / 100) * 100 + Number(m[2]);
+    if(endYear < startYear) endYear += 100;
+    return startYear + '-' + endYear;
+  }
+
   // Canonical jersey-type ordering, per sport (and for the NBA, per era —
   // Association/Icon/Statement/Classic/City only from 2017-18 on; earlier
   // seasons still used Home/Away/Alternate/Heritage). Each entry is a
@@ -3790,7 +3811,7 @@
       ? '<div class="logo-history-grid lightbox-group">' + rows.map(function(r){
           var caption = r.years_used ? esc(r.years_used) : (r.is_current ? 'Current' : 'Added '+fmtDate(r.approved_at));
           var noteHtml = r.note ? '<span style="display:block;color:var(--accent);font-weight:600;">'+esc(r.note)+'</span>' : '';
-          var editBtn = isAdmin ? ' <button class="edit-pencil-btn" type="button" data-logo-id="'+r.id+'" data-current="'+esc(r.years_used || '')+'">'+ICON_PENCIL+'</button>' : '';
+          var editBtn = isAdmin ? ' <button class="edit-pencil-btn" type="button" data-logo-id="'+r.id+'" data-current="'+esc(r.years_used || '')+'" data-note="'+esc(r.note || '')+'">'+ICON_PENCIL+'</button>' : '';
           // Lets an admin swap back to an older logo (e.g. a one-off
           // anniversary logo this year, back to the regular one next
           // year) without re-uploading the same image file again - the
@@ -3801,7 +3822,7 @@
           // left pointing at a storage_path that no longer exists.
           var deleteBtn = (isAdmin && !r.is_current) ? ' <button class="btn btn-reject delete-logo-btn" type="button" data-logo-id="'+r.id+'" data-path="'+esc(r.storage_path)+'" style="padding:2px 8px;font-size:12px;">Delete</button>' : '';
           var creditHtml = uploaderNamesById[r.proposed_by]
-            ? '<span style="font-size:10.5px;color:var(--text-dim2);">by '+esc(uploaderNamesById[r.proposed_by])+'</span>'
+            ? '<span style="font-size:10.5px;color:var(--text-dim);">by '+esc(uploaderNamesById[r.proposed_by])+'</span>'
             : '';
           // Only set for a logo approved after logo_messages.sql's
           // proposal_id column was added - older/manually-added history
@@ -3849,16 +3870,19 @@
         // editing gives the input and both buttons room to actually show.
         var card = btn.closest('.logo-history-item');
         if(card) card.classList.add('is-editing');
-        row.innerHTML = '<input type="text" class="inline-edit-input" value="'+esc(btn.dataset.current)+'" placeholder="e.g. 1990–1999">' +
+        row.innerHTML = '<input type="text" class="inline-edit-input" data-field="years" value="'+esc(btn.dataset.current)+'" placeholder="e.g. 1990-1999" style="display:block;margin-bottom:4px;">' +
+          '<input type="text" class="inline-edit-input" data-field="note" value="'+esc(btn.dataset.note)+'" placeholder="Note, e.g. 90th Anniversary" style="display:block;margin-bottom:4px;">' +
           '<button class="inline-save-btn" type="button">Save</button>' +
           '<button class="inline-cancel-btn" type="button">Cancel</button>';
-        var input = row.querySelector('.inline-edit-input');
-        input.focus();
-        if(input.select) input.select();
+        var yearsInput = row.querySelector('[data-field="years"]');
+        var noteInput = row.querySelector('[data-field="note"]');
+        yearsInput.focus();
+        if(yearsInput.select) yearsInput.select();
         row.querySelector('.inline-cancel-btn').addEventListener('click', function(){ refreshLogoHistoryPanel(kind, refId); });
         row.querySelector('.inline-save-btn').addEventListener('click', async function(){
-          var newVal = input.value.trim();
-          var upd = await supabaseClient.from(t.history).update({years_used: newVal || null}).eq('id', btn.dataset.logoId);
+          var newYears = normalizeYearsUsed(yearsInput.value.trim());
+          var newNote = noteInput.value.trim();
+          var upd = await supabaseClient.from(t.history).update({years_used: newYears || null, note: newNote || null}).eq('id', btn.dataset.logoId);
           if(upd.error){ alert('Error: ' + upd.error.message); return; }
           refreshLogoHistoryPanel(kind, refId);
         });
