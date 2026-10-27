@@ -647,7 +647,9 @@
             '<div class="field" style="flex:1;min-width:160px;"><label for="lp-year-last">Last used <small>leave blank if only used for one year</small></label>' +
               '<input type="number" id="lp-year-last" value="'+esc(yearLast)+'" placeholder="e.g. 2025" min="1850" max="2100"></div>' +
           '</div>' +
-          '<div style="margin-top:8px;"><button class="btn btn-secondary" id="lp-years-save-btn" type="button" data-kind="'+kind+'" data-id="'+id+'">Save years</button> <span class="field-hint" id="lp-years-status" hidden></span></div>' +
+          '<div class="field" style="margin-top:10px;"><label for="lp-note-input">Special occasion <small>optional &mdash; e.g. &ldquo;60th Anniversary&rdquo;</small></label>' +
+            '<input type="text" id="lp-note-input" value="'+esc(p.note || '')+'" placeholder="e.g. 60th Anniversary"></div>' +
+          '<div style="margin-top:8px;"><button class="btn btn-secondary" id="lp-years-save-btn" type="button" data-kind="'+kind+'" data-id="'+id+'">Save years &amp; note</button> <span class="field-hint" id="lp-years-status" hidden></span></div>' +
           '<label class="field-hint" style="display:block;margin-top:14px;cursor:pointer;"><input type="checkbox" id="'+makeCurrentId+'" '+(willReplace ? 'checked' : '')+' style="vertical-align:middle;margin-right:6px;">Make this the current logo</label>' +
           '<div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">' +
             '<button class="btn" id="lp-approve-btn" type="button" data-kind="'+kind+'" data-id="'+id+'" data-ref-id="'+esc(refId)+'" data-path="'+esc(p.storage_path)+'" data-years="'+esc(p.years_used || '')+'" data-note="'+esc(p.note || '')+'" data-proposed-by="'+esc(p.proposed_by || '')+'" data-make-current-id="'+makeCurrentId+'">Approve</button>' +
@@ -3530,11 +3532,12 @@
         var firstUsed = document.getElementById('lp-year-first').value.trim();
         var lastUsed = document.getElementById('lp-year-last').value.trim();
         var yearsUsed = firstUsed ? ((lastUsed && Number(lastUsed) > Number(firstUsed)) ? (firstUsed + '-' + lastUsed) : firstUsed) : null;
+        var note = document.getElementById('lp-note-input').value.trim() || null;
         lpYearsSaveBtn.disabled = true;
         statusEl.hidden = false; statusEl.textContent = 'Saving…';
         try {
           var table = lpYearsSaveBtn.dataset.kind === 'team' ? 'team_logo_proposals' : 'competition_logo_proposals';
-          var upd = await supabaseClient.from(table).update({years_used: yearsUsed}).eq('id', lpYearsSaveBtn.dataset.id);
+          var upd = await supabaseClient.from(table).update({years_used: yearsUsed, note: note}).eq('id', lpYearsSaveBtn.dataset.id);
           if(upd.error) throw upd.error;
           render();
         } catch(err){
