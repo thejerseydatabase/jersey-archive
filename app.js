@@ -1245,6 +1245,25 @@
       }
     }
 
+    // A moderator-only courtesy credit for a contribution that doesn't
+    // fit uploaded_by/proposed_by - e.g. merging a duplicate
+    // submission's extra photo into this jersey, where the photo row
+    // itself ends up attributed to whichever admin re-uploaded it, not
+    // whoever actually found it. Public once added - shown right next
+    // to "uploaded by", same as any other credit on the site.
+    var acRes = await supabaseClient.from('jersey_additional_credits').select('*').eq('jersey_id', id).order('created_at');
+    var additionalCredits = acRes.error ? [] : (acRes.data || []);
+    var acUserIds = additionalCredits.map(function(c){ return c.user_id; });
+    var acUsernames = {};
+    if(acUserIds.length){
+      var acProfRes = await supabaseClient.from('profiles').select('id, username').in('id', acUserIds);
+      (acProfRes.data || []).forEach(function(p){ acUsernames[p.id] = p.username; });
+    }
+    var additionalCreditsHtml = additionalCredits.map(function(c){
+      var uname = acUsernames[c.user_id] || 'unknown';
+      return '<span>also credited: <a class="spec-link" href="#/user/'+encodeURIComponent(uname)+'">'+esc(uname)+'</a>'+(c.note ? ' &mdash; '+esc(c.note) : '')+'</span>';
+    }).join('');
+
     var pendingBanner = j.status === 'rejected'
       ? '<div class="pending-banner">This submission was rejected &mdash; only you and moderators can see it.' + (j.rejection_reason ? '<br><strong>Reason:</strong> '+esc(j.rejection_reason) : ' No reason was given.') + '</div>'
       : (j.status && j.status !== 'approved'
@@ -1322,7 +1341,7 @@
         '</div>' +
         notesHtml +
         creditHtml +
-        '<div class="stat-row"><span>logged '+fmtDate(j.created_at)+'</span>'+uploaderHtml+'</div>' +
+        '<div class="stat-row"><span>logged '+fmtDate(j.created_at)+'</span>'+uploaderHtml+additionalCreditsHtml+'</div>' +
         '<div class="rate-block"><span class="rate-label">Rate this jersey</span><div id="rating-widget" data-jersey-id="'+j.id+'">'+ratingWidgetHtml(rating, myRatingVal)+'</div></div>' +
         (j.status === 'approved' ? (
           '<div class="collection-block">' +
@@ -1351,7 +1370,7 @@
         ) : '') +
         renderReportButton('jersey', j.id, j.season+' '+team.name+' '+j.type) +
         messagesHtml +
-        (isAdmin ? renderJerseyAdminBlock(j, images, sport.slug) : '') +
+        (isAdmin ? renderJerseyAdminBlock(j, images, sport.slug, additionalCredits, acUsernames) : '') +
       '</div>' +
     '</div>';
   }
@@ -1540,7 +1559,7 @@
   // since that's always whichever is labeled "Front") and reassigns a
   // jersey to a different team/sport entirely, for the rare case one gets
   // approved under the wrong one and can't just be re-uploaded.
-  function renderJerseyAdminBlock(j, images, sportSlug){
+  function renderJerseyAdminBlock(j, images, sportSlug, additionalCredits, acUsernames){
     // Delete only shows once there's more than one photo, since a jersey
     // always needs at least one — that's the same condition already
     // gating whether this grid renders at all, so there's never a way
@@ -1561,6 +1580,20 @@
           '</div>';
         }).join('') + '</div>'
       : '';
+    // Lets an admin give someone public credit for a contribution that
+    // doesn't fit uploaded_by/proposed_by - e.g. merging a duplicate
+    // submission's extra photo in by re-uploading it as yourself, where
+    // the photo row ends up attributed to the admin, not whoever
+    // actually found it. The point award is a separate deliberate
+    // choice, not automatic - photo contributions have never earned
+    // points on their own regardless of how they're added.
+    var creditListHtml = (additionalCredits && additionalCredits.length)
+      ? additionalCredits.map(function(c){
+          var uname = (acUsernames && acUsernames[c.user_id]) || 'unknown';
+          return '<div class="spec-value-row" style="margin-top:6px;"><span>'+esc(uname)+(c.note ? ' &mdash; '+esc(c.note) : '')+'</span>' +
+            '<button type="button" class="btn btn-reject delete-credit-btn" data-credit-id="'+c.id+'" style="padding:2px 8px;font-size:12px;">Remove</button></div>';
+        }).join('')
+      : '';
     return '<div class="admin-settings-block">' +
         '<button class="chip" id="admin-settings-toggle" type="button">Admin: fix photos/team</button>' +
         '<div id="admin-settings-panel" hidden data-sport-slug="'+esc(sportSlug)+'">' +
@@ -1569,6 +1602,15 @@
           renderJerseyReassignControl('jersey-reassign', j.id) +
           '<label class="rate-label" style="margin-top:14px;">Also used in <small>one extra competition this same jersey was also worn in, e.g. a World Cup</small></label>' +
           '<select id="jersey-extra-comp"><option value="">Loading&hellip;</option></select>' +
+          '<label class="rate-label" style="margin-top:14px;">Additional credit <small>for a contribution that doesn&rsquo;t fit the uploader field, e.g. a photo you merged in yourself</small></label>' +
+          creditListHtml +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">' +
+            '<input type="text" id="jersey-credit-username" placeholder="Username" style="flex:1;min-width:110px;">' +
+            '<input type="text" id="jersey-credit-note" placeholder="Note, e.g. added back photo" style="flex:2;min-width:160px;">' +
+          '</div>' +
+          '<label class="field-hint" style="display:block;margin-top:8px;cursor:pointer;"><input type="checkbox" id="jersey-credit-point" style="vertical-align:middle;margin-right:6px;">Also award them a point</label>' +
+          '<button type="button" class="btn btn-secondary" id="jersey-credit-add-btn" data-jersey-id="'+j.id+'" style="margin-top:8px;">Add credit</button>' +
+          '<p class="field-hint" id="jersey-credit-msg" hidden></p>' +
         '</div>' +
       '</div>';
   }
@@ -3351,6 +3393,45 @@
           wireCropButtons(panel);
           wireJerseyReassignControl('jersey-reassign', panel.dataset.sportSlug, function(){ render(); });
           wireJerseyExtraCompsControl(parts[1], panel.dataset.sportSlug);
+          var creditAddBtn = document.getElementById('jersey-credit-add-btn');
+          if(creditAddBtn){
+            creditAddBtn.addEventListener('click', async function(){
+              var usernameInput = document.getElementById('jersey-credit-username');
+              var noteInput = document.getElementById('jersey-credit-note');
+              var pointCb = document.getElementById('jersey-credit-point');
+              var msg = document.getElementById('jersey-credit-msg');
+              var username = usernameInput.value.trim();
+              if(!username) return;
+              creditAddBtn.disabled = true;
+              msg.hidden = true;
+              try {
+                var profRes = await supabaseClient.from('profiles').select('id, points').eq('username', username).maybeSingle();
+                if(profRes.error) throw profRes.error;
+                if(!profRes.data) throw new Error('No user found with that username.');
+                var ins = await supabaseClient.from('jersey_additional_credits').insert({
+                  jersey_id: creditAddBtn.dataset.jerseyId, user_id: profRes.data.id, note: noteInput.value.trim() || null, added_by: currentUser.id
+                });
+                if(ins.error) throw ins.error;
+                if(pointCb.checked){
+                  var pUpd = await supabaseClient.from('profiles').update({points: (profRes.data.points || 0) + 1}).eq('id', profRes.data.id);
+                  if(pUpd.error) throw pUpd.error;
+                }
+                render();
+              } catch(err){
+                creditAddBtn.disabled = false;
+                msg.hidden = false; msg.className = 'field-error'; msg.textContent = 'Error: ' + (err.message || err);
+              }
+            });
+          }
+          panel.querySelectorAll('.delete-credit-btn').forEach(function(btn){
+            btn.addEventListener('click', async function(){
+              if(!confirm('Remove this credit?')) return;
+              btn.disabled = true;
+              var res = await supabaseClient.from('jersey_additional_credits').delete().eq('id', btn.dataset.creditId);
+              if(res.error){ btn.disabled = false; alert('Error: ' + res.error.message); return; }
+              render();
+            });
+          });
           return;
         }
         panel.hidden = !panel.hidden;
