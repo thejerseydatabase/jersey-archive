@@ -331,6 +331,20 @@
     return String(name).trim();
   }
 
+  // A real RFC4122 uuid (unlike getClientToken's fallback below, which
+  // only ever needs to be unique, not valid uuid syntax) - used so a
+  // jersey's id can be generated client-side before its row exists yet.
+  // crypto.randomUUID needs a secure context (https/localhost), which
+  // this site always is; the manual fallback covers a browser old
+  // enough to lack it.
+  function genUUID(){
+    if(crypto.randomUUID) return crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c){
+      var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+
   // A per-browser random id (not tied to identity) so anonymous report
   // submissions can still be rate-limited server-side without requiring
   // sign-in. Clearing site data resets it — that's an accepted gap for
@@ -2464,13 +2478,14 @@
       ? {history: 'team_logos', main: 'teams', refCol: 'team_id', idCol: 'id'}
       : {history: 'competition_logos', main: 'competitions', refCol: 'competition_slug', idCol: 'slug'};
   }
-  async function setLogo(kind, refId, path, yearsUsed){
+  async function setLogo(kind, refId, path, yearsUsed, proposedBy){
     var t = logoTables(kind);
     // never overwrite history — the previous logo just stops being "current"
     var unmark = await supabaseClient.from(t.history).update({is_current:false}).eq(t.refCol, refId).eq('is_current', true);
     if(unmark.error) throw unmark.error;
     var histRow = {storage_path: path, is_current: true};
     if(yearsUsed) histRow.years_used = yearsUsed;
+    if(proposedBy) histRow.proposed_by = proposedBy;
     histRow[t.refCol] = refId;
     var histIns = await supabaseClient.from(t.history).insert(histRow);
     if(histIns.error) throw histIns.error;
@@ -2480,10 +2495,11 @@
   // For a proposal submitted with "Make this the current logo" unticked -
   // a backdated/one-off logo (a past-years special edition, say) that
   // should sit in history without touching whatever's actually live now.
-  async function addLogoToHistory(kind, refId, path, yearsUsed){
+  async function addLogoToHistory(kind, refId, path, yearsUsed, proposedBy){
     var t = logoTables(kind);
     var histRow = {storage_path: path, is_current: false};
     if(yearsUsed) histRow.years_used = yearsUsed;
+    if(proposedBy) histRow.proposed_by = proposedBy;
     histRow[t.refCol] = refId;
     var histIns = await supabaseClient.from(t.history).insert(histRow);
     if(histIns.error) throw histIns.error;
@@ -2786,7 +2802,7 @@
         ? '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(toCdnUrl(supabaseClient.storage.from('report-attachments').getPublicUrl(r.attachment_path).data.publicUrl))+'" alt="" loading="lazy"></div>'
         : '';
       var useAsLogoBtn = (r.attachment_path && r.page_type === 'team')
-        ? '<button class="btn" data-type="report-logo" data-action="use" data-id="'+r.id+'" data-team-id="'+esc(r.page_ref)+'" data-path="'+esc(r.attachment_path)+'" type="button">Use as team logo</button>'
+        ? '<button class="btn" data-type="report-logo" data-action="use" data-id="'+r.id+'" data-team-id="'+esc(r.page_ref)+'" data-path="'+esc(r.attachment_path)+'" data-reported-by="'+esc(r.reported_by || '')+'" type="button">Use as team logo</button>'
         : '';
       return '<div class="mod-card">' + thumb +
         '<div class="mod-info">' +
@@ -2805,16 +2821,23 @@
     var logoCards = pendingLogos.map(function(l){
       var proposer = uploaderNames[l.proposed_by] || 'unknown';
       var willReplace = l.make_current !== false;
+      // Each proposal's own "make current" checkbox only reflects what
+      // that proposer picked, with no awareness of any other pending
+      // proposal for the same team - two can easily both say "will
+      // replace the current logo" at once. This lets the admin override
+      // it per-submission before approving, rather than only being able
+      // to control the end result via approval order.
+      var makeCurrentId = 'mod-make-current-logo-'+l.id;
       return '<div class="mod-card">' +
         '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(l.storage_path))+'" alt="" loading="lazy"></div>' +
         '<div class="mod-info">' +
           '<strong>Logo for '+(l.teams ? esc(l.teams.name) : 'a team')+'</strong>' +
           '<span>proposed by '+esc(proposer)+'</span>' +
           (l.years_used ? '<span>Years used: '+esc(l.years_used)+'</span>' : '') +
-          '<span>'+(willReplace ? 'Will replace the current logo' : 'History only &mdash; won’t change the current logo')+'</span>' +
+          '<label class="field-hint" style="display:block;cursor:pointer;"><input type="checkbox" id="'+makeCurrentId+'" '+(willReplace ? 'checked' : '')+' style="vertical-align:middle;margin-right:6px;">Make this the current logo</label>' +
         '</div>' +
         '<div class="mod-actions">' +
-          '<button class="btn" data-type="logo" data-action="approve" data-id="'+l.id+'" data-team-id="'+l.team_id+'" data-path="'+esc(l.storage_path)+'" data-years="'+esc(l.years_used || '')+'" data-make-current="'+willReplace+'" type="button">Approve</button>' +
+          '<button class="btn" data-type="logo" data-action="approve" data-id="'+l.id+'" data-team-id="'+l.team_id+'" data-path="'+esc(l.storage_path)+'" data-years="'+esc(l.years_used || '')+'" data-make-current-id="'+makeCurrentId+'" data-proposed-by="'+esc(l.proposed_by || '')+'" type="button">Approve</button>' +
           '<button class="btn btn-reject" data-type="logo" data-action="reject" data-id="'+l.id+'" data-path="'+esc(l.storage_path)+'" type="button">Reject</button>' +
         '</div>' +
       '</div>';
@@ -2823,16 +2846,17 @@
     var compLogoCards = pendingCompLogos.map(function(l){
       var proposer = uploaderNames[l.proposed_by] || 'unknown';
       var willReplace = l.make_current !== false;
+      var makeCurrentId = 'mod-make-current-complogo-'+l.id;
       return '<div class="mod-card">' +
         '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(l.storage_path))+'" alt="" loading="lazy"></div>' +
         '<div class="mod-info">' +
           '<strong>Logo for '+(l.competitions ? esc(l.competitions.name) : 'a competition')+'</strong>' +
           '<span>proposed by '+esc(proposer)+'</span>' +
           (l.years_used ? '<span>Years used: '+esc(l.years_used)+'</span>' : '') +
-          '<span>'+(willReplace ? 'Will replace the current logo' : 'History only &mdash; won’t change the current logo')+'</span>' +
+          '<label class="field-hint" style="display:block;cursor:pointer;"><input type="checkbox" id="'+makeCurrentId+'" '+(willReplace ? 'checked' : '')+' style="vertical-align:middle;margin-right:6px;">Make this the current logo</label>' +
         '</div>' +
         '<div class="mod-actions">' +
-          '<button class="btn" data-type="comp-logo" data-action="approve" data-id="'+l.id+'" data-comp-slug="'+esc(l.competition_slug)+'" data-path="'+esc(l.storage_path)+'" data-years="'+esc(l.years_used || '')+'" data-make-current="'+willReplace+'" type="button">Approve</button>' +
+          '<button class="btn" data-type="comp-logo" data-action="approve" data-id="'+l.id+'" data-comp-slug="'+esc(l.competition_slug)+'" data-path="'+esc(l.storage_path)+'" data-years="'+esc(l.years_used || '')+'" data-make-current-id="'+makeCurrentId+'" data-proposed-by="'+esc(l.proposed_by || '')+'" type="button">Approve</button>' +
           '<button class="btn btn-reject" data-type="comp-logo" data-action="reject" data-id="'+l.id+'" data-path="'+esc(l.storage_path)+'" type="button">Reject</button>' +
         '</div>' +
       '</div>';
@@ -3379,6 +3403,15 @@
       var diff = sortYear(b) - sortYear(a);
       return diff !== 0 ? diff : new Date(b.approved_at) - new Date(a.approved_at);
     });
+    // Only ever set for a logo approved after logo_uploader_credit.sql -
+    // older history rows genuinely have no record of who proposed them,
+    // so those just show no credit line rather than "by unknown".
+    var uploaderIds = rows.map(function(r){ return r.proposed_by; }).filter(Boolean);
+    var uploaderNamesById = {};
+    if(uploaderIds.length){
+      var upRes = await supabaseClient.from('profiles').select('id, username').in('id', uploaderIds);
+      (upRes.data || []).forEach(function(p){ uploaderNamesById[p.id] = p.username; });
+    }
     var isAdmin = currentProfile && currentProfile.is_admin;
     panel.innerHTML = rows.length
       ? '<div class="logo-history-grid lightbox-group">' + rows.map(function(r){
@@ -3393,8 +3426,11 @@
           // the live logo from here, so there's never a team/competition
           // left pointing at a storage_path that no longer exists.
           var deleteBtn = (isAdmin && !r.is_current) ? ' <button class="btn btn-reject delete-logo-btn" type="button" data-logo-id="'+r.id+'" data-path="'+esc(r.storage_path)+'" style="padding:2px 8px;font-size:12px;">Delete</button>' : '';
+          var creditHtml = uploaderNamesById[r.proposed_by]
+            ? '<span style="font-size:10.5px;color:var(--text-dim2);">by '+esc(uploaderNamesById[r.proposed_by])+'</span>'
+            : '';
           return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(r.storage_path))+'" alt="" loading="lazy">' +
-            '<div class="spec-value-row"><span>'+caption+'</span>'+editBtn+makeCurrentBtn+deleteBtn+'</div></div>';
+            '<div class="spec-value-row"><span>'+caption+'</span>'+editBtn+makeCurrentBtn+deleteBtn+'</div>' + creditHtml + '</div>';
         }).join('') + '</div>'
       : '<div class="empty-note">No logo history yet.</div>';
     panel.querySelectorAll('.make-current-btn').forEach(function(btn){
@@ -3602,7 +3638,7 @@
       // that for whoever approves it.
       '<div class="field" style="margin-top:14px;"><label for="pl-years-used">Years used <small>optional &mdash; e.g. 1990&ndash;1999, or just 2026 for a one-off</small></label>' +
         '<input type="text" id="pl-years-used" placeholder="e.g. 2026, or 1990-1999"></div>' +
-      '<label style="display:block;margin-top:14px;text-transform:none;letter-spacing:normal;"><input type="checkbox" id="pl-make-current" checked style="width:auto;margin-right:8px;">Make this the current logo <small>untick for a backdated or one-off logo that should just be added to history</small></label>' +
+      '<label style="display:block;margin-top:14px;text-transform:none;letter-spacing:normal;"><input type="checkbox" id="pl-make-current" style="width:auto;margin-right:8px;">Make this the current logo <small>only tick this if it&rsquo;s what the team/competition actually uses right now &mdash; leave it unticked for a past/historical logo, which just adds it to history without changing what&rsquo;s currently shown</small></label>' +
       '<div style="margin-top:14px;"><button class="btn" id="pl-submit-btn" type="button" disabled>Submit for review</button></div>' +
       '<div id="pl-result"></div>';
   }
@@ -3836,7 +3872,7 @@
             var newPath = teamId + '/logo-' + Date.now() + '.' + ext;
             var moveUp = await supabaseClient.storage.from('team-logos').upload(newPath, dl.data);
             if(moveUp.error) throw moveUp.error;
-            await setLogo('team', teamId, newPath);
+            await setLogo('team', teamId, newPath, null, btn.dataset.reportedBy || null);
             var repRes2 = await supabaseClient.from('reports').update({status:'resolved'}).eq('id', id);
             if(repRes2.error) throw repRes2.error;
             await supabaseClient.storage.from('report-attachments').remove([oldPath]);
@@ -3845,8 +3881,10 @@
             var logoProposalTable = type === 'logo' ? 'team_logo_proposals' : 'competition_logo_proposals';
             var logoRefId = type === 'logo' ? btn.dataset.teamId : btn.dataset.compSlug;
             if(btn.dataset.action === 'approve'){
-              if(btn.dataset.makeCurrent === 'false') await addLogoToHistory(logoKind, logoRefId, btn.dataset.path, btn.dataset.years || null);
-              else await setLogo(logoKind, logoRefId, btn.dataset.path, btn.dataset.years || null);
+              var makeCurrentCb = document.getElementById(btn.dataset.makeCurrentId);
+              var willMakeCurrent = !makeCurrentCb || makeCurrentCb.checked;
+              if(!willMakeCurrent) await addLogoToHistory(logoKind, logoRefId, btn.dataset.path, btn.dataset.years || null, btn.dataset.proposedBy || null);
+              else await setLogo(logoKind, logoRefId, btn.dataset.path, btn.dataset.years || null, btn.dataset.proposedBy || null);
               // status update (not delete) so the award_logo_point trigger
               // fires and the proposer gets their point, same as a jersey.
               var logoApprove = await supabaseClient.from(logoProposalTable).update({status:'approved'}).eq('id', id);
@@ -4823,8 +4861,39 @@
         var notes = document.getElementById('f-notes').value.trim() || null;
         var credit = document.getElementById('f-credit').value.trim() || null;
 
+        // Photos are uploaded to storage BEFORE the jerseys row exists at
+        // all (a client-generated id, same genUUID() used elsewhere,
+        // used as the storage folder up front) - the old order created
+        // the jersey row first and only rolled it back in a catch block
+        // if the photo step then failed, which can't help if the
+        // browser tab/connection dies mid-upload instead of throwing a
+        // catchable error (closing the tab, losing signal, etc.) -
+        // exactly the kind of interruption a "no photo at all" pending
+        // jersey turned out to be. With photos going first, that same
+        // interruption just leaves orphaned storage files (invisible,
+        // harmless) and no DB row at all, instead of a broken
+        // submission sitting in the moderation queue.
+        var jerseyId = genUUID();
+        await Promise.all(photoCompressionPromises);
+        var uploadedPaths = [];
+        var photoRows = [];
+        try {
+          for(var i=0; i<selectedPhotos.length; i++){
+            var photo = selectedPhotos[i];
+            var ext = (photo.file.name.split('.').pop() || 'jpg').toLowerCase();
+            var path = jerseyId + '/' + jerseyPhotoFileName(team.name, season, type, photo.label, i+1, ext);
+            var up = await supabaseClient.storage.from('jersey-photos').upload(path, photo.file);
+            if(up.error) throw up.error;
+            uploadedPaths.push(path);
+            photoRows.push({jersey_id: jerseyId, storage_path: path, label: photo.label, sort_order: i});
+          }
+        } catch(photoErr){
+          if(uploadedPaths.length) await supabaseClient.storage.from('jersey-photos').remove(uploadedPaths);
+          throw photoErr;
+        }
+
         var jerseyIns = await supabaseClient.from('jerseys').insert({
-          team_id: team.id, season: season, type: type, manufacturer: manufacturer,
+          id: jerseyId, team_id: team.id, season: season, type: type, manufacturer: manufacturer,
           format: format, notes: notes, image_credit: credit, uploaded_by: currentUser.id
         }).select().single();
         if(jerseyIns.error) throw jerseyIns.error;
@@ -4841,21 +4910,12 @@
           }
         }
 
-        try {
-          await Promise.all(photoCompressionPromises);
-          for(var i=0; i<selectedPhotos.length; i++){
-            var photo = selectedPhotos[i];
-            var ext = (photo.file.name.split('.').pop() || 'jpg').toLowerCase();
-            var path = jersey.id + '/' + jerseyPhotoFileName(team.name, season, type, photo.label, i+1, ext);
-            var up = await supabaseClient.storage.from('jersey-photos').upload(path, photo.file);
-            if(up.error) throw up.error;
-            var imgIns = await supabaseClient.from('jersey_images').insert({jersey_id: jersey.id, storage_path: path, label: photo.label, sort_order: i});
-            if(imgIns.error) throw imgIns.error;
-          }
-        } catch(photoErr) {
-          // don't leave an orphaned, photo-less jersey behind if the upload half fails
+        var imgIns = await supabaseClient.from('jersey_images').insert(photoRows);
+        if(imgIns.error){
+          // same rationale as before: never leave a photo-less jersey
+          // behind if this last step fails.
           await supabaseClient.from('jerseys').delete().eq('id', jersey.id);
-          throw photoErr;
+          throw imgIns.error;
         }
 
         await refreshAuthUI();
@@ -5107,7 +5167,7 @@
       // straight to the most recent one with something new, since
       // there's rarely more than one or two at a time.
       var msgLink = unreadMsgCount
-        ? '<a href="#/jersey/'+unreadMsgJerseyId+'" style="text-decoration:underline;color:var(--accent);">&#128172; '+unreadMsgCount+'</a>'
+        ? '<a href="#/jersey/'+unreadMsgJerseyId+'" style="text-decoration:underline;color:var(--danger);font-weight:700;">&#9993; '+unreadMsgCount+'</a>'
         : '';
       el.innerHTML =
         '<div class="auth-status">'+modLink+msgLink+'<span><a class="spec-link" href="#/user/'+encodeURIComponent(username)+'">'+esc(username)+'</a> '+pointsChip(points)+'</span>' +
