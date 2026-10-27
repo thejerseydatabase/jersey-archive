@@ -1276,18 +1276,29 @@
           : '<div class="jersey-message-form"><textarea id="jersey-message-input" rows="2" placeholder="'+(isAdmin ? 'Ask the uploader something, e.g. ‘Can you find a clearer photo?’' : 'Reply to the moderator…')+'"></textarea><button class="btn btn-secondary" id="jersey-message-send" type="button" data-jersey-id="'+j.id+'">Send</button></div>') +
       '</div>';
     }
+    // Lets the uploader fix their own mistake (wrong season, wrong
+    // type, a typo) without having to delete and re-upload from
+    // scratch, same as several users have apparently been doing. Scoped
+    // tight on purpose: jersey-table fields only (Season/Jersey type/
+    // Manufacturer/Format/Notes/Image credit), never Competition or
+    // Team - those edit a *shared* competitions/teams row, not this
+    // jersey alone, so they stay admin-only regardless. RLS backs this
+    // up independently either way ("users can edit their own jerseys,
+    // admins can moderate any" only allows it while status='pending').
+    var canSelfEdit = isUploader && j.status === 'pending';
     function specItem(label, valueHtml, editData){
-      var editBtn = (isAdmin && editData) ? ' <button class="edit-pencil-btn" type="button" data-edit=\''+esc(JSON.stringify(editData))+'\'>'+ICON_PENCIL+'</button>' : '';
+      var allowed = editData && (isAdmin || (canSelfEdit && editData.table === 'jerseys'));
+      var editBtn = allowed ? ' <button class="edit-pencil-btn" type="button" data-edit=\''+esc(JSON.stringify(editData))+'\'>'+ICON_PENCIL+'</button>' : '';
       return '<div class="spec-item"><span>'+esc(label)+'</span><div class="spec-value-row"><strong>'+valueHtml+'</strong>'+editBtn+'</div></div>';
     }
     var notesEditData = {table:'jerseys', matchCol:'id', matchVal:j.id, field:'notes', current:j.notes || '', multiline:true};
-    var notesEditBtn = isAdmin ? ' <button class="edit-pencil-btn" type="button" data-edit=\''+esc(JSON.stringify(notesEditData))+'\'>'+ICON_PENCIL+'</button>' : '';
-    var notesHtml = (j.notes || isAdmin)
+    var notesEditBtn = (isAdmin || canSelfEdit) ? ' <button class="edit-pencil-btn" type="button" data-edit=\''+esc(JSON.stringify(notesEditData))+'\'>'+ICON_PENCIL+'</button>' : '';
+    var notesHtml = (j.notes || isAdmin || canSelfEdit)
       ? '<div class="notes-block"><div class="spec-value-row">'+(j.notes ? esc(j.notes) : '<em style="color:var(--text-dim2);">No notes</em>')+notesEditBtn+'</div></div>'
       : '';
     var creditEditData = {table:'jerseys', matchCol:'id', matchVal:j.id, field:'image_credit', current:j.image_credit || ''};
-    var creditEditBtn = isAdmin ? ' <button class="edit-pencil-btn" type="button" data-edit=\''+esc(JSON.stringify(creditEditData))+'\'>'+ICON_PENCIL+'</button>' : '';
-    var creditHtml = (j.image_credit || isAdmin)
+    var creditEditBtn = (isAdmin || canSelfEdit) ? ' <button class="edit-pencil-btn" type="button" data-edit=\''+esc(JSON.stringify(creditEditData))+'\'>'+ICON_PENCIL+'</button>' : '';
+    var creditHtml = (j.image_credit || isAdmin || canSelfEdit)
       ? '<div class="notes-block"><div class="spec-value-row"><span style="color:var(--text-dim2);">Image credit: </span>'+(j.image_credit ? esc(j.image_credit) : '<em style="color:var(--text-dim2);">None given</em>')+creditEditBtn+'</div></div>'
       : '';
 
