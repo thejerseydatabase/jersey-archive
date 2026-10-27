@@ -601,6 +601,13 @@
     var refId = kind === 'team' ? p.team_id : p.competition_slug;
     var makeCurrentId = 'lp-make-current';
     var willReplace = p.make_current !== false;
+    // years_used is stored as "YYYY-YYYY" or a single "YYYY" (see
+    // wireProposeLogoPanel) - split back into the same two number
+    // fields that form uses, so editing it here doesn't need its own
+    // free-text parsing rules.
+    var yearParts = (p.years_used || '').split('-');
+    var yearFirst = yearParts[0] || '';
+    var yearLast = yearParts.length > 1 ? yearParts[1] : '';
     var adminActionsHtml = (isAdmin && (!p.status || p.status === 'pending'))
       ? '<div class="jersey-messages-block" style="margin-top:18px;">' +
           '<label class="rate-label">Moderator actions</label>' +
@@ -611,8 +618,16 @@
               '<input type="file" id="lp-replace-input" accept="image/*" style="display:none;">' +
             '</div>' +
           '</div>' +
+          '<div style="margin-top:8px;"><button class="btn btn-secondary" id="lp-crop-btn" type="button" data-kind="'+kind+'" data-id="'+id+'" data-path="'+esc(p.storage_path)+'">Crop this photo</button></div>' +
           '<p class="field-hint" id="lp-replace-status" hidden></p>' +
-          '<label class="field-hint" style="display:block;margin-top:10px;cursor:pointer;"><input type="checkbox" id="'+makeCurrentId+'" '+(willReplace ? 'checked' : '')+' style="vertical-align:middle;margin-right:6px;">Make this the current logo</label>' +
+          '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:14px;">' +
+            '<div class="field" style="flex:1;min-width:120px;"><label for="lp-year-first">First used <small>optional</small></label>' +
+              '<input type="number" id="lp-year-first" value="'+esc(yearFirst)+'" placeholder="e.g. 2016" min="1850" max="2100"></div>' +
+            '<div class="field" style="flex:1;min-width:160px;"><label for="lp-year-last">Last used <small>leave blank if only used for one year</small></label>' +
+              '<input type="number" id="lp-year-last" value="'+esc(yearLast)+'" placeholder="e.g. 2025" min="1850" max="2100"></div>' +
+          '</div>' +
+          '<div style="margin-top:8px;"><button class="btn btn-secondary" id="lp-years-save-btn" type="button" data-kind="'+kind+'" data-id="'+id+'">Save years</button> <span class="field-hint" id="lp-years-status" hidden></span></div>' +
+          '<label class="field-hint" style="display:block;margin-top:14px;cursor:pointer;"><input type="checkbox" id="'+makeCurrentId+'" '+(willReplace ? 'checked' : '')+' style="vertical-align:middle;margin-right:6px;">Make this the current logo</label>' +
           '<div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">' +
             '<button class="btn" id="lp-approve-btn" type="button" data-kind="'+kind+'" data-id="'+id+'" data-ref-id="'+esc(refId)+'" data-path="'+esc(p.storage_path)+'" data-years="'+esc(p.years_used || '')+'" data-note="'+esc(p.note || '')+'" data-proposed-by="'+esc(p.proposed_by || '')+'" data-make-current-id="'+makeCurrentId+'">Approve</button>' +
             '<button class="btn btn-reject" id="lp-reject-btn" type="button" data-kind="'+kind+'" data-id="'+id+'" data-path="'+esc(p.storage_path)+'">Reject</button>' +
@@ -1530,7 +1545,13 @@
   // exact same storage_path with upsert, so every place that already
   // links to this photo (approved jersey page, moderation queue) picks
   // up the cropped version with no DB change needed.
-  async function openCropModal(storagePath, imageId){
+  // Shared by both crop entry points below - bucket is which storage
+  // bucket the image lives in, and onSaved(newPath) is handed the
+  // freshly-uploaded cropped file's path to repoint whichever DB row
+  // owns it (a jersey_images row for a jersey photo, a logo proposal
+  // row for a logo). Keeps the actual drag/crop/canvas mechanics in one
+  // place rather than duplicated per entity type.
+  async function openImageCropModal(bucket, storagePath, onSaved){
     var overlay = document.createElement('div');
     overlay.className = 'crop-modal';
     overlay.innerHTML =
@@ -1557,7 +1578,7 @@
     // only fires on an actual backdrop click.
     overlay.addEventListener('pointerdown', function(e){ if(e.target === overlay) closeModal(); });
 
-    var dl = await supabaseClient.storage.from('jersey-photos').download(storagePath);
+    var dl = await supabaseClient.storage.from(bucket).download(storagePath);
     if(dl.error){ stage.innerHTML = '<div class="empty-note">Couldn\'t load image: '+esc(dl.error.message)+'</div>'; return; }
     objectUrl = URL.createObjectURL(dl.data);
     stage.innerHTML = '<img id="crop-img" src="'+objectUrl+'" alt="">' +
@@ -1635,19 +1656,30 @@
         // fails before the DB row is repointed, the original photo is
         // untouched instead of silently gone.
         var newPath = storagePath.replace(/(\.\w+)$/, '-crop-' + Date.now() + '$1');
-        var up = await supabaseClient.storage.from('jersey-photos').upload(newPath, blob, {contentType: mime});
+        var up = await supabaseClient.storage.from(bucket).upload(newPath, blob, {contentType: mime});
         if(up.error) throw up.error;
-        if(imageId){
-          var upd = await supabaseClient.from('jersey_images').update({storage_path: newPath}).eq('id', imageId);
-          if(upd.error) throw upd.error;
+        if(onSaved){
+          var upd = await onSaved(newPath);
+          if(upd && upd.error) throw upd.error;
         }
-        await supabaseClient.storage.from('jersey-photos').remove([storagePath]); // best-effort cleanup of the old file
+        await supabaseClient.storage.from(bucket).remove([storagePath]); // best-effort cleanup of the old file
         closeModal();
         render();
       } catch(err){
         alert('Error: ' + err.message);
         saveBtn.disabled = false; saveBtn.textContent = 'Save crop';
       }
+    });
+  }
+  function openCropModal(storagePath, imageId){
+    return openImageCropModal('jersey-photos', storagePath, imageId ? function(newPath){
+      return supabaseClient.from('jersey_images').update({storage_path: newPath}).eq('id', imageId);
+    } : null);
+  }
+  function openLogoCropModal(storagePath, kind, proposalId){
+    var table = kind === 'team' ? 'team_logo_proposals' : 'competition_logo_proposals';
+    return openImageCropModal('team-logos', storagePath, function(newPath){
+      return supabaseClient.from(table).update({storage_path: newPath}).eq('id', proposalId);
     });
   }
   function wireCropButtons(scope){
@@ -3460,6 +3492,34 @@
         e.preventDefault();
         lpReplaceDropzone.classList.remove('is-dragover');
         if(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) doLpReplace(e.dataTransfer.files[0]);
+      });
+    }
+
+    var lpCropBtn = document.getElementById('lp-crop-btn');
+    if(lpCropBtn){
+      lpCropBtn.addEventListener('click', function(){
+        openLogoCropModal(lpCropBtn.dataset.path, lpCropBtn.dataset.kind, lpCropBtn.dataset.id);
+      });
+    }
+
+    var lpYearsSaveBtn = document.getElementById('lp-years-save-btn');
+    if(lpYearsSaveBtn){
+      lpYearsSaveBtn.addEventListener('click', async function(){
+        var statusEl = document.getElementById('lp-years-status');
+        var firstUsed = document.getElementById('lp-year-first').value.trim();
+        var lastUsed = document.getElementById('lp-year-last').value.trim();
+        var yearsUsed = firstUsed ? ((lastUsed && Number(lastUsed) > Number(firstUsed)) ? (firstUsed + '-' + lastUsed) : firstUsed) : null;
+        lpYearsSaveBtn.disabled = true;
+        statusEl.hidden = false; statusEl.textContent = 'Saving…';
+        try {
+          var table = lpYearsSaveBtn.dataset.kind === 'team' ? 'team_logo_proposals' : 'competition_logo_proposals';
+          var upd = await supabaseClient.from(table).update({years_used: yearsUsed}).eq('id', lpYearsSaveBtn.dataset.id);
+          if(upd.error) throw upd.error;
+          render();
+        } catch(err){
+          statusEl.textContent = 'Error: ' + (err.message || err);
+          lpYearsSaveBtn.disabled = false;
+        }
       });
     }
 
