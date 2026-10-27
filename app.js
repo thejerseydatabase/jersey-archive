@@ -604,8 +604,13 @@
     var adminActionsHtml = (isAdmin && (!p.status || p.status === 'pending'))
       ? '<div class="jersey-messages-block" style="margin-top:18px;">' +
           '<label class="rate-label">Moderator actions</label>' +
-          '<div class="field" style="margin-top:10px;"><label for="lp-replace-input">Replace this photo <small>upload a better quality image before approving &mdash; the old one is removed once this is saved</small></label>' +
-            '<input type="file" id="lp-replace-input" accept="image/*"></div>' +
+          '<div class="field" style="margin-top:10px;"><label>Replace this photo <small>upload a better quality image before approving &mdash; the old one is removed once this is saved</small></label>' +
+            '<div class="dropzone" id="lp-replace-dropzone" tabindex="0" role="button" aria-label="Replace this photo">' +
+              ICON_PHOTO +
+              '<p>Drop a replacement image here, or click to choose</p>' +
+              '<input type="file" id="lp-replace-input" accept="image/*" style="display:none;">' +
+            '</div>' +
+          '</div>' +
           '<p class="field-hint" id="lp-replace-status" hidden></p>' +
           '<label class="field-hint" style="display:block;margin-top:10px;cursor:pointer;"><input type="checkbox" id="'+makeCurrentId+'" '+(willReplace ? 'checked' : '')+' style="vertical-align:middle;margin-right:6px;">Make this the current logo</label>' +
           '<div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">' +
@@ -3419,18 +3424,17 @@
       });
     }
 
+    var lpReplaceDropzone = document.getElementById('lp-replace-dropzone');
     var lpReplaceInput = document.getElementById('lp-replace-input');
-    if(lpReplaceInput){
-      lpReplaceInput.addEventListener('change', async function(){
-        var file = lpReplaceInput.files[0];
-        lpReplaceInput.value = '';
+    if(lpReplaceDropzone && lpReplaceInput){
+      async function doLpReplace(file){
         if(!file || !/^image\//.test(file.type)) return;
         var statusEl = document.getElementById('lp-replace-status');
         var approveBtn = document.getElementById('lp-approve-btn');
         var oldPath = approveBtn.dataset.path;
         var proposalKind = approveBtn.dataset.kind, proposalId = approveBtn.dataset.id;
         statusEl.hidden = false; statusEl.textContent = 'Uploading…';
-        lpReplaceInput.disabled = true;
+        lpReplaceDropzone.setAttribute('aria-disabled', 'true');
         try {
           var compressed = await compressImageForUpload(file, LOGO_WEBP_QUALITY);
           var ext = (compressed.name.split('.').pop() || 'png').toLowerCase();
@@ -3444,8 +3448,18 @@
           render();
         } catch(err){
           statusEl.textContent = 'Error: ' + (err.message || err);
-          lpReplaceInput.disabled = false;
+          lpReplaceDropzone.removeAttribute('aria-disabled');
         }
+      }
+      lpReplaceDropzone.addEventListener('click', function(){ lpReplaceInput.click(); });
+      lpReplaceDropzone.addEventListener('keydown', function(e){ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); lpReplaceInput.click(); } });
+      lpReplaceInput.addEventListener('change', function(){ var f = lpReplaceInput.files[0]; lpReplaceInput.value = ''; doLpReplace(f); });
+      lpReplaceDropzone.addEventListener('dragover', function(e){ e.preventDefault(); lpReplaceDropzone.classList.add('is-dragover'); });
+      lpReplaceDropzone.addEventListener('dragleave', function(){ lpReplaceDropzone.classList.remove('is-dragover'); });
+      lpReplaceDropzone.addEventListener('drop', function(e){
+        e.preventDefault();
+        lpReplaceDropzone.classList.remove('is-dragover');
+        if(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) doLpReplace(e.dataTransfer.files[0]);
       });
     }
 
