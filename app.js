@@ -2865,7 +2865,7 @@
     // (the profiles UPDATE policy/trigger reject a non-owner's attempt
     // regardless of what the UI shows).
     var moderatorsPanelHtml = currentProfile.is_owner ? (
-      '<section class="block"><div class="section-head"><h2>Moderators</h2></div>' +
+      '<section class="block" id="mod-section-moderators"><div class="section-head"><h2>Moderators</h2></div>' +
       '<div class="filter-row"><input type="text" id="mod-user-search" placeholder="Search by username&hellip;"><button class="btn btn-secondary" id="mod-user-search-btn" type="button">Search</button></div>' +
       '<div id="mod-user-results"></div>' +
     '</section>') : '';
@@ -2877,7 +2877,7 @@
     // free from the same query style used for the pending-queue badges.
     var totalUsersRes = await supabaseClient.from('profiles').select('id', {count:'exact', head:true});
     var usersPanelHtml =
-      '<section class="block"><div class="section-head"><h2>Users</h2><span class="count">'+(totalUsersRes.count || 0)+' registered</span></div>' +
+      '<section class="block" id="mod-section-users"><div class="section-head"><h2>Users</h2><span class="count">'+(totalUsersRes.count || 0)+' registered</span></div>' +
       '<div class="filter-row"><input type="text" id="ban-user-search" placeholder="Search by username&hellip;"><button class="btn btn-secondary" id="ban-user-search-btn" type="button">Search</button></div>' +
       '<div id="ban-user-results"></div>' +
     '</section>';
@@ -2899,7 +2899,7 @@
     // moderatorsPanelHtml - clearing out old rejections shouldn't need
     // something else to also be pending first.
     var rejectedSectionHtml = rejectedJerseys.length
-      ? '<section class="block"><div class="section-head">' +
+      ? '<section class="block" id="mod-section-rejected"><div class="section-head">' +
           '<div><h2 style="display:inline;">Rejected jerseys</h2> <span class="count">'+rejectedJerseys.length+'</span></div>' +
           '<button class="btn btn-secondary" id="delete-all-rejected-btn" type="button">Delete all</button>' +
         '</div>' +
@@ -3081,20 +3081,38 @@
       '</div>';
     }).join('');
 
+    // Jump-to-section nav - reuses the same .anchor-nav-btn/scrollIntoView
+    // mechanism as a sport gallery's own jump nav (see renderGroupedBySport),
+    // so there's no new wiring, just section ids to scroll to. Rejected
+    // jerseys only gets a chip when there's actually a section to jump to
+    // (it's omitted from the DOM entirely when empty); Moderators is
+    // owner-only, same gating as the panel itself.
+    var modAnchorNavHtml = '<div class="anchor-nav">' +
+        '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-jerseys">New jerseys</button>' +
+        '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-photos">Proposed photos</button>' +
+        '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-team-logos">Team logos</button>' +
+        '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-comp-logos">Competition logos</button>' +
+        '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-reports">Reports</button>' +
+        (rejectedJerseys.length ? '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-rejected">Rejected jerseys</button>' : '') +
+        '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-users">Users</button>' +
+        (currentProfile.is_owner ? '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-moderators">Moderators</button>' : '') +
+      '</div>';
+
     return '<div class="section-head"><h2>Moderation queue</h2></div>' +
-      '<section class="block"><div class="section-head"><h2>New jerseys</h2><span class="count">'+pendingJerseys.length+' pending</span></div>' +
+      modAnchorNavHtml +
+      '<section class="block" id="mod-section-jerseys"><div class="section-head"><h2>New jerseys</h2><span class="count">'+pendingJerseys.length+' pending</span></div>' +
         (jerseyCards ? '<div class="mod-list">'+jerseyCards+'</div>' : '<div class="empty-note">None waiting.</div>') +
       '</section>' +
-      '<section class="block"><div class="section-head"><h2>Proposed photos</h2><span class="count">'+pendingPhotos.length+' pending</span></div>' +
+      '<section class="block" id="mod-section-photos"><div class="section-head"><h2>Proposed photos</h2><span class="count">'+pendingPhotos.length+' pending</span></div>' +
         (photoCards ? '<div class="mod-list">'+photoCards+'</div>' : '<div class="empty-note">None waiting.</div>') +
       '</section>' +
-      '<section class="block"><div class="section-head"><h2>Team logo proposals</h2><span class="count">'+pendingLogos.length+' pending</span></div>' +
+      '<section class="block" id="mod-section-team-logos"><div class="section-head"><h2>Team logo proposals</h2><span class="count">'+pendingLogos.length+' pending</span></div>' +
         (logoCards ? '<div class="mod-list">'+logoCards+'</div>' : '<div class="empty-note">None waiting.</div>') +
       '</section>' +
-      '<section class="block"><div class="section-head"><h2>Competition logo proposals</h2><span class="count">'+pendingCompLogos.length+' pending</span></div>' +
+      '<section class="block" id="mod-section-comp-logos"><div class="section-head"><h2>Competition logo proposals</h2><span class="count">'+pendingCompLogos.length+' pending</span></div>' +
         (compLogoCards ? '<div class="mod-list">'+compLogoCards+'</div>' : '<div class="empty-note">None waiting.</div>') +
       '</section>' +
-      '<section class="block"><div class="section-head"><h2>Reports</h2><span class="count">'+openReports.length+' open</span></div>' +
+      '<section class="block" id="mod-section-reports"><div class="section-head"><h2>Reports</h2><span class="count">'+openReports.length+' open</span></div>' +
         (reportCards ? '<div class="mod-list">'+reportCards+'</div>' : '<div class="empty-note">None open.</div>') +
       '</section>' +
       rejectedSectionHtml +
