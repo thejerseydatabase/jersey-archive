@@ -3309,22 +3309,45 @@
     // rather than repeating identically on every page.
     var logoSectionHtml = '';
     if(page === 1){
-      // Reads from the permanent logo history tables, not the proposal
-      // tables - an admin's "+ Add logo" shortcut (wireProposeLogoPanel)
-      // skips the propose-then-approve round trip entirely and writes
-      // straight to team_logos/competition_logos, so it never creates a
-      // team_logo_proposals/competition_logo_proposals row at all. Every
-      // approved contribution (proposed-then-approved or admin-direct)
-      // ends up with a proposed_by-tagged row here either way, so this
-      // is the one source that covers both without double-counting.
-      var teamLogoRes = await supabaseClient.from('team_logos')
+      // Two sources, merged - neither is complete alone. An admin's
+      // "+ Add logo" shortcut skips the propose-then-approve round trip
+      // entirely and writes straight to team_logos/competition_logos
+      // (the permanent history tables), so it never creates a proposal
+      // row at all - only the history table knows about those. But
+      // proposed_by/proposal_id on the history tables were only added
+      // later (logo_uploader_credit.sql, logo_messages.sql) and were
+      // never backfilled, so an older logo approved through the normal
+      // proposal flow before then has neither set on its history row -
+      // only the original (still-existing) proposal row still knows who
+      // proposed it. History rows are shown first (they reflect any
+      // later crop/replace-photo edit), then any of this person's
+      // approved proposals that never got linked to one are added too,
+      // so older entries don't just disappear.
+      var teamHistRes = await supabaseClient.from('team_logos')
         .select('*, teams(name, slug, competition_slug, competitions!inner(sport_slug))')
         .eq('proposed_by', profile.id).order('approved_at', {ascending:false});
-      var compLogoRes = await supabaseClient.from('competition_logos')
+      var compHistRes = await supabaseClient.from('competition_logos')
         .select('*, competitions(name, slug, sport_slug)')
         .eq('proposed_by', profile.id).order('approved_at', {ascending:false});
-      var logoCards = (teamLogoRes.data || []).map(function(l){ return logoCard(l, l.teams, {label:'Team logo'}); })
-        .concat((compLogoRes.data || []).map(function(l){ return compLogoCard(l, l.competitions, {label:'Competition logo'}); }))
+      var teamProposalRes = await supabaseClient.from('team_logo_proposals')
+        .select('*, teams(name, slug, competition_slug, competitions!inner(sport_slug))')
+        .eq('proposed_by', profile.id).eq('status', 'approved').order('created_at', {ascending:false});
+      var compProposalRes = await supabaseClient.from('competition_logo_proposals')
+        .select('*, competitions(name, slug, sport_slug)')
+        .eq('proposed_by', profile.id).eq('status', 'approved').order('created_at', {ascending:false});
+
+      var linkedTeamProposalIds = {};
+      (teamHistRes.data || []).forEach(function(l){ if(l.proposal_id) linkedTeamProposalIds[l.proposal_id] = true; });
+      var orphanTeamProposals = (teamProposalRes.data || []).filter(function(p){ return !linkedTeamProposalIds[p.id]; });
+
+      var linkedCompProposalIds = {};
+      (compHistRes.data || []).forEach(function(l){ if(l.proposal_id) linkedCompProposalIds[l.proposal_id] = true; });
+      var orphanCompProposals = (compProposalRes.data || []).filter(function(p){ return !linkedCompProposalIds[p.id]; });
+
+      var logoCards = (teamHistRes.data || []).map(function(l){ return logoCard(l, l.teams, {label:'Team logo'}); })
+        .concat(orphanTeamProposals.map(function(l){ return logoCard(l, l.teams, {label:'Team logo'}); }))
+        .concat((compHistRes.data || []).map(function(l){ return compLogoCard(l, l.competitions, {label:'Competition logo'}); }))
+        .concat(orphanCompProposals.map(function(l){ return compLogoCard(l, l.competitions, {label:'Competition logo'}); }))
         .join('');
       logoSectionHtml = logoCards
         ? '<div class="section-head" style="margin-top:34px;"><h2>Logos contributed</h2></div><div class="jersey-grid">'+logoCards+'</div>'
