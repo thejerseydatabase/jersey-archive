@@ -3309,12 +3309,20 @@
     // rather than repeating identically on every page.
     var logoSectionHtml = '';
     if(page === 1){
-      var teamLogoRes = await supabaseClient.from('team_logo_proposals')
+      // Reads from the permanent logo history tables, not the proposal
+      // tables - an admin's "+ Add logo" shortcut (wireProposeLogoPanel)
+      // skips the propose-then-approve round trip entirely and writes
+      // straight to team_logos/competition_logos, so it never creates a
+      // team_logo_proposals/competition_logo_proposals row at all. Every
+      // approved contribution (proposed-then-approved or admin-direct)
+      // ends up with a proposed_by-tagged row here either way, so this
+      // is the one source that covers both without double-counting.
+      var teamLogoRes = await supabaseClient.from('team_logos')
         .select('*, teams(name, slug, competition_slug, competitions!inner(sport_slug))')
-        .eq('proposed_by', profile.id).eq('status', 'approved').order('created_at', {ascending:false});
-      var compLogoRes = await supabaseClient.from('competition_logo_proposals')
+        .eq('proposed_by', profile.id).order('approved_at', {ascending:false});
+      var compLogoRes = await supabaseClient.from('competition_logos')
         .select('*, competitions(name, slug, sport_slug)')
-        .eq('proposed_by', profile.id).eq('status', 'approved').order('created_at', {ascending:false});
+        .eq('proposed_by', profile.id).order('approved_at', {ascending:false});
       var logoCards = (teamLogoRes.data || []).map(function(l){ return logoCard(l, l.teams, {label:'Team logo'}); })
         .concat((compLogoRes.data || []).map(function(l){ return compLogoCard(l, l.competitions, {label:'Competition logo'}); }))
         .join('');
