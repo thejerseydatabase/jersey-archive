@@ -2875,6 +2875,21 @@
     if(rejRes.error) throw rejRes.error;
     var rejectedJerseys = rejRes.data || [];
 
+    // Same idea as rejectedJerseys - a rejected logo proposal's row is
+    // kept (not deleted) so the proposer can see the reason, but that
+    // means it needs its own review/cleanup list here too, same as
+    // jerseys got, or rejected proposals would just quietly pile up
+    // with no way back to them once they drop off the pending queue.
+    var rejTeamLogoRes = await supabaseClient.from('team_logo_proposals')
+      .select('id, rejection_reason, created_at, teams(name)')
+      .eq('status', 'rejected').order('created_at', {ascending:false});
+    var rejCompLogoRes = await supabaseClient.from('competition_logo_proposals')
+      .select('id, rejection_reason, created_at, competitions(name)')
+      .eq('status', 'rejected').order('created_at', {ascending:false});
+    var rejectedLogos = (rejTeamLogoRes.data || []).map(function(l){ return {kind:'team', id:l.id, subject:(l.teams ? l.teams.name : 'a team'), rejection_reason:l.rejection_reason, created_at:l.created_at}; })
+      .concat((rejCompLogoRes.data || []).map(function(l){ return {kind:'competition', id:l.id, subject:(l.competitions ? l.competitions.name : 'a competition'), rejection_reason:l.rejection_reason, created_at:l.created_at}; }))
+      .sort(function(a,b){ return new Date(b.created_at) - new Date(a.created_at); });
+
     // Extra-competition tag per pending jersey (e.g. "Also used in: Rugby
     // League World Cup") — shown up front on the card, not hidden behind
     // a click, since it's easy to lose track of what was tagged at
@@ -3006,8 +3021,29 @@
         '</section>'
       : '';
 
-    if(!pendingJerseys.length && !pendingPhotos.length && !openReports.length && !pendingLogos.length && !pendingCompLogos.length && !rejectedJerseys.length){
-      return '<div class="section-head"><h2>Moderation queue</h2></div><div class="empty-note">Nothing waiting for review.</div>' + rejectedSectionHtml + usersPanelHtml + moderatorsPanelHtml;
+    var rejectedLogoCards = rejectedLogos.map(function(l){
+      return '<div class="mod-card">' +
+        '<div class="mod-info">' +
+          '<strong>Logo for '+esc(l.subject)+'</strong>' +
+          '<span>'+(l.kind === 'team' ? 'Team' : 'Competition')+' logo</span>' +
+          '<span>Rejected '+fmtDate(l.created_at)+(l.rejection_reason ? ' &mdash; '+esc(l.rejection_reason) : ' &mdash; no reason given')+'</span>' +
+        '</div>' +
+        '<div class="mod-actions">' +
+          '<button class="btn btn-reject" data-type="rejected-logo" data-action="delete" data-kind="'+l.kind+'" data-id="'+l.id+'" type="button">Delete</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+    var rejectedLogoSectionHtml = rejectedLogos.length
+      ? '<section class="block" id="mod-section-rejected-logos"><div class="section-head">' +
+          '<div><h2 style="display:inline;">Rejected logos</h2> <span class="count">'+rejectedLogos.length+'</span></div>' +
+          '<button class="btn btn-secondary" id="delete-all-rejected-logos-btn" type="button">Delete all</button>' +
+        '</div>' +
+          '<div class="mod-list">'+rejectedLogoCards+'</div>' +
+        '</section>'
+      : '';
+
+    if(!pendingJerseys.length && !pendingPhotos.length && !openReports.length && !pendingLogos.length && !pendingCompLogos.length && !rejectedJerseys.length && !rejectedLogos.length){
+      return '<div class="section-head"><h2>Moderation queue</h2></div><div class="empty-note">Nothing waiting for review.</div>' + rejectedSectionHtml + rejectedLogoSectionHtml + usersPanelHtml + moderatorsPanelHtml;
     }
 
     var jerseyCards = pendingJerseys.map(function(j){
@@ -3205,6 +3241,7 @@
         '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-comp-logos">Competition logos ('+pendingCompLogos.length+')</button>' +
         '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-reports">Reports ('+openReports.length+')</button>' +
         (rejectedJerseys.length ? '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-rejected">Rejected jerseys ('+rejectedJerseys.length+')</button>' : '') +
+        (rejectedLogos.length ? '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-rejected-logos">Rejected logos ('+rejectedLogos.length+')</button>' : '') +
         '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-users">Users</button>' +
         (currentProfile.is_owner ? '<button class="chip anchor-nav-btn" type="button" data-scroll-target="mod-section-moderators">Moderators</button>' : '') +
       '</div>';
@@ -3227,6 +3264,7 @@
         (reportCards ? '<div class="mod-list">'+reportCards+'</div>' : '<div class="empty-note">None open.</div>') +
       '</section>' +
       rejectedSectionHtml +
+      rejectedLogoSectionHtml +
       usersPanelHtml + moderatorsPanelHtml;
   }
 
@@ -4573,6 +4611,14 @@
             }
             var rjdel = await supabaseClient.from('jerseys').delete().eq('id', id);
             if(rjdel.error) throw rjdel.error;
+          } else if(type === 'rejected-logo'){
+            if(!confirm('Permanently delete this rejected logo proposal? This can\'t be undone.')){
+              siblingButtons.forEach(function(b){ b.disabled = false; });
+              return;
+            }
+            var rlTable = btn.dataset.kind === 'team' ? 'team_logo_proposals' : 'competition_logo_proposals';
+            var rldel = await supabaseClient.from(rlTable).delete().eq('id', id);
+            if(rldel.error) throw rldel.error;
           } else {
             // the only other data-action button on a jersey card is approve —
             // reject is handled separately above via the reason panel, since
@@ -4600,6 +4646,28 @@
         if(res.error){
           deleteAllRejectedBtn.disabled = false; deleteAllRejectedBtn.textContent = 'Delete all';
           alert('Error: ' + res.error.message);
+          return;
+        }
+        render();
+      });
+    }
+    var deleteAllRejectedLogosBtn = document.getElementById('delete-all-rejected-logos-btn');
+    if(deleteAllRejectedLogosBtn){
+      deleteAllRejectedLogosBtn.addEventListener('click', async function(){
+        var cards = document.querySelectorAll('.mod-card [data-type="rejected-logo"]');
+        if(!cards.length) return;
+        if(!confirm('Permanently delete all '+cards.length+' rejected logo proposals shown here? This can\'t be undone.')) return;
+        deleteAllRejectedLogosBtn.disabled = true; deleteAllRejectedLogosBtn.textContent = 'Deleting…';
+        var teamIds = [], compIds = [];
+        [].slice.call(cards).forEach(function(b){ (b.dataset.kind === 'team' ? teamIds : compIds).push(b.dataset.id); });
+        var results = await Promise.all([
+          teamIds.length ? supabaseClient.from('team_logo_proposals').delete().in('id', teamIds) : Promise.resolve({error:null}),
+          compIds.length ? supabaseClient.from('competition_logo_proposals').delete().in('id', compIds) : Promise.resolve({error:null})
+        ]);
+        var err = results.find(function(r){ return r.error; });
+        if(err){
+          deleteAllRejectedLogosBtn.disabled = false; deleteAllRejectedLogosBtn.textContent = 'Delete all';
+          alert('Error: ' + err.error.message);
           return;
         }
         render();
