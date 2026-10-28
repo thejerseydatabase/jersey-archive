@@ -654,6 +654,13 @@
           '<div class="field" style="margin-top:10px;"><label for="lp-note-input">Special occasion <small>optional &mdash; e.g. &ldquo;60th Anniversary&rdquo;</small></label>' +
             '<input type="text" id="lp-note-input" value="'+esc(p.note || '')+'" placeholder="e.g. 60th Anniversary"></div>' +
           '<div style="margin-top:8px;"><button class="btn btn-secondary" id="lp-years-save-btn" type="button" data-kind="'+kind+'" data-id="'+id+'">Save years &amp; note</button> <span class="field-hint" id="lp-years-status" hidden></span></div>' +
+          (kind === 'competition'
+            ? '<div style="margin-top:14px;"><button class="chip" id="lp-move-comp-toggle" type="button">Change competition</button>' +
+                '<div class="comp-move-panel" id="lp-move-comp-panel" hidden>' +
+                  renderCompetitionMoveControl('lp-move-comp-panel', id, (p.competitions ? p.competitions.sport_slug : ''), p.competition_slug) +
+                '</div>' +
+              '</div>'
+            : '') +
           '<label class="field-hint" style="display:block;margin-top:14px;cursor:pointer;"><input type="checkbox" id="'+makeCurrentId+'" '+(willReplace ? 'checked' : '')+' style="vertical-align:middle;margin-right:6px;">Make this the current logo</label>' +
           '<div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">' +
             '<button class="btn" id="lp-approve-btn" type="button" data-kind="'+kind+'" data-id="'+id+'" data-ref-id="'+esc(refId)+'" data-path="'+esc(p.storage_path)+'" data-years="'+esc(p.years_used || '')+'" data-note="'+esc(p.note || '')+'" data-proposed-by="'+esc(p.proposed_by || '')+'" data-make-current-id="'+makeCurrentId+'">Approve</button>' +
@@ -3149,8 +3156,6 @@
       var proposer = uploaderNames[l.proposed_by] || 'unknown';
       var willReplace = l.make_current !== false;
       var makeCurrentId = 'mod-make-current-complogo-'+l.id;
-      var moveId = 'mod-complogo-move-'+l.id;
-      var sportSlug = l.competitions ? l.competitions.sport_slug : '';
       return '<div class="mod-card">' +
         '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(l.storage_path))+'" alt="" loading="lazy"></div>' +
         '<div class="mod-info">' +
@@ -3159,10 +3164,6 @@
           (l.years_used ? '<span>Years used: '+esc(l.years_used)+'</span>' : '') +
           (l.note ? '<span>Note: '+esc(l.note)+'</span>' : '') +
           '<label class="field-hint" style="display:block;cursor:pointer;"><input type="checkbox" id="'+makeCurrentId+'" '+(willReplace ? 'checked' : '')+' style="vertical-align:middle;margin-right:6px;">Make this the current logo</label>' +
-          '<button class="chip mod-complogo-move-toggle" data-target="'+moveId+'" type="button">Change competition</button>' +
-          '<div class="comp-move-panel" id="'+moveId+'" hidden>' +
-            renderCompetitionMoveControl(moveId, l.id, sportSlug, l.competition_slug) +
-          '</div>' +
         '</div>' +
         '<div class="mod-actions">' +
           '<a class="btn btn-secondary" href="#/logo-proposal/competition/'+l.id+'" target="_blank" rel="noopener" style="text-decoration:none;">View / message</a>' +
@@ -3653,6 +3654,20 @@
           statusEl.textContent = 'Error: ' + (err.message || err);
           lpYearsSaveBtn.disabled = false;
         }
+      });
+    }
+
+    var lpMoveCompToggle = document.getElementById('lp-move-comp-toggle');
+    if(lpMoveCompToggle){
+      lpMoveCompToggle.addEventListener('click', function(){
+        var panel = document.getElementById('lp-move-comp-panel');
+        if(!panel.dataset.wired){
+          panel.dataset.wired = '1';
+          panel.hidden = false;
+          wireCompetitionMoveControl('lp-move-comp-panel', function(){ render(); }, {table:'competition_logo_proposals', matchCol:'id'});
+          return;
+        }
+        panel.hidden = !panel.hidden;
       });
     }
 
@@ -4387,18 +4402,6 @@
       });
     });
     wireCropButtons(document);
-    document.querySelectorAll('.mod-complogo-move-toggle').forEach(function(toggle){
-      toggle.addEventListener('click', function(){
-        var panel = document.getElementById(toggle.dataset.target);
-        if(!panel.dataset.wired){
-          panel.dataset.wired = '1';
-          panel.hidden = false;
-          wireCompetitionMoveControl(toggle.dataset.target, function(){ render(); }, {table:'competition_logo_proposals', matchCol:'id'});
-          return;
-        }
-        panel.hidden = !panel.hidden;
-      });
-    });
     document.querySelectorAll('.mod-edit-toggle').forEach(function(toggle){
       toggle.addEventListener('click', function(){
         var panel = document.getElementById(toggle.dataset.target);
