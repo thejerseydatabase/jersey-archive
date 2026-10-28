@@ -492,7 +492,9 @@
     // whatever's actually live), so "New logo" needs to be honest about
     // which kind this is - otherwise a backdated/historical add reads as
     // if it just became the team's current logo when it didn't.
-    var label = (opts && opts.label) || (logo.is_current === false ? 'Logo added (historical)' : 'New logo');
+    var label = (opts && opts.label) || (logo.is_current === false
+      ? (logo.years_used ? 'Logo added · '+logo.years_used : 'Logo added (historical)')
+      : 'New logo');
     var dateHtml = (opts && opts.ts) ? '<span>'+esc(relativeTimeLabel(opts.ts))+'</span>' : '';
     var sportSlug = team.competitions.sport_slug;
     return '<a class="jersey-card" href="#/sport/'+sportSlug+'/'+team.competition_slug+'/team/'+team.slug+'">' +
@@ -502,7 +504,9 @@
   }
 
   function compLogoCard(logo, comp, opts){
-    var label = (opts && opts.label) || (logo.is_current === false ? 'Logo added (historical)' : 'New logo');
+    var label = (opts && opts.label) || (logo.is_current === false
+      ? (logo.years_used ? 'Logo added · '+logo.years_used : 'Logo added (historical)')
+      : 'New logo');
     var dateHtml = (opts && opts.ts) ? '<span>'+esc(relativeTimeLabel(opts.ts))+'</span>' : '';
     return '<a class="jersey-card" href="#/sport/'+comp.sport_slug+'/'+comp.slug+'">' +
       '<div class="jersey-thumb"><img src="'+esc(publicLogoUrl(logo.storage_path))+'" alt="" loading="lazy"></div>' +
