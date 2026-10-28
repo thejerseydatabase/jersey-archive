@@ -2483,10 +2483,10 @@
   // moved divisions, or was filed under the wrong one at upload time)
   // without touching any of its jersey history — jerseys reference the
   // team by id, not by competition, so moving the team's row is enough.
-  function renderCompetitionMoveControl(prefix, teamId, sportSlug, currentCompSlug){
+  function renderCompetitionMoveControl(prefix, entityId, sportSlug, currentCompSlug){
     return '<div class="comp-move-row">' +
         '<select class="comp-move-select" id="'+prefix+'-comp-select" data-sport-slug="'+esc(sportSlug)+'" data-current="'+esc(currentCompSlug)+'"><option>Loading…</option></select>' +
-        '<button class="btn btn-secondary" id="'+prefix+'-comp-move-btn" data-team-id="'+teamId+'" type="button">Move</button>' +
+        '<button class="btn btn-secondary" id="'+prefix+'-comp-move-btn" data-entity-id="'+entityId+'" type="button">Move</button>' +
       '</div>' +
       '<div class="comp-move-new" id="'+prefix+'-comp-new" hidden>' +
         '<input type="text" class="comp-move-new-input" id="'+prefix+'-comp-new-name" placeholder="New competition name">' +
@@ -2497,7 +2497,15 @@
       '</div>' +
       '<p class="field-hint" id="'+prefix+'-comp-move-msg" hidden></p>';
   }
-  async function wireCompetitionMoveControl(prefix, onMoved){
+  // table/matchCol let this double up for anything with a competition_slug
+  // column, not just a team - a pending competition logo proposal
+  // (competition_logo_proposals, matched on its own id) reuses the exact
+  // same picker/create-new-competition flow to fix "proposed under the
+  // wrong competition" (e.g. an ARL crest submitted under NRL) without
+  // needing its own near-duplicate control.
+  async function wireCompetitionMoveControl(prefix, onMoved, opts){
+    var table = (opts && opts.table) || 'teams';
+    var matchCol = (opts && opts.matchCol) || 'id';
     var select = document.getElementById(prefix+'-comp-select');
     var btn = document.getElementById(prefix+'-comp-move-btn');
     var newPanel = document.getElementById(prefix+'-comp-new');
@@ -2534,7 +2542,7 @@
       }
       if(newSlug === currentCompSlug) return;
       btn.disabled = true; btn.textContent = 'Moving…';
-      var upd = await supabaseClient.from('teams').update({competition_slug: newSlug}).eq('id', btn.dataset.teamId);
+      var upd = await supabaseClient.from(table).update({competition_slug: newSlug}).eq(matchCol, btn.dataset.entityId);
       btn.disabled = false; btn.textContent = 'Move';
       if(upd.error){
         msg.hidden = false; msg.className = 'field-error'; msg.textContent = 'Error: ' + upd.error.message;
@@ -2916,7 +2924,7 @@
     if(!logoRes.error) pendingLogos = logoRes.data || [];
 
     var pendingCompLogos = [];
-    var compLogoRes = await supabaseClient.from('competition_logo_proposals').select('*, competitions(name)').eq('status', 'pending').order('created_at');
+    var compLogoRes = await supabaseClient.from('competition_logo_proposals').select('*, competitions(name, sport_slug)').eq('status', 'pending').order('created_at');
     if(!compLogoRes.error) pendingCompLogos = compLogoRes.data || [];
 
     var uploaderIds = pendingJerseys.map(function(j){ return j.uploaded_by; })
@@ -3141,6 +3149,8 @@
       var proposer = uploaderNames[l.proposed_by] || 'unknown';
       var willReplace = l.make_current !== false;
       var makeCurrentId = 'mod-make-current-complogo-'+l.id;
+      var moveId = 'mod-complogo-move-'+l.id;
+      var sportSlug = l.competitions ? l.competitions.sport_slug : '';
       return '<div class="mod-card">' +
         '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(l.storage_path))+'" alt="" loading="lazy"></div>' +
         '<div class="mod-info">' +
@@ -3149,6 +3159,10 @@
           (l.years_used ? '<span>Years used: '+esc(l.years_used)+'</span>' : '') +
           (l.note ? '<span>Note: '+esc(l.note)+'</span>' : '') +
           '<label class="field-hint" style="display:block;cursor:pointer;"><input type="checkbox" id="'+makeCurrentId+'" '+(willReplace ? 'checked' : '')+' style="vertical-align:middle;margin-right:6px;">Make this the current logo</label>' +
+          '<button class="chip mod-complogo-move-toggle" data-target="'+moveId+'" type="button">Change competition</button>' +
+          '<div class="comp-move-panel" id="'+moveId+'" hidden>' +
+            renderCompetitionMoveControl(moveId, l.id, sportSlug, l.competition_slug) +
+          '</div>' +
         '</div>' +
         '<div class="mod-actions">' +
           '<a class="btn btn-secondary" href="#/logo-proposal/competition/'+l.id+'" target="_blank" rel="noopener" style="text-decoration:none;">View / message</a>' +
@@ -4373,6 +4387,18 @@
       });
     });
     wireCropButtons(document);
+    document.querySelectorAll('.mod-complogo-move-toggle').forEach(function(toggle){
+      toggle.addEventListener('click', function(){
+        var panel = document.getElementById(toggle.dataset.target);
+        if(!panel.dataset.wired){
+          panel.dataset.wired = '1';
+          panel.hidden = false;
+          wireCompetitionMoveControl(toggle.dataset.target, function(){ render(); }, {table:'competition_logo_proposals', matchCol:'id'});
+          return;
+        }
+        panel.hidden = !panel.hidden;
+      });
+    });
     document.querySelectorAll('.mod-edit-toggle').forEach(function(toggle){
       toggle.addEventListener('click', function(){
         var panel = document.getElementById(toggle.dataset.target);
