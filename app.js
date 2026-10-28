@@ -589,16 +589,18 @@
       : '*, competitions(name, slug, sport_slug)';
     var res = await supabaseClient.from(table).select(selectCols).eq('id', id).maybeSingle();
     if(res.error) throw res.error;
-    if(!res.data) return '<div class="empty-note">That logo proposal doesn&rsquo;t exist (it may have since been rejected).</div>';
+    if(!res.data) return '<div class="empty-note">That logo proposal doesn&rsquo;t exist.</div>';
     var p = res.data;
     var isUploader = !!(currentUser && p.proposed_by === currentUser.id);
     var isAdmin = currentProfile && currentProfile.is_admin;
     if(!isUploader && !isAdmin) return '<div class="empty-note">Not authorized.</div>';
 
     var subjectName = kind === 'team' ? (p.teams ? p.teams.name : 'a team') : (p.competitions ? p.competitions.name : 'a competition');
-    var statusHtml = p.status && p.status !== 'pending'
-      ? '<div class="pending-banner">This proposal is '+esc(p.status)+'.</div>'
-      : '<div class="pending-banner">This proposal is pending review &mdash; only you and moderators can see this page.</div>';
+    var statusHtml = p.status === 'rejected'
+      ? '<div class="pending-banner">This proposal was rejected.'+(p.rejection_reason ? '<br><strong>Reason:</strong> '+esc(p.rejection_reason) : ' No reason was given.')+'</div>'
+      : (p.status && p.status !== 'pending'
+        ? '<div class="pending-banner">This proposal is '+esc(p.status)+'.</div>'
+        : '<div class="pending-banner">This proposal is pending review &mdash; only you and moderators can see this page.</div>');
 
     var threadHtml = await logoMessagesThreadHtml(kind, id);
     if(currentUser){
@@ -664,7 +666,12 @@
           '<label class="field-hint" style="display:block;margin-top:14px;cursor:pointer;"><input type="checkbox" id="'+makeCurrentId+'" '+(willReplace ? 'checked' : '')+' style="vertical-align:middle;margin-right:6px;">Make this the current logo</label>' +
           '<div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">' +
             '<button class="btn" id="lp-approve-btn" type="button" data-kind="'+kind+'" data-id="'+id+'" data-ref-id="'+esc(refId)+'" data-path="'+esc(p.storage_path)+'" data-years="'+esc(p.years_used || '')+'" data-note="'+esc(p.note || '')+'" data-proposed-by="'+esc(p.proposed_by || '')+'" data-make-current-id="'+makeCurrentId+'">Approve</button>' +
-            '<button class="btn btn-reject" id="lp-reject-btn" type="button" data-kind="'+kind+'" data-id="'+id+'" data-path="'+esc(p.storage_path)+'">Reject</button>' +
+            '<button class="btn btn-reject" id="lp-reject-toggle" type="button">Reject</button>' +
+          '</div>' +
+          '<div id="lp-reject-panel" hidden style="margin-top:10px;">' +
+            '<textarea class="report-textarea" id="lp-reject-reason" placeholder="Why is this being rejected? Shown to the proposer."></textarea>' +
+            '<button class="btn btn-reject" id="lp-reject-btn" type="button" data-kind="'+kind+'" data-id="'+id+'" data-path="'+esc(p.storage_path)+'">Confirm reject</button>' +
+            '<p class="field-hint" id="lp-reject-msg" hidden></p>' +
           '</div>' +
         '</div>'
       : '';
@@ -3135,6 +3142,7 @@
       // it per-submission before approving, rather than only being able
       // to control the end result via approval order.
       var makeCurrentId = 'mod-make-current-logo-'+l.id;
+      var logoRejectId = 'mod-logo-reject-'+l.id;
       return '<div class="mod-card">' +
         '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(l.storage_path))+'" alt="" loading="lazy"></div>' +
         '<div class="mod-info">' +
@@ -3147,7 +3155,12 @@
         '<div class="mod-actions">' +
           '<a class="btn btn-secondary" href="#/logo-proposal/team/'+l.id+'" target="_blank" rel="noopener" style="text-decoration:none;">View / message</a>' +
           '<button class="btn" data-type="logo" data-action="approve" data-id="'+l.id+'" data-team-id="'+l.team_id+'" data-path="'+esc(l.storage_path)+'" data-years="'+esc(l.years_used || '')+'" data-note="'+esc(l.note || '')+'" data-make-current-id="'+makeCurrentId+'" data-proposed-by="'+esc(l.proposed_by || '')+'" type="button">Approve</button>' +
-          '<button class="btn btn-reject" data-type="logo" data-action="reject" data-id="'+l.id+'" data-path="'+esc(l.storage_path)+'" type="button">Reject</button>' +
+          '<button class="btn btn-reject mod-reject-toggle" data-target="'+logoRejectId+'" type="button">Reject</button>' +
+        '</div>' +
+        '<div class="comp-move-panel" id="'+logoRejectId+'" hidden style="flex-basis:100%;max-width:none;">' +
+          '<textarea class="report-textarea" id="logo-reject-reason-'+l.id+'" placeholder="Why is this being rejected? Shown to the proposer on their submission."></textarea>' +
+          '<button class="btn btn-reject" data-confirm-reject-logo="team" data-id="'+l.id+'" data-path="'+esc(l.storage_path)+'" type="button">Confirm reject</button>' +
+          '<p class="field-hint" id="logo-reject-msg-'+l.id+'" hidden></p>' +
         '</div>' +
       '</div>';
     }).join('');
@@ -3156,6 +3169,7 @@
       var proposer = uploaderNames[l.proposed_by] || 'unknown';
       var willReplace = l.make_current !== false;
       var makeCurrentId = 'mod-make-current-complogo-'+l.id;
+      var compLogoRejectId = 'mod-complogo-reject-'+l.id;
       return '<div class="mod-card">' +
         '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(l.storage_path))+'" alt="" loading="lazy"></div>' +
         '<div class="mod-info">' +
@@ -3168,7 +3182,12 @@
         '<div class="mod-actions">' +
           '<a class="btn btn-secondary" href="#/logo-proposal/competition/'+l.id+'" target="_blank" rel="noopener" style="text-decoration:none;">View / message</a>' +
           '<button class="btn" data-type="comp-logo" data-action="approve" data-id="'+l.id+'" data-comp-slug="'+esc(l.competition_slug)+'" data-path="'+esc(l.storage_path)+'" data-years="'+esc(l.years_used || '')+'" data-note="'+esc(l.note || '')+'" data-make-current-id="'+makeCurrentId+'" data-proposed-by="'+esc(l.proposed_by || '')+'" type="button">Approve</button>' +
-          '<button class="btn btn-reject" data-type="comp-logo" data-action="reject" data-id="'+l.id+'" data-path="'+esc(l.storage_path)+'" type="button">Reject</button>' +
+          '<button class="btn btn-reject mod-reject-toggle" data-target="'+compLogoRejectId+'" type="button">Reject</button>' +
+        '</div>' +
+        '<div class="comp-move-panel" id="'+compLogoRejectId+'" hidden style="flex-basis:100%;max-width:none;">' +
+          '<textarea class="report-textarea" id="complogo-reject-reason-'+l.id+'" placeholder="Why is this being rejected? Shown to the proposer on their submission."></textarea>' +
+          '<button class="btn btn-reject" data-confirm-reject-logo="competition" data-id="'+l.id+'" data-path="'+esc(l.storage_path)+'" type="button">Confirm reject</button>' +
+          '<p class="field-hint" id="complogo-reject-msg-'+l.id+'" hidden></p>' +
         '</div>' +
       '</div>';
     }).join('');
@@ -3694,25 +3713,36 @@
       });
     }
 
+    var lpRejectToggle = document.getElementById('lp-reject-toggle');
+    if(lpRejectToggle){
+      lpRejectToggle.addEventListener('click', function(){
+        var panel = document.getElementById('lp-reject-panel');
+        panel.hidden = !panel.hidden;
+      });
+    }
     var lpRejectBtn = document.getElementById('lp-reject-btn');
     if(lpRejectBtn){
       lpRejectBtn.addEventListener('click', async function(){
-        if(!confirm('Reject this logo proposal?')) return;
         var lpApproveBtnEl = document.getElementById('lp-approve-btn');
-        lpRejectBtn.disabled = true; if(lpApproveBtnEl) lpApproveBtnEl.disabled = true;
+        var msg = document.getElementById('lp-reject-msg');
+        var reason = document.getElementById('lp-reject-reason').value.trim() || null;
+        lpRejectBtn.disabled = true; lpRejectBtn.textContent = 'Rejecting…'; if(lpApproveBtnEl) lpApproveBtnEl.disabled = true;
         try {
           var logoKind = lpRejectBtn.dataset.kind;
           var proposalTable = logoKind === 'team' ? 'team_logo_proposals' : 'competition_logo_proposals';
+          // Same as Moderate's reject-with-reason - the row is kept
+          // (status='rejected') so the proposer can see why, only the
+          // image file is removed from storage.
           if(lpRejectBtn.dataset.path){
             var rm = await supabaseClient.storage.from('team-logos').remove([lpRejectBtn.dataset.path]);
             if(rm.error) throw rm.error;
           }
-          var delRes = await supabaseClient.from(proposalTable).delete().eq('id', lpRejectBtn.dataset.id);
-          if(delRes.error) throw delRes.error;
+          var upd = await supabaseClient.from(proposalTable).update({status:'rejected', rejection_reason: reason}).eq('id', lpRejectBtn.dataset.id);
+          if(upd.error) throw upd.error;
           render();
         } catch(err){
-          alert('Error: ' + (err.message || err));
-          lpRejectBtn.disabled = false; if(lpApproveBtnEl) lpApproveBtnEl.disabled = false;
+          lpRejectBtn.disabled = false; lpRejectBtn.textContent = 'Confirm reject'; if(lpApproveBtnEl) lpApproveBtnEl.disabled = false;
+          msg.hidden = false; msg.className = 'field-error'; msg.textContent = 'Error: ' + (err.message || err);
         }
       });
     }
@@ -4454,6 +4484,35 @@
         render();
       });
     });
+    document.querySelectorAll('[data-confirm-reject-logo]').forEach(function(btn){
+      btn.addEventListener('click', async function(){
+        var kind = btn.dataset.confirmRejectLogo; // 'team' or 'competition'
+        var id = btn.dataset.id;
+        var reasonPrefix = kind === 'team' ? 'logo-reject-reason-' : 'complogo-reject-reason-';
+        var msgPrefix = kind === 'team' ? 'logo-reject-msg-' : 'complogo-reject-msg-';
+        var table = kind === 'team' ? 'team_logo_proposals' : 'competition_logo_proposals';
+        var msg = document.getElementById(msgPrefix+id);
+        var reason = document.getElementById(reasonPrefix+id).value.trim() || null;
+        btn.disabled = true; btn.textContent = 'Rejecting…';
+        try {
+          // Same approach as a rejected jersey - the proposal row is
+          // kept (status='rejected', with the reason) so the proposer
+          // can see why; only the image FILE is removed from storage.
+          if(btn.dataset.path){
+            var rm = await supabaseClient.storage.from('team-logos').remove([btn.dataset.path]);
+            if(rm.error) throw rm.error;
+          }
+          var upd = await supabaseClient.from(table).update({status:'rejected', rejection_reason: reason}).eq('id', id);
+          if(upd.error) throw upd.error;
+        } catch(err){
+          btn.disabled = false; btn.textContent = 'Confirm reject';
+          msg.hidden = false; msg.className = 'field-error'; msg.textContent = 'Error: ' + (err.message || err);
+          return;
+        }
+        btn.disabled = false; btn.textContent = 'Confirm reject';
+        render();
+      });
+    });
     document.querySelectorAll('.mod-card [data-action]').forEach(function(btn){
       btn.addEventListener('click', async function(){
         var id = btn.dataset.id;
@@ -4481,26 +4540,20 @@
             if(repRes2.error) throw repRes2.error;
             await supabaseClient.storage.from('report-attachments').remove([oldPath]);
           } else if(type === 'logo' || type === 'comp-logo'){
+            // Only ever 'approve' here - reject goes through the reason
+            // box instead (see [data-confirm-reject-logo]), same split as
+            // a jersey's approve-inline/reject-with-reason buttons.
             var logoKind = type === 'logo' ? 'team' : 'competition';
             var logoProposalTable = type === 'logo' ? 'team_logo_proposals' : 'competition_logo_proposals';
             var logoRefId = type === 'logo' ? btn.dataset.teamId : btn.dataset.compSlug;
-            if(btn.dataset.action === 'approve'){
-              var makeCurrentCb = document.getElementById(btn.dataset.makeCurrentId);
-              var willMakeCurrent = !makeCurrentCb || makeCurrentCb.checked;
-              if(!willMakeCurrent) await addLogoToHistory(logoKind, logoRefId, btn.dataset.path, btn.dataset.years || null, btn.dataset.proposedBy || null, btn.dataset.note || null, id);
-              else await setLogo(logoKind, logoRefId, btn.dataset.path, btn.dataset.years || null, btn.dataset.proposedBy || null, btn.dataset.note || null, id);
-              // status update (not delete) so the award_logo_point trigger
-              // fires and the proposer gets their point, same as a jersey.
-              var logoApprove = await supabaseClient.from(logoProposalTable).update({status:'approved'}).eq('id', id);
-              if(logoApprove.error) throw logoApprove.error;
-            } else {
-              if(btn.dataset.path){
-                var logoRm = await supabaseClient.storage.from('team-logos').remove([btn.dataset.path]);
-                if(logoRm.error) throw logoRm.error;
-              }
-              var logoDel = await supabaseClient.from(logoProposalTable).delete().eq('id', id);
-              if(logoDel.error) throw logoDel.error;
-            }
+            var makeCurrentCb = document.getElementById(btn.dataset.makeCurrentId);
+            var willMakeCurrent = !makeCurrentCb || makeCurrentCb.checked;
+            if(!willMakeCurrent) await addLogoToHistory(logoKind, logoRefId, btn.dataset.path, btn.dataset.years || null, btn.dataset.proposedBy || null, btn.dataset.note || null, id);
+            else await setLogo(logoKind, logoRefId, btn.dataset.path, btn.dataset.years || null, btn.dataset.proposedBy || null, btn.dataset.note || null, id);
+            // status update (not delete) so the award_logo_point trigger
+            // fires and the proposer gets their point, same as a jersey.
+            var logoApprove = await supabaseClient.from(logoProposalTable).update({status:'approved'}).eq('id', id);
+            if(logoApprove.error) throw logoApprove.error;
           } else if(type === 'photo'){
             if(btn.dataset.action === 'approve'){
               var pr = await supabaseClient.from('jersey_images').update({status:'approved'}).eq('id', id);
