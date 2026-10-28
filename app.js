@@ -1711,6 +1711,76 @@
     });
   }
 
+  // Swapping in an entirely different (clearer) photo for an existing
+  // Logo History entry - including the current logo - without creating
+  // a new history row the way proposing a fresh logo would. Same
+  // bucket/onSaved shape as openImageCropModal, but a dropzone instead
+  // of a crop stage, since this replaces the file rather than
+  // re-cropping the one already there.
+  async function openImageReplaceModal(bucket, storagePath, onSaved){
+    var overlay = document.createElement('div');
+    overlay.className = 'crop-modal';
+    overlay.innerHTML =
+      '<div class="crop-modal-inner">' +
+        '<div class="dropzone" id="replace-modal-dropzone" tabindex="0" role="button" aria-label="Replace photo">' +
+          ICON_PHOTO +
+          '<p>Drop a replacement image here, or click to choose</p>' +
+          '<input type="file" id="replace-modal-input" accept="image/*" style="display:none;">' +
+        '</div>' +
+        '<p class="field-hint" id="replace-modal-status" hidden></p>' +
+        '<div class="crop-modal-actions">' +
+          '<button class="btn btn-secondary" type="button" data-replace-cancel>Cancel</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    function closeModal(){ overlay.remove(); }
+    overlay.querySelector('[data-replace-cancel]').addEventListener('click', closeModal);
+    overlay.addEventListener('pointerdown', function(e){ if(e.target === overlay) closeModal(); });
+
+    var dropzone = overlay.querySelector('#replace-modal-dropzone');
+    var input = overlay.querySelector('#replace-modal-input');
+    var statusEl = overlay.querySelector('#replace-modal-status');
+
+    async function doReplace(file){
+      if(!file || !/^image\//.test(file.type)) return;
+      statusEl.hidden = false; statusEl.textContent = 'Uploading…';
+      dropzone.setAttribute('aria-disabled', 'true');
+      try {
+        var compressed = await compressImageForUpload(file, LOGO_WEBP_QUALITY);
+        var ext = (compressed.name.split('.').pop() || 'png').toLowerCase();
+        var newPath = storagePath.replace(/(\.\w+)$/, '-replace-' + Date.now() + '$1');
+        var up = await supabaseClient.storage.from(bucket).upload(newPath, compressed);
+        if(up.error) throw up.error;
+        if(onSaved){
+          var upd = await onSaved(newPath);
+          if(upd && upd.error) throw upd.error;
+        }
+        await supabaseClient.storage.from(bucket).remove([storagePath]); // best-effort cleanup of the old file
+        closeModal();
+        render();
+      } catch(err){
+        statusEl.textContent = 'Error: ' + (err.message || err);
+        dropzone.removeAttribute('aria-disabled');
+      }
+    }
+    dropzone.addEventListener('click', function(){ input.click(); });
+    dropzone.addEventListener('keydown', function(e){ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); input.click(); } });
+    input.addEventListener('change', function(){ var f = input.files[0]; input.value = ''; doReplace(f); });
+    dropzone.addEventListener('dragover', function(e){ e.preventDefault(); dropzone.classList.add('is-dragover'); });
+    dropzone.addEventListener('dragleave', function(){ dropzone.classList.remove('is-dragover'); });
+    dropzone.addEventListener('drop', function(e){
+      e.preventDefault();
+      dropzone.classList.remove('is-dragover');
+      if(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) doReplace(e.dataTransfer.files[0]);
+    });
+  }
+  function openLogoReplaceModal(storagePath, kind, logoId){
+    var t = logoTables(kind);
+    return openImageReplaceModal('team-logos', storagePath, function(newPath){
+      return supabaseClient.from(t.history).update({storage_path: newPath}).eq('id', logoId);
+    });
+  }
+
   // Tucked away like the team page's own admin panel — fixes a mislabeled
   // front/back photo (which also fixes which one shows as the main image,
   // since that's always whichever is labeled "Front") and reassigns a
@@ -3874,6 +3944,11 @@
           // the live logo from here, so there's never a team/competition
           // left pointing at a storage_path that no longer exists.
           var deleteBtn = (isAdmin && !r.is_current) ? ' <button class="btn btn-reject delete-logo-btn" type="button" data-logo-id="'+r.id+'" data-path="'+esc(r.storage_path)+'" style="padding:2px 8px;font-size:12px;">Delete</button>' : '';
+          // Swaps the image file in place (including for the current
+          // logo) when a clearer photo of the same logo turns up later -
+          // doesn't touch years/note/is_current, and doesn't add a new
+          // history row the way proposing a fresh logo would.
+          var replaceBtn = isAdmin ? ' <button class="btn btn-secondary replace-logo-btn" type="button" data-logo-id="'+r.id+'" data-path="'+esc(r.storage_path)+'" style="padding:2px 8px;font-size:12px;">Replace photo</button>' : '';
           var creditHtml = uploaderNamesById[r.proposed_by]
             ? '<span style="font-size:10.5px;color:var(--text-dim);">by '+esc(uploaderNamesById[r.proposed_by])+'</span>'
             : '';
@@ -3884,7 +3959,7 @@
             ? ' <a class="spec-link" href="#/logo-proposal/'+kind+'/'+r.proposal_id+'" target="_blank" rel="noopener" style="font-size:10.5px;">View / message</a>'
             : '';
           return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(r.storage_path))+'" alt="" loading="lazy">' +
-            '<div class="spec-value-row"><span>'+caption+'</span>'+editBtn+makeCurrentBtn+deleteBtn+'</div>' + noteHtml + creditHtml + msgLinkHtml + '</div>';
+            '<div class="spec-value-row"><span>'+caption+'</span>'+editBtn+makeCurrentBtn+deleteBtn+replaceBtn+'</div>' + noteHtml + creditHtml + msgLinkHtml + '</div>';
         }).join('') + '</div>'
       : '<div class="empty-note">No logo history yet.</div>';
     panel.querySelectorAll('.make-current-btn').forEach(function(btn){
@@ -3910,6 +3985,11 @@
           btn.disabled = false; btn.textContent = 'Delete';
           alert('Error: ' + (e.message || e));
         }
+      });
+    });
+    panel.querySelectorAll('.replace-logo-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        openLogoReplaceModal(btn.dataset.path, kind, btn.dataset.logoId);
       });
     });
     panel.querySelectorAll('.edit-pencil-btn').forEach(function(btn){
