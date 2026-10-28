@@ -3333,6 +3333,27 @@
     // case a collected jersey was since unapproved (reassigned, say) -
     // collection_items itself carries no status of its own to check.
     var isOwnProfile = !!(currentUser && currentUser.id === profile.id);
+
+    // Congratulates a member on reaching a new reputation tier (see
+    // tier_up_notices.sql) - only ever shown to the member themselves,
+    // once, right here on their own profile page (also where the
+    // topbar envelope badge sends them when this is the only unread
+    // thing waiting). If more than one tier was crossed since their
+    // last visit (several points awarded in a row), only the most
+    // recent is worth congratulating on - that's the tier they're
+    // actually in now.
+    var tierUpBannerHtml = '';
+    if(page === 1 && isOwnProfile){
+      var tierNoticeRes = await safeCount(supabaseClient.from('tier_up_notices').select('*').eq('user_id', profile.id).eq('seen', false).order('created_at', {ascending:false}));
+      var tierNotices = (tierNoticeRes && !tierNoticeRes.error) ? tierNoticeRes.data || [] : [];
+      if(tierNotices.length){
+        var latestTierNotice = tierNotices[0];
+        tierUpBannerHtml = '<div class="tier-up-banner"><strong>You&rsquo;ve moved up to '+esc(latestTierNotice.tier_label)+'!</strong> Congratulations &mdash; your contributions have pushed you past '+latestTierNotice.points_at_time+' points, putting you in the '+esc(latestTierNotice.tier_label)+' tier. Thanks for helping build out the archive.</div>';
+        await supabaseClient.from('tier_up_notices').update({seen: true}).eq('user_id', profile.id).eq('seen', false);
+        if(unreadMsgCount) await refreshAuthUI();
+      }
+    }
+
     var collectionSectionHtml = '';
     if(page === 1 && (isOwnProfile || profile.collection_public)){
       var colJRes = await supabaseClient.from('collection_items')
@@ -3368,7 +3389,8 @@
         '</div>'
       : '';
 
-    return '<div class="section-head"><h2>'+esc(profile.username)+' '+pointsChip(profile.points)+'</h2><span class="count">'+totalJerseys+' upload'+(totalJerseys===1?'':'s')+'</span></div>' +
+    return tierUpBannerHtml +
+      '<div class="section-head"><h2>'+esc(profile.username)+' '+pointsChip(profile.points)+'</h2><span class="count">'+totalJerseys+' upload'+(totalJerseys===1?'':'s')+'</span></div>' +
       '<p style="margin:-10px 0 18px;"><a class="spec-link" href="#/contributors">See the full leaderboard &rarr;</a></p>' +
       profileTabsHtml +
       '<div id="profile-tab-uploads">' +
@@ -5985,25 +6007,29 @@
         pendingCount = results.reduce(function(sum, r){ return sum + (r && !r.error ? (r.count || 0) : 0); }, 0);
       }
       // Any signed-in user (not just admins) can have a reply waiting -
-      // either side of a jersey_messages or logo_messages thread.
-      // Wrapped since either view may not exist yet on an install that
-      // hasn't run the matching migration. Combined into one badge/
-      // count - whichever thread has the most recent reply wins the
-      // link, since there's rarely more than one or two unread at once.
+      // either side of a jersey_messages or logo_messages thread - or a
+      // tier-up congratulations (tier_up_notices) waiting on their own
+      // profile. Wrapped since any of these may not exist yet on an
+      // install that hasn't run the matching migration. All three fold
+      // into one badge/count - whichever is most recent wins the link,
+      // since there's rarely more than one or two unread at once.
       var unreadResults = await Promise.all([
         safeCount(supabaseClient.from('my_unread_jersey_messages').select('jersey_id, latest_at').order('latest_at', {ascending:false})),
-        safeCount(supabaseClient.from('my_unread_logo_messages').select('kind, proposal_id, latest_at').order('latest_at', {ascending:false}))
+        safeCount(supabaseClient.from('my_unread_logo_messages').select('kind, proposal_id, latest_at').order('latest_at', {ascending:false})),
+        safeCount(supabaseClient.from('tier_up_notices').select('created_at').eq('user_id', currentUser.id).eq('seen', false).order('created_at', {ascending:false}))
       ]);
-      var unreadJerseyRes = unreadResults[0], unreadLogoRes = unreadResults[1];
+      var unreadJerseyRes = unreadResults[0], unreadLogoRes = unreadResults[1], unreadTierRes = unreadResults[2];
       var unreadJerseyRows = (unreadJerseyRes && !unreadJerseyRes.error) ? unreadJerseyRes.data || [] : [];
       var unreadLogoRows = (unreadLogoRes && !unreadLogoRes.error) ? unreadLogoRes.data || [] : [];
-      unreadMsgCount = unreadJerseyRows.length + unreadLogoRows.length;
-      var newestJersey = unreadJerseyRows[0], newestLogo = unreadLogoRows[0];
-      if(newestJersey && (!newestLogo || new Date(newestJersey.latest_at) >= new Date(newestLogo.latest_at))){
-        unreadMsgLink = '#/jersey/'+newestJersey.jersey_id;
-      } else if(newestLogo){
-        unreadMsgLink = '#/logo-proposal/'+newestLogo.kind+'/'+newestLogo.proposal_id;
-      }
+      var unreadTierRows = (unreadTierRes && !unreadTierRes.error) ? unreadTierRes.data || [] : [];
+      unreadMsgCount = unreadJerseyRows.length + unreadLogoRows.length + unreadTierRows.length;
+      var newestJersey = unreadJerseyRows[0], newestLogo = unreadLogoRows[0], newestTier = unreadTierRows[0];
+      var linkCandidates = [];
+      if(newestJersey) linkCandidates.push({ts: newestJersey.latest_at, link: '#/jersey/'+newestJersey.jersey_id});
+      if(newestLogo) linkCandidates.push({ts: newestLogo.latest_at, link: '#/logo-proposal/'+newestLogo.kind+'/'+newestLogo.proposal_id});
+      if(newestTier && currentProfile && currentProfile.username) linkCandidates.push({ts: newestTier.created_at, link: '#/user/'+encodeURIComponent(currentProfile.username)});
+      linkCandidates.sort(function(a,b){ return new Date(b.ts) - new Date(a.ts); });
+      unreadMsgLink = linkCandidates.length ? linkCandidates[0].link : null;
     } else {
       currentProfile = null;
     }
