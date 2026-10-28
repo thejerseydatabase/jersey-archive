@@ -1510,7 +1510,7 @@
         ) : '') +
         renderReportButton('jersey', j.id, j.season+' '+team.name+' '+j.type) +
         messagesHtml +
-        (isAdmin ? renderJerseyAdminBlock(j, images, sport.slug, additionalCredits, acUsernames) : '') +
+        (isAdmin ? renderJerseyAdminBlock(j, images, sport.slug, additionalCredits, acUsernames, team) : '') +
       '</div>' +
     '</div>';
   }
@@ -1716,7 +1716,7 @@
   // since that's always whichever is labeled "Front") and reassigns a
   // jersey to a different team/sport entirely, for the rare case one gets
   // approved under the wrong one and can't just be re-uploaded.
-  function renderJerseyAdminBlock(j, images, sportSlug, additionalCredits, acUsernames){
+  function renderJerseyAdminBlock(j, images, sportSlug, additionalCredits, acUsernames, team){
     // Delete only shows once there's more than one photo, since a jersey
     // always needs at least one — that's the same condition already
     // gating whether this grid renders at all, so there's never a way
@@ -1768,6 +1768,9 @@
           '<label class="field-hint" style="display:block;margin-top:8px;cursor:pointer;"><input type="checkbox" id="jersey-credit-point" style="vertical-align:middle;margin-right:6px;">Also award them a point</label>' +
           '<button type="button" class="btn btn-secondary" id="jersey-credit-add-btn" data-jersey-id="'+j.id+'" style="margin-top:8px;">Add credit</button>' +
           '<p class="field-hint" id="jersey-credit-msg" hidden></p>' +
+          '<label class="rate-label" style="margin-top:14px;">Danger zone</label>' +
+          '<button type="button" class="btn btn-reject delete-jersey-btn" data-jersey-id="'+j.id+'" data-redirect="#/sport/'+esc(sportSlug)+'/'+esc(team.competition_slug)+'/team/'+esc(team.slug)+'">Delete this jersey</button>' +
+          '<p class="field-hint">Permanently removes it and its photos &mdash; e.g. an approved duplicate. Can&rsquo;t be undone.</p>' +
         '</div>' +
       '</div>';
   }
@@ -3750,6 +3753,35 @@
               render();
             });
           });
+          var deleteJerseyBtn = panel.querySelector('.delete-jersey-btn');
+          if(deleteJerseyBtn){
+            deleteJerseyBtn.addEventListener('click', async function(){
+              if(!confirm('Permanently delete this jersey and all its photos? This can\'t be undone.')) return;
+              deleteJerseyBtn.disabled = true; deleteJerseyBtn.textContent = 'Deleting…';
+              try {
+                var jerseyId = deleteJerseyBtn.dataset.jerseyId;
+                var imgRes = await supabaseClient.from('jersey_images').select('storage_path').eq('jersey_id', jerseyId);
+                if(imgRes.error) throw imgRes.error;
+                var paths = (imgRes.data || []).map(function(r){ return r.storage_path; });
+                if(paths.length){
+                  var rm = await supabaseClient.storage.from('jersey-photos').remove(paths);
+                  if(rm.error) throw rm.error;
+                }
+                // The jerseys row itself cascades everything else that
+                // points at it (jersey_images, jersey_competitions,
+                // jersey_messages, collection_items, jersey_additional_credits,
+                // jersey_message_reads all use on delete cascade) - only the
+                // storage files above need removing by hand first, since
+                // Storage isn't tied to that cascade.
+                var del = await supabaseClient.from('jerseys').delete().eq('id', jerseyId);
+                if(del.error) throw del.error;
+                location.hash = deleteJerseyBtn.dataset.redirect;
+              } catch(err){
+                deleteJerseyBtn.disabled = false; deleteJerseyBtn.textContent = 'Delete this jersey';
+                alert('Error: ' + (err.message || err));
+              }
+            });
+          }
           return;
         }
         panel.hidden = !panel.hidden;
