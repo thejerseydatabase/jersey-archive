@@ -6243,31 +6243,33 @@
     else if(e.key === 'ArrowRight') lightboxStep(1);
   });
 
-  // Footer-wide site stats (teams/competitions counted straight from
-  // their tables; jerseys/manufacturers/contributors derived from one
-  // pass over approved jerseys' manufacturer + uploaded_by columns,
-  // same lightweight-single-column-fetch approach as viewManufacturers).
-  // Runs once at startup, not per route — it isn't route-specific.
+  // Footer-wide site stats - team/competition counts are how many
+  // actually have an approved jersey logged, not the full tables (most
+  // teams/competitions in the database don't have anything uploaded
+  // yet, so counting every row would overstate how much is actually
+  // archived). Derived from the same one pass over approved jerseys as
+  // manufacturers/contributors, same lightweight-single-column-fetch
+  // approach as viewManufacturers. Runs once at startup, not per route
+  // — it isn't route-specific.
   async function refreshFooterStats(){
     var el = document.getElementById('footer-stats');
     if(!el) return;
     try{
-      var teamsCountRes = await supabaseClient.from('teams').select('id', {count:'exact', head:true});
-      var compsCountRes = await supabaseClient.from('competitions').select('slug', {count:'exact', head:true});
-      if(teamsCountRes.error || compsCountRes.error) return;
       // head:true counts aren't capped by the row-return limit, but a
       // plain row fetch is — paginated the same way as search so this
       // doesn't quietly under-count once jerseys passes that limit too.
-      var jerseys = await fetchAllRows('jerseys', 'manufacturer, uploaded_by', function(q){ return q.eq('status', 'approved'); });
-      var manufacturers = {}, contributors = {};
+      var jerseys = await fetchAllRows('jerseys', 'manufacturer, uploaded_by, team_id, teams(competition_slug)', function(q){ return q.eq('status', 'approved'); });
+      var manufacturers = {}, contributors = {}, teamsWithJerseys = {}, compsWithJerseys = {};
       jerseys.forEach(function(j){
         var m = (j.manufacturer || '').trim();
         if(m) manufacturers[m.toLowerCase()] = true;
         if(j.uploaded_by) contributors[j.uploaded_by] = true;
+        if(j.team_id) teamsWithJerseys[j.team_id] = true;
+        if(j.teams && j.teams.competition_slug) compsWithJerseys[j.teams.competition_slug] = true;
       });
       var jerseyCount = jerseys.length;
-      var teamCount = teamsCountRes.count || 0;
-      var compCount = compsCountRes.count || 0;
+      var teamCount = Object.keys(teamsWithJerseys).length;
+      var compCount = Object.keys(compsWithJerseys).length;
       var mfrCount = Object.keys(manufacturers).length;
       var userCount = Object.keys(contributors).length;
       el.textContent = 'The archive includes ' + jerseyCount.toLocaleString() + ' jersey' + (jerseyCount===1?'':'s') +
