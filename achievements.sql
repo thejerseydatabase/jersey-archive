@@ -202,3 +202,10 @@ drop trigger if exists on_collection_item_added_badges on collection_items;
 create trigger on_collection_item_added_badges
   after insert on collection_items
   for each row execute function badges_on_collection_add();
+
+-- One-time backfill - without this, triggers only fire on NEW approvals
+-- going forward, so someone who already has (say) 50 uploads wouldn't
+-- see "Serious Collector" until their next one gets approved. Awards
+-- everyone whatever they already qualify for right now; harmless to
+-- re-run (check_and_award_badges is idempotent either way).
+select check_and_award_badges(id) from profiles;
