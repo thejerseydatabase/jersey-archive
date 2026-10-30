@@ -3386,6 +3386,39 @@
       }
     }
 
+    // Achievement badges (see achievements.sql) - separate from the
+    // points/tier system, these are one-off unlocks (upload milestones,
+    // breadth across sports/competitions/manufacturers, etc.) rather
+    // than a continuous score. Earned badges are public, same as
+    // points/tier, so they double as a trophy case on anyone's profile;
+    // the "new badge(s) unlocked" banner is private to the owner, same
+    // gating as the tier-up banner above.
+    var badgesSectionHtml = '';
+    var newBadgesBannerHtml = '';
+    if(page === 1){
+      var userBadgesRes = await supabaseClient.from('user_badges')
+        .select('badge_slug, seen, badges(label, description, sort_order)')
+        .eq('user_id', profile.id);
+      var userBadges = (userBadgesRes.data || []).filter(function(b){ return b.badges; })
+        .sort(function(a,b){ return a.badges.sort_order - b.badges.sort_order; });
+      if(userBadges.length){
+        var badgeChips = userBadges.map(function(b){
+          return '<span class="badge-chip" title="'+esc(b.badges.description)+'">'+esc(b.badges.label)+'</span>';
+        }).join('');
+        badgesSectionHtml = '<div class="section-head" style="margin-top:34px;"><h2>Achievements</h2><span class="count">'+userBadges.length+'</span></div><div class="badge-row">'+badgeChips+'</div>';
+      }
+      if(isOwnProfile){
+        var unseenBadges = userBadges.filter(function(b){ return !b.seen; });
+        if(unseenBadges.length){
+          newBadgesBannerHtml = '<div class="tier-up-banner"><strong>'+(unseenBadges.length === 1 ? 'New achievement unlocked!' : unseenBadges.length+' new achievements unlocked!')+'</strong><br>' +
+            unseenBadges.map(function(b){ return '&bull; <strong>'+esc(b.badges.label)+'</strong> &mdash; '+esc(b.badges.description); }).join('<br>') +
+          '</div>';
+          await supabaseClient.from('user_badges').update({seen: true}).eq('user_id', profile.id).eq('seen', false);
+          if(unreadMsgCount) await refreshAuthUI();
+        }
+      }
+    }
+
     var collectionSectionHtml = '';
     if(page === 1 && (isOwnProfile || profile.collection_public)){
       var colJRes = await supabaseClient.from('collection_items')
@@ -3421,9 +3454,10 @@
         '</div>'
       : '';
 
-    return tierUpBannerHtml +
+    return tierUpBannerHtml + newBadgesBannerHtml +
       '<div class="section-head"><h2>'+esc(profile.username)+' '+pointsChip(profile.points)+'</h2><span class="count">'+totalJerseys+' upload'+(totalJerseys===1?'':'s')+'</span></div>' +
       '<p style="margin:-10px 0 18px;"><a class="spec-link" href="#/contributors">See the full leaderboard &rarr;</a></p>' +
+      badgesSectionHtml +
       profileTabsHtml +
       '<div id="profile-tab-uploads">' +
         (cards ? '<div class="jersey-grid">'+cards+'</div>' : '<div class="empty-note">No approved uploads yet.</div>') +
@@ -6039,27 +6073,31 @@
         pendingCount = results.reduce(function(sum, r){ return sum + (r && !r.error ? (r.count || 0) : 0); }, 0);
       }
       // Any signed-in user (not just admins) can have a reply waiting -
-      // either side of a jersey_messages or logo_messages thread - or a
-      // tier-up congratulations (tier_up_notices) waiting on their own
+      // either side of a jersey_messages or logo_messages thread, a
+      // tier-up congratulations (tier_up_notices), or a newly-unlocked
+      // achievement badge (user_badges) - all waiting on their own
       // profile. Wrapped since any of these may not exist yet on an
-      // install that hasn't run the matching migration. All three fold
+      // install that hasn't run the matching migration. All four fold
       // into one badge/count - whichever is most recent wins the link,
       // since there's rarely more than one or two unread at once.
       var unreadResults = await Promise.all([
         safeCount(supabaseClient.from('my_unread_jersey_messages').select('jersey_id, latest_at').order('latest_at', {ascending:false})),
         safeCount(supabaseClient.from('my_unread_logo_messages').select('kind, proposal_id, latest_at').order('latest_at', {ascending:false})),
-        safeCount(supabaseClient.from('tier_up_notices').select('created_at').eq('user_id', currentUser.id).eq('seen', false).order('created_at', {ascending:false}))
+        safeCount(supabaseClient.from('tier_up_notices').select('created_at').eq('user_id', currentUser.id).eq('seen', false).order('created_at', {ascending:false})),
+        safeCount(supabaseClient.from('user_badges').select('earned_at').eq('user_id', currentUser.id).eq('seen', false).order('earned_at', {ascending:false}))
       ]);
-      var unreadJerseyRes = unreadResults[0], unreadLogoRes = unreadResults[1], unreadTierRes = unreadResults[2];
+      var unreadJerseyRes = unreadResults[0], unreadLogoRes = unreadResults[1], unreadTierRes = unreadResults[2], unreadBadgeRes = unreadResults[3];
       var unreadJerseyRows = (unreadJerseyRes && !unreadJerseyRes.error) ? unreadJerseyRes.data || [] : [];
       var unreadLogoRows = (unreadLogoRes && !unreadLogoRes.error) ? unreadLogoRes.data || [] : [];
       var unreadTierRows = (unreadTierRes && !unreadTierRes.error) ? unreadTierRes.data || [] : [];
-      unreadMsgCount = unreadJerseyRows.length + unreadLogoRows.length + unreadTierRows.length;
-      var newestJersey = unreadJerseyRows[0], newestLogo = unreadLogoRows[0], newestTier = unreadTierRows[0];
+      var unreadBadgeRows = (unreadBadgeRes && !unreadBadgeRes.error) ? unreadBadgeRes.data || [] : [];
+      unreadMsgCount = unreadJerseyRows.length + unreadLogoRows.length + unreadTierRows.length + unreadBadgeRows.length;
+      var newestJersey = unreadJerseyRows[0], newestLogo = unreadLogoRows[0], newestTier = unreadTierRows[0], newestBadge = unreadBadgeRows[0];
       var linkCandidates = [];
       if(newestJersey) linkCandidates.push({ts: newestJersey.latest_at, link: '#/jersey/'+newestJersey.jersey_id});
       if(newestLogo) linkCandidates.push({ts: newestLogo.latest_at, link: '#/logo-proposal/'+newestLogo.kind+'/'+newestLogo.proposal_id});
       if(newestTier && currentProfile && currentProfile.username) linkCandidates.push({ts: newestTier.created_at, link: '#/user/'+encodeURIComponent(currentProfile.username)});
+      if(newestBadge && currentProfile && currentProfile.username) linkCandidates.push({ts: newestBadge.earned_at, link: '#/user/'+encodeURIComponent(currentProfile.username)});
       linkCandidates.sort(function(a,b){ return new Date(b.ts) - new Date(a.ts); });
       unreadMsgLink = linkCandidates.length ? linkCandidates[0].link : null;
     } else {
