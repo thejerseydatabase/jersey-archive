@@ -1246,7 +1246,7 @@
         // this team's CURRENT competition happens to be.
         var seasonCompNames = by[y].map(function(j){ return j.competitions && j.competitions.name; }).filter(Boolean)
           .filter(function(n, i, arr){ return arr.indexOf(n) === i; });
-        var compLabel = (seasonCompNames.length && (seasonCompNames.length > 1 || seasonCompNames[0] !== comp.name))
+        var compLabel = seasonCompNames.length
           ? ' <span class="season-comp-label">'+esc(seasonCompNames.join(' / '))+'</span>' : '';
         var seasonCompSlugs = by[y].map(function(j){ return j.competition_slug; }).filter(Boolean)
           .filter(function(s, i, arr){ return arr.indexOf(s) === i; });
