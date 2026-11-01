@@ -13,7 +13,15 @@
 -- different sports spell some countries differently - Czechia/Czech
 -- Republic, Türkiye/Turkey, etc. all map to the right one).
 --
--- Safe to re-run.
+-- Safe to re-run. Run this whole file in ONE query - Supabase's SQL
+-- Editor runs a pasted script as a single transaction, so if anything
+-- partway through errors, everything in that run (including the table
+-- creation) rolls back together, not just the failing statement. (This
+-- version already has two earlier fixes folded in: RLS enabled on
+-- country_region, and the FOREACH loop corrected to SLICE 1 for
+-- iterating a 2-D array row-by-row - if you ran an earlier copy of
+-- this file and hit either error, nothing from that run was actually
+-- kept, so this is a full fresh run, not a patch on top of it.)
 
 create table if not exists country_region (
   country text primary key,
