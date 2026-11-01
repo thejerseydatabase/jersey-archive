@@ -20,6 +20,10 @@ create table if not exists country_region (
   region text not null
 );
 
+alter table country_region enable row level security;
+drop policy if exists "country_region is publicly readable" on country_region;
+create policy "country_region is publicly readable" on country_region for select using (true);
+
 insert into country_region (country, region) values
   ('Australia', 'Oceania'),
   ('New Zealand', 'Oceania'),
