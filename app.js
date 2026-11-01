@@ -14,6 +14,7 @@
   var ICON_STAR_OUTLINE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M12 2.5l3.09 6.26 6.91 1-5 4.87L18.18 21.5 12 18.27 5.82 21.5 7 14.63l-5-4.87 6.91-1z"/></svg>';
   var ICON_GLOBE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/></svg>';
   var ICON_TROPHY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4z"/><path d="M7 5H4a3 3 0 0 0 3 3M17 5h3a3 3 0 0 1-3 3"/></svg>';
+  var ICON_LOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
   // Keyed by badge slug prefix (see achievements.sql's insert) rather
   // than needing its own category column in the database.
   function badgeIcon(slug){
@@ -2368,7 +2369,7 @@
         '</p>' +
 
         '<div class="section-head" style="margin-top:30px;"><h2>Achievements</h2></div>' +
-        '<p>Separate from points and tiers, achievements are one-off badges for specific milestones &mdash; your first approved upload, your first logo, breadth across sports and competitions, and a few others. They show up on your profile page as a public &ldquo;trophy case&rdquo; (visible to anyone who looks at your profile, same as your points and uploads), and you&rsquo;ll get a banner on your own profile the first time you see a newly unlocked one. Nothing to opt into &mdash; they&rsquo;re awarded automatically the moment you qualify.</p>' +
+        '<p>Separate from points and tiers, achievements are one-off badges for specific milestones &mdash; your first approved upload, your first logo, breadth across sports and competitions, and a few others. They show up on your profile page as a public &ldquo;trophy case&rdquo; (visible to anyone who looks at your profile, same as your points and uploads), and you&rsquo;ll get a banner on your own profile the first time you see a newly unlocked one. Nothing to opt into &mdash; they&rsquo;re awarded automatically the moment you qualify. Hover a badge to see which jersey or logo actually earned it, and click the &ldquo;Achievements&rdquo; heading to see every badge, including ones you haven&rsquo;t unlocked yet.</p>' +
         '<div class="section-head" style="margin-top:30px;"><h2>Upload limits</h2></div>' +
         '<p>To keep things sane for everyone, there&rsquo;s an hourly cap of 100 uploads per account. That&rsquo;s far more than a normal upload session needs &mdash; it only kicks in to stop runaway/accidental spam. If you hit it, just wait a bit and carry on. Each jersey is also capped at 6 photos.</p>' +
 
@@ -3521,22 +3522,45 @@
     var badgesSectionHtml = '';
     var newBadgesBannerHtml = '';
     if(page === 1){
+      var allBadgesRes = await supabaseClient.from('badges').select('*').order('sort_order');
+      var allBadges = allBadgesRes.data || [];
       var userBadgesRes = await supabaseClient.from('user_badges')
-        .select('badge_slug, seen, badges(label, description, sort_order)')
+        .select('badge_slug, seen, context_label, badges(label, description, sort_order)')
         .eq('user_id', profile.id);
       var userBadges = (userBadgesRes.data || []).filter(function(b){ return b.badges; })
         .sort(function(a,b){ return a.badges.sort_order - b.badges.sort_order; });
-      if(userBadges.length){
+      var earnedBySlug = {};
+      userBadges.forEach(function(b){ earnedBySlug[b.badge_slug] = b; });
+
+      if(allBadges.length){
         var badgeChips = userBadges.map(function(b){
-          return '<span class="badge-chip" title="'+esc(b.badges.description)+'">'+badgeIcon(b.badge_slug)+' '+esc(b.badges.label)+'</span>';
+          var title = b.badges.description + (b.context_label ? ' (' + b.context_label + ')' : '');
+          return '<span class="badge-chip" title="'+esc(title)+'">'+badgeIcon(b.badge_slug)+' '+esc(b.badges.label)+'</span>';
         }).join('');
-        badgesSectionHtml = '<div class="section-head" style="margin-top:34px;"><h2>Achievements</h2><span class="count">'+userBadges.length+'</span></div><div class="badge-row">'+badgeChips+'</div>';
+        // Full catalog (earned and locked both) - hidden by default,
+        // toggled open from the "Achievements" heading itself. Most of
+        // these are locked for most people most of the time, so the
+        // compact earned-only row stays the default view.
+        var catalogRows = allBadges.map(function(badge){
+          var earned = earnedBySlug[badge.slug];
+          var subtitle = earned && earned.context_label ? earned.context_label : badge.description;
+          return '<div class="badge-catalog-row'+(earned ? ' is-earned' : ' is-locked')+'">' +
+            (earned ? badgeIcon(badge.slug) : ICON_LOCK) +
+            '<div><strong>'+esc(badge.label)+'</strong><span>'+esc(subtitle)+'</span></div>' +
+          '</div>';
+        }).join('');
+        badgesSectionHtml = '<div class="section-head" style="margin-top:34px;">' +
+            '<h2><button class="section-toggle-btn achievements-toggle-btn" type="button">Achievements</button></h2>' +
+            '<span class="count">'+userBadges.length+' / '+allBadges.length+'</span>' +
+          '</div>' +
+          (badgeChips ? '<div class="badge-row">'+badgeChips+'</div>' : '<p class="empty-note" style="margin-top:0;">No achievements unlocked yet.</p>') +
+          '<div class="badge-catalog" id="achievements-catalog" hidden>'+catalogRows+'</div>';
       }
       if(isOwnProfile){
         var unseenBadges = userBadges.filter(function(b){ return !b.seen; });
         if(unseenBadges.length){
           newBadgesBannerHtml = '<div class="tier-up-banner"><strong>'+(unseenBadges.length === 1 ? 'New achievement unlocked!' : unseenBadges.length+' new achievements unlocked!')+'</strong><br>' +
-            unseenBadges.map(function(b){ return '&bull; <strong>'+esc(b.badges.label)+'</strong> &mdash; '+esc(b.badges.description); }).join('<br>') +
+            unseenBadges.map(function(b){ return '&bull; <strong>'+esc(b.badges.label)+'</strong> &mdash; '+esc(b.badges.description)+(b.context_label ? ' ('+esc(b.context_label)+')' : ''); }).join('<br>') +
           '</div>';
           await supabaseClient.from('user_badges').update({seen: true}).eq('user_id', profile.id).eq('seen', false);
           if(unreadMsgCount) await refreshAuthUI();
@@ -3658,6 +3682,12 @@
         });
       });
     }
+    document.querySelectorAll('.achievements-toggle-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var panel = document.getElementById('achievements-catalog');
+        if(panel) panel.hidden = !panel.hidden;
+      });
+    });
     document.querySelectorAll('.show-all-teams-btn').forEach(function(btn){
       btn.addEventListener('click', function(){
         var grid = btn.previousElementSibling;
