@@ -1216,7 +1216,7 @@
     var team = teamRes.data, comp = team.competitions, sport = comp.sports;
     setCrumbs([{label:'Home', href:'#/'},{label:sport.name, href:'#/sport/'+sportSlug},{label:comp.name, href:'#/sport/'+sportSlug+'/'+compSlug},{label:team.name, href:'#'}]);
 
-    var jRes = await supabaseClient.from('jerseys').select('*, jersey_images(*), competitions(name), jersey_competitions(competitions(name))').eq('team_id', team.id).order('season', {ascending:false}).order('created_at', {ascending:true});
+    var jRes = await supabaseClient.from('jerseys').select('*, jersey_images(*), competitions!competition_slug(name), jersey_competitions(competitions(name))').eq('team_id', team.id).order('season', {ascending:false}).order('created_at', {ascending:true});
     if(jRes.error) throw jRes.error;
     var jerseys = jRes.data || [];
     var bySeason = {};
@@ -2134,7 +2134,7 @@
       return searchTextMatches(t.name, term) || searchTextMatches(t.competitions.name, term);
     }).sort(function(a,b){ return a.name.localeCompare(b.name); });
 
-    var jerseyRows = await fetchAllRows('jerseys', '*, jersey_images(*), teams(*, competitions(*, sports(*))), competitions(name), jersey_competitions(competitions(name))');
+    var jerseyRows = await fetchAllRows('jerseys', '*, jersey_images(*), teams(*, competitions(*, sports(*))), competitions!competition_slug(name), jersey_competitions(competitions(name))');
     var matches = jerseyRows.filter(function(j){
       var t = j.teams, c = t && t.competitions;
       if(!t || !c || !c.sports) return false;
