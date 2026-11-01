@@ -996,8 +996,13 @@
   // World Cup). Competition/season pages need both sources merged.
   async function fetchCompetitionJerseys(compSlug, opts){
     opts = opts || {};
-    var directQ = supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*), jersey_competitions(competitions(name))')
-      .eq('teams.competition_slug', compSlug).order('created_at', {ascending:true});
+    // Filtered on the JERSEY's own competition_slug, not the team's -
+    // a team's "home" competition auto-syncs to its most recent season
+    // (see the DB trigger in jersey_competition_slug.sql), so an older
+    // jersey tagged to a competition the team's since moved on from
+    // still needs to show up here, on that competition's own page.
+    var directQ = supabaseClient.from('jerseys').select('*, jersey_images(*), teams(*), jersey_competitions(competitions(name))')
+      .eq('competition_slug', compSlug).order('created_at', {ascending:true});
     if(opts.season) directQ = directQ.eq('season', opts.season);
     var directRes = await directQ;
     if(directRes.error) throw directRes.error;
@@ -1211,7 +1216,7 @@
     var team = teamRes.data, comp = team.competitions, sport = comp.sports;
     setCrumbs([{label:'Home', href:'#/'},{label:sport.name, href:'#/sport/'+sportSlug},{label:comp.name, href:'#/sport/'+sportSlug+'/'+compSlug},{label:team.name, href:'#'}]);
 
-    var jRes = await supabaseClient.from('jerseys').select('*, jersey_images(*), jersey_competitions(competitions(name))').eq('team_id', team.id).order('season', {ascending:false}).order('created_at', {ascending:true});
+    var jRes = await supabaseClient.from('jerseys').select('*, jersey_images(*), competitions(name), jersey_competitions(competitions(name))').eq('team_id', team.id).order('season', {ascending:false}).order('created_at', {ascending:true});
     if(jRes.error) throw jRes.error;
     var jerseys = jRes.data || [];
     var bySeason = {};
@@ -1234,9 +1239,21 @@
       return ys.map(function(y){
         var sorted = showSeasonLink ? sortJerseysByType(by[y], sportSlug, compSlug, y) : by[y];
         var cards = sorted.map(function(j){ return jerseyCard(j, team); }).join('');
+        // A team's own page shows every jersey together regardless of
+        // competition (see jerseys.competition_slug) - this surfaces
+        // which competition each season's jerseys were actually tagged
+        // with, FKA-style, since it isn't always the same as whatever
+        // this team's CURRENT competition happens to be.
+        var seasonCompNames = by[y].map(function(j){ return j.competitions && j.competitions.name; }).filter(Boolean)
+          .filter(function(n, i, arr){ return arr.indexOf(n) === i; });
+        var compLabel = (seasonCompNames.length && (seasonCompNames.length > 1 || seasonCompNames[0] !== comp.name))
+          ? ' <span class="season-comp-label">'+esc(seasonCompNames.join(' / '))+'</span>' : '';
+        var seasonCompSlugs = by[y].map(function(j){ return j.competition_slug; }).filter(Boolean)
+          .filter(function(s, i, arr){ return arr.indexOf(s) === i; });
+        var linkCompSlug = seasonCompSlugs.length === 1 ? seasonCompSlugs[0] : compSlug;
         var heading = showSeasonLink
-          ? '<a class="spec-link" href="#/sport/'+sportSlug+'/'+compSlug+'/season/'+y+'">'+y+'</a>'
-          : y;
+          ? '<a class="spec-link" href="#/sport/'+sportSlug+'/'+linkCompSlug+'/season/'+y+'">'+y+'</a>'+compLabel
+          : y+compLabel;
         return '<div class="season-group"><h3>'+heading+'</h3><div class="jersey-grid">'+cards+'</div></div>';
       }).join('');
     }
@@ -1365,11 +1382,22 @@
   async function viewJerseyDetail(id){
     var res = await supabaseClient.from('jerseys').select('*, jersey_images(*), teams(*, competitions(*, sports(*)))').eq('id', id).single();
     if(res.error) throw res.error;
-    var j = res.data, team = j.teams, comp = team.competitions, sport = comp.sports;
+    var j = res.data, team = j.teams, teamComp = team.competitions, sport = teamComp.sports;
+    // The jersey's OWN tagged competition - usually the same as the
+    // team's current one, but can differ (an older season logged while
+    // the team was in a different division to the one it's in now; see
+    // jerseys.competition_slug). The team page itself still only exists
+    // under the team's own current competition, so breadcrumbs/links
+    // that point AT the team keep using teamComp, not this.
+    var comp = teamComp;
+    if(j.competition_slug && j.competition_slug !== teamComp.slug){
+      var jCompRes = await supabaseClient.from('competitions').select('*, sports(*)').eq('slug', j.competition_slug).maybeSingle();
+      if(!jCompRes.error && jCompRes.data) comp = jCompRes.data;
+    }
     setCrumbs([
       {label:'Home', href:'#/'},{label:sport.name, href:'#/sport/'+sport.slug},
-      {label:comp.name, href:'#/sport/'+sport.slug+'/'+comp.slug},
-      {label:team.name, href:'#/sport/'+sport.slug+'/'+comp.slug+'/team/'+team.slug},
+      {label:teamComp.name, href:'#/sport/'+sport.slug+'/'+teamComp.slug},
+      {label:team.name, href:'#/sport/'+sport.slug+'/'+teamComp.slug+'/team/'+team.slug},
       {label:j.season+' '+j.type, href:'#'}
     ]);
 
@@ -1490,8 +1518,8 @@
           specItem('Sport', '<a class="spec-link" href="#/sport/'+sport.slug+'">'+esc(sport.name)+'</a>', null) +
           specItem(extraComps.length ? 'Competitions' : 'Competition',
             [comp].concat(extraComps).map(function(c){ return '<a class="spec-link" href="#/sport/'+sport.slug+'/'+c.slug+'">'+esc(c.name)+'</a>'; }).join(' &middot; '),
-            {table:'competitions', matchCol:'slug', matchVal:comp.slug, field:'name', current:comp.name}) +
-          specItem('Team', '<a class="spec-link" href="#/sport/'+sport.slug+'/'+comp.slug+'/team/'+team.slug+'">'+esc(team.name)+'</a>', {table:'teams', matchCol:'id', matchVal:team.id, field:'name', current:team.name}) +
+            null) +
+          specItem('Team', '<a class="spec-link" href="#/sport/'+sport.slug+'/'+teamComp.slug+'/team/'+team.slug+'">'+esc(team.name)+'</a>', {table:'teams', matchCol:'id', matchVal:team.id, field:'name', current:team.name}) +
           specItem('Season', '<a class="spec-link" href="#/sport/'+sport.slug+'/'+comp.slug+'/season/'+j.season+'">'+j.season+'</a>', {table:'jerseys', matchCol:'id', matchVal:j.id, field:'season', current:j.season}) +
           specItem('Jersey type', '<a class="spec-link" href="#/type/'+encodeURIComponent(j.type)+'/'+encodeURIComponent(sport.slug)+'/'+encodeURIComponent(comp.slug)+'">'+esc(j.type)+'</a>', {table:'jerseys', matchCol:'id', matchVal:j.id, field:'type', current:j.type}) +
           specItem('Manufacturer', j.manufacturer ? '<a class="spec-link" href="#/manufacturer/'+encodeURIComponent(j.manufacturer)+'">'+esc(j.manufacturer)+'</a>' : 'Unlisted', {table:'jerseys', matchCol:'id', matchVal:j.id, field:'manufacturer', current:j.manufacturer || ''}) +
@@ -1528,7 +1556,7 @@
         ) : '') +
         renderReportButton('jersey', j.id, j.season+' '+team.name+' '+j.type) +
         messagesHtml +
-        (isAdmin ? renderJerseyAdminBlock(j, images, sport.slug, additionalCredits, acUsernames, team) : '') +
+        (isAdmin ? renderJerseyAdminBlock(j, images, sport.slug, additionalCredits, acUsernames, team, comp.slug) : '') +
       '</div>' +
     '</div>';
   }
@@ -1804,7 +1832,7 @@
   // since that's always whichever is labeled "Front") and reassigns a
   // jersey to a different team/sport entirely, for the rare case one gets
   // approved under the wrong one and can't just be re-uploaded.
-  function renderJerseyAdminBlock(j, images, sportSlug, additionalCredits, acUsernames, team){
+  function renderJerseyAdminBlock(j, images, sportSlug, additionalCredits, acUsernames, team, currentCompSlug){
     // Delete only shows once there's more than one photo, since a jersey
     // always needs at least one — that's the same condition already
     // gating whether this grid renders at all, so there's never a way
@@ -1843,6 +1871,8 @@
         '<button class="chip" id="admin-settings-toggle" type="button">Admin: fix photos/team</button>' +
         '<div id="admin-settings-panel" hidden data-sport-slug="'+esc(sportSlug)+'">' +
           relabelHtml +
+          '<label class="rate-label" style="margin-top:14px;">Competition <small>fixes just this jersey, e.g. a relegation-season kit filed under the wrong division - never renames a shared competition or moves the team</small></label>' +
+          renderCompetitionMoveControl('jersey-comp', j.id, sportSlug, currentCompSlug) +
           '<label class="rate-label" style="margin-top:14px;">Wrong team or sport?</label>' +
           renderJerseyReassignControl('jersey-reassign', j.id) +
           '<label class="rate-label" style="margin-top:14px;">Also used in <small>one extra competition this same jersey was also worn in, e.g. a World Cup</small></label>' +
@@ -1869,8 +1899,8 @@
   async function wireJerseyExtraCompsControl(jerseyId, sportSlug){
     var select = document.getElementById('jersey-extra-comp');
     if(!select) return;
-    var jRes = await supabaseClient.from('jerseys').select('teams(competition_slug)').eq('id', jerseyId).single();
-    var primaryCompSlug = jRes.data && jRes.data.teams ? jRes.data.teams.competition_slug : null;
+    var jRes = await supabaseClient.from('jerseys').select('competition_slug, teams(competition_slug)').eq('id', jerseyId).single();
+    var primaryCompSlug = jRes.data ? (jRes.data.competition_slug || (jRes.data.teams && jRes.data.teams.competition_slug)) : null;
     var compsRes = await supabaseClient.from('competitions').select('*').eq('sport_slug', sportSlug).order('name');
     var comps = (compsRes.error ? [] : compsRes.data || []).filter(function(c){ return c.slug !== primaryCompSlug; });
     var tagRes = await supabaseClient.from('jersey_competitions').select('competition_slug').eq('jersey_id', jerseyId);
@@ -2104,11 +2134,16 @@
       return searchTextMatches(t.name, term) || searchTextMatches(t.competitions.name, term);
     }).sort(function(a,b){ return a.name.localeCompare(b.name); });
 
-    var jerseyRows = await fetchAllRows('jerseys', '*, jersey_images(*), teams(*, competitions(*, sports(*))), jersey_competitions(competitions(name))');
+    var jerseyRows = await fetchAllRows('jerseys', '*, jersey_images(*), teams(*, competitions(*, sports(*))), competitions(name), jersey_competitions(competitions(name))');
     var matches = jerseyRows.filter(function(j){
       var t = j.teams, c = t && t.competitions;
       if(!t || !c || !c.sports) return false;
+      // Matches on the jersey's OWN tagged competition too, not just the
+      // team's current one - searching "Championship" should still find
+      // an old relegation-season jersey even once that team's since been
+      // promoted and its own page now reads Premier League.
       return searchTextMatches(t.name, term) || searchTextMatches(c.name, term) ||
+        (j.competitions && searchTextMatches(j.competitions.name, term)) ||
         String(j.season).indexOf(term) > -1 || searchTextMatches(j.type, term) ||
         searchTextMatches(j.manufacturer||'', term);
     });
@@ -2479,11 +2514,27 @@
     return ins.data;
   }
 
-  async function ensureTeam(compSlug, name){
+  // sportSlug, when given, is a fallback-only lookup: if no team exists
+  // under compSlug with this name, check the WHOLE sport before creating
+  // a new row. This is what stops a jersey filed under a competition a
+  // team doesn't currently show under (an old Championship-season Aston
+  // Villa kit, while the team's own default is Premier League) from
+  // spawning a duplicate "Aston Villa" team — the real team gets reused
+  // as-is, including its own competition_slug, since that's just this
+  // team's current default and isn't moved by picking an older jersey's
+  // competition. See jerseys.competition_slug for what actually records
+  // which competition THIS jersey belongs to.
+  async function ensureTeam(compSlug, name, sportSlug){
     var slug = slugify(name);
     var existing = await supabaseClient.from('teams').select('*').eq('competition_slug', compSlug).eq('slug', slug).maybeSingle();
     if(existing.error) throw existing.error;
     if(existing.data) return existing.data;
+    if(sportSlug){
+      var sportWide = await supabaseClient.from('teams').select('*, competitions!inner(sport_slug)')
+        .eq('competitions.sport_slug', sportSlug).eq('slug', slug).maybeSingle();
+      if(sportWide.error) throw sportWide.error;
+      if(sportWide.data) return sportWide.data;
+    }
     var c = hashColors(name);
     var ins = await supabaseClient.from('teams').insert({
       slug:slug, competition_slug:compSlug, name:name,
@@ -2493,11 +2544,21 @@
     return ins.data;
   }
 
-  // Shared by the team page's admin panel and the moderation queue: lets an
-  // admin reassign which competition a team currently belongs to (a club
-  // moved divisions, or was filed under the wrong one at upload time)
-  // without touching any of its jersey history — jerseys reference the
-  // team by id, not by competition, so moving the team's row is enough.
+  // table/matchCol (passed via wireCompetitionMoveControl's opts) decide
+  // what this actually moves:
+  //   - teams (default, used on a team's own page): reassigns which
+  //     competition a team's own "current" row belongs to, without
+  //     touching any of its jersey history - jerseys reference the team
+  //     by id, not by competition. Normally this is kept in sync
+  //     automatically instead (see jerseys.competition_slug's auto-sync
+  //     trigger); this control is the manual override for the rare case
+  //     that needs one.
+  //   - jerseys (used on a jersey's own page): retags just that ONE
+  //     jersey's own competition - the safe replacement for the old
+  //     pencil-edit that used to rename the shared competitions row
+  //     itself (and so, accidentally, every team under it).
+  //   - competition_logo_proposals: fixes a logo proposal filed under
+  //     the wrong competition.
   function renderCompetitionMoveControl(prefix, entityId, sportSlug, currentCompSlug){
     return '<div class="comp-move-row">' +
         '<select class="comp-move-select" id="'+prefix+'-comp-select" data-sport-slug="'+esc(sportSlug)+'" data-current="'+esc(currentCompSlug)+'"><option>Loading…</option></select>' +
@@ -2619,7 +2680,11 @@
         return;
       }
       btn.disabled = true; btn.textContent = 'Reassigning…';
-      var upd = await supabaseClient.from('jerseys').update({team_id: teamId}).eq('id', btn.dataset.jerseyId);
+      // Also updates this jersey's own competition_slug to match the
+      // competition picked in this same cascade - reassigning "wrong
+      // team" naturally means the competition picked here is the
+      // correct one too, not just the team.
+      var upd = await supabaseClient.from('jerseys').update({team_id: teamId, competition_slug: compSel.value}).eq('id', btn.dataset.jerseyId);
       btn.disabled = false; btn.textContent = 'Reassign';
       if(upd.error){
         msg.hidden = false; msg.className = 'field-error'; msg.textContent = 'Error: ' + upd.error.message;
@@ -2692,8 +2757,13 @@
     var sports = sportsRes.data || [];
     sportSel.innerHTML = sports.map(function(s){ return '<option value="'+esc(s.slug)+'"'+(s.slug===currentSportSlug?' selected':'')+'>'+esc(s.name)+'</option>'; }).join('');
 
-    var currentTeamRes = await supabaseClient.from('teams').select('competition_slug').eq('id', currentTeamId).single();
-    var currentCompSlug = currentTeamRes.data ? currentTeamRes.data.competition_slug : null;
+    // Prefers the jersey's OWN tagged competition (what was actually
+    // picked at upload) over the team's current default - they can
+    // already differ for an older/different-division season.
+    var currentJerseyRes = await supabaseClient.from('jerseys').select('competition_slug, teams(competition_slug)').eq('id', jerseyId).single();
+    var currentCompSlug = currentJerseyRes.data
+      ? (currentJerseyRes.data.competition_slug || (currentJerseyRes.data.teams && currentJerseyRes.data.teams.competition_slug))
+      : null;
 
     async function refreshComps(){
       var r = await supabaseClient.from('competitions').select('*').eq('sport_slug', sportSel.value).eq('tag_only', false).order('name');
@@ -2720,6 +2790,17 @@
       teamSel.hidden = false; teamNewPanel.hidden = true;
       var r = await supabaseClient.from('teams').select('id,name').eq('competition_slug', compSel.value).order('name');
       var teams = r.data || [];
+      // The jersey's current team might not actually live under
+      // whichever competition this jersey is tagged with (a reused team
+      // whose own "home" is a different competition - see ensureTeam's
+      // sport-wide reuse) - while this still reflects the original
+      // pre-filled competition, make sure that team still shows up as an
+      // option instead of silently defaulting to whichever team sorts
+      // first in this competition's own list.
+      if(compSel.value === currentCompSlug && !teams.some(function(t){ return t.id === currentTeamId; })){
+        var curTeamRes = await supabaseClient.from('teams').select('id,name').eq('id', currentTeamId).maybeSingle();
+        if(curTeamRes.data) teams = teams.concat([curTeamRes.data]).sort(function(a,b){ return a.name.localeCompare(b.name); });
+      }
       teamSel.innerHTML = teams.map(function(t){ return '<option value="'+t.id+'"'+(t.id===currentTeamId?' selected':'')+'>'+esc(t.name)+'</option>'; }).join('');
     }
     sportSel.addEventListener('change', refreshComps);
@@ -2738,6 +2819,7 @@
       var newCompName = creatingComp ? document.getElementById(prefix+'-comp-new-name').value.trim() : '';
       var newTeamName = creatingComp ? document.getElementById(prefix+'-team-new-name').value.trim() : '';
       var teamId = creatingComp ? null : teamSel.value;
+      var competitionSlug = creatingComp ? null : compSel.value;
       if(!season || !type || (creatingComp ? (!newCompName || !newTeamName) : !teamId)){
         msg.hidden = false; msg.className = 'field-error';
         msg.textContent = creatingComp
@@ -2749,8 +2831,9 @@
       if(creatingComp){
         try {
           var newComp = await ensureCompetition(sportSel.value, newCompName);
-          var newTeam = await ensureTeam(newComp.slug, newTeamName);
+          var newTeam = await ensureTeam(newComp.slug, newTeamName, sportSel.value);
           teamId = newTeam.id;
+          competitionSlug = newComp.slug;
         } catch(e){
           btn.disabled = false; btn.textContent = 'Save changes';
           msg.hidden = false; msg.className = 'field-error'; msg.textContent = 'Error: ' + (e.message || e);
@@ -2758,7 +2841,7 @@
         }
       }
       var upd = await supabaseClient.from('jerseys').update({
-        team_id: teamId, season: season, type: type, manufacturer: manufacturer || null, format: format || null, notes: notes || null, image_credit: credit || null
+        team_id: teamId, season: season, type: type, manufacturer: manufacturer || null, format: format || null, notes: notes || null, image_credit: credit || null, competition_slug: competitionSlug
       }).eq('id', jerseyId);
       if(upd.error){
         btn.disabled = false; btn.textContent = 'Save changes';
@@ -3048,7 +3131,14 @@
     }
 
     var jerseyCards = pendingJerseys.map(function(j){
-      var team = j.teams, comp = team.competitions, sport = comp.sports;
+      var team = j.teams, sport = team.competitions.sports;
+      // The competition shown/pre-selected here is whatever the
+      // uploader actually tagged THIS jersey with (jerseys.competition_slug),
+      // not just the team's current default - those can already differ
+      // for a jersey logged against an older/different-division season.
+      // allComps was already fetched above for the "Edit upload" dropdown,
+      // so this is a free in-memory lookup, not an extra query.
+      var comp = (j.competition_slug && allComps.filter(function(c){ return c.slug === j.competition_slug; })[0]) || team.competitions;
       var uploader = uploaderNames[j.uploaded_by] || 'unknown';
       var images = sortImagesForDisplay(j.jersey_images);
       var thumb = images.length
@@ -3971,6 +4061,7 @@
             });
           });
           wireCropButtons(panel);
+          wireCompetitionMoveControl('jersey-comp', function(){ render(); }, {table:'jerseys', matchCol:'id'});
           wireJerseyReassignControl('jersey-reassign', panel.dataset.sportSlug, function(){ render(); });
           wireJerseyExtraCompsControl(parts[1], panel.dataset.sportSlug);
           var creditAddBtn = document.getElementById('jersey-credit-add-btn');
@@ -5195,7 +5286,14 @@
       var comps = await competitionsForSport(sportSel.value);
       var comp = comps.filter(function(c){ return c.name.toLowerCase() === compSelect.value.toLowerCase(); })[0];
       if(!comp){ hintEl.hidden = true; return; }
-      var teamRes = await supabaseClient.from('teams').select('id').eq('competition_slug', comp.slug).eq('slug', slugify(teamName)).maybeSingle();
+      // Sport-wide, not competition-scoped - the team this jersey will
+      // actually be filed against (see ensureTeam) can be a row that
+      // lives under a different competition than the one picked here
+      // (an old season filed under a competition the team's since moved
+      // on from), and the duplicate check needs to look at that same
+      // team's jerseys either way.
+      var teamRes = await supabaseClient.from('teams').select('id, competitions!inner(sport_slug)')
+        .eq('competitions.sport_slug', sportSel.value).eq('slug', slugify(teamName)).maybeSingle();
       if(teamRes.error || !teamRes.data){ hintEl.hidden = true; return; }
       var query = supabaseClient.from('jerseys').select('id, status').eq('team_id', teamRes.data.id).eq('season', seasonVal).eq('type', typeVal).neq('status', 'rejected');
       if(formatVal) query = query.eq('format', formatVal);
@@ -5662,7 +5760,7 @@
       try {
         var sportSlug = sportSel.value;
         var comp = await ensureCompetition(sportSlug, fieldValue(compSelect, compNew));
-        var team = await ensureTeam(comp.slug, fieldValue(teamSelect, teamNew));
+        var team = await ensureTeam(comp.slug, fieldValue(teamSelect, teamNew), sportSlug);
         var season = seasonVal;
         var type = fieldValue(typeSelect, typeNew);
         if(type === 'Training'){
@@ -5707,7 +5805,7 @@
 
         var jerseyIns = await supabaseClient.from('jerseys').insert({
           id: jerseyId, team_id: team.id, season: season, type: type, manufacturer: manufacturer,
-          format: format, notes: notes, image_credit: credit, uploaded_by: currentUser.id
+          format: format, notes: notes, image_credit: credit, uploaded_by: currentUser.id, competition_slug: comp.slug
         }).select().single();
         if(jerseyIns.error) throw jerseyIns.error;
         var jersey = jerseyIns.data;
@@ -6297,14 +6395,18 @@
       // head:true counts aren't capped by the row-return limit, but a
       // plain row fetch is — paginated the same way as search so this
       // doesn't quietly under-count once jerseys passes that limit too.
-      var jerseys = await fetchAllRows('jerseys', 'manufacturer, uploaded_by, team_id, teams(competition_slug)', function(q){ return q.eq('status', 'approved'); });
+      var jerseys = await fetchAllRows('jerseys', 'manufacturer, uploaded_by, team_id, competition_slug, teams(competition_slug)', function(q){ return q.eq('status', 'approved'); });
       var manufacturers = {}, contributors = {}, teamsWithJerseys = {}, compsWithJerseys = {};
       jerseys.forEach(function(j){
         var m = (j.manufacturer || '').trim();
         if(m) manufacturers[m.toLowerCase()] = true;
         if(j.uploaded_by) contributors[j.uploaded_by] = true;
         if(j.team_id) teamsWithJerseys[j.team_id] = true;
-        if(j.teams && j.teams.competition_slug) compsWithJerseys[j.teams.competition_slug] = true;
+        // The jersey's own tagged competition, not just the team's
+        // current one - a competition that only ever shows up via an
+        // older, since-promoted/relegated season still counts.
+        var jComp = j.competition_slug || (j.teams && j.teams.competition_slug);
+        if(jComp) compsWithJerseys[jComp] = true;
       });
       var jerseyCount = jerseys.length;
       var teamCount = Object.keys(teamsWithJerseys).length;
