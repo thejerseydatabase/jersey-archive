@@ -21,7 +21,8 @@
     if(/^(first-logo|five-logos|twenty-five-logos)$/.test(slug)) return ICON_SHIELD;
     if(slug === 'collector-ten') return ICON_HEART;
     if(slug === 'trailblazer') return ICON_STAR_OUTLINE;
-    if(/^(all-sports|ten-competitions|twenty-five-competitions|ten-manufacturers|full-range)$/.test(slug)) return ICON_GLOBE;
+    if(slug === 'grand-tour') return ICON_TROPHY;
+    if(/^(all-sports|ten-competitions|twenty-five-competitions|ten-manufacturers|full-range|oceania-wanderer|asia-explorer|european-tour|african-expedition|north-america-explorer|south-america-explorer)$/.test(slug)) return ICON_GLOBE;
     return ICON_SHIRT;
   }
   // Per-sport homepage icons — a sport not listed here (a brand new one
@@ -3543,10 +3544,14 @@
         // compact earned-only row stays the default view.
         var catalogRows = allBadges.map(function(badge){
           var earned = earnedBySlug[badge.slug];
-          var subtitle = earned && earned.context_label ? earned.context_label : badge.description;
+          // The requirement always shows, earned or not - a badge
+          // that's already ticked off is still worth knowing what it
+          // was actually for. The specific jersey/logo that earned it
+          // (when there is one) is a second, dimmer line underneath.
+          var contextLine = (earned && earned.context_label) ? '<span class="badge-catalog-context">'+esc(earned.context_label)+'</span>' : '';
           return '<div class="badge-catalog-row'+(earned ? ' is-earned' : ' is-locked')+'">' +
             (earned ? badgeIcon(badge.slug) : ICON_LOCK) +
-            '<div><strong>'+esc(badge.label)+'</strong><span>'+esc(subtitle)+'</span></div>' +
+            '<div><strong>'+esc(badge.label)+'</strong><span>'+esc(badge.description)+'</span>'+contextLine+'</div>' +
           '</div>';
         }).join('');
         badgesSectionHtml = '<div class="section-head" style="margin-top:34px;">' +
