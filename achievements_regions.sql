@@ -416,7 +416,7 @@ begin
   -- country_region. Binary per region (any 1 jersey qualifies, not a
   -- count), Grand Tour once all 6 are covered.
   region_count := 0;
-  foreach rs in array region_slugs loop
+  foreach rs slice 1 in array region_slugs loop
     if exists (
       select 1 from jerseys j
       join teams t on t.id = j.team_id
