@@ -2618,7 +2618,22 @@
       }
       if(newSlug === currentCompSlug) return;
       btn.disabled = true; btn.textContent = 'Moving…';
-      var upd = await supabaseClient.from(table).update({competition_slug: newSlug}).eq(matchCol, btn.dataset.entityId);
+      var payload = {competition_slug: newSlug};
+      // A manual move on a TEAM (not a jersey) is a deliberate statement
+      // of fact - "this team's current competition really is X right
+      // now" - even though no jersey on file proves it yet (the whole
+      // Aston Villa case: promoted back to the Premier League, but
+      // nothing newer than their 2018-19 Championship kit has been
+      // uploaded). Pinning it here stops the auto-sync trigger from
+      // quietly reverting this the next time an OLDER jersey for this
+      // team gets approved or re-tagged - see jersey_competition_slug.sql.
+      // Effectively pins it until this control is used again - no real
+      // jersey season will ever out-rank the sentinel used here, which
+      // is the point (the alternative is it silently flipping back the
+      // next time an older jersey gets touched, which is the bug this
+      // whole fix is for).
+      if(table === 'teams') payload.competition_season_key = 999999;
+      var upd = await supabaseClient.from(table).update(payload).eq(matchCol, btn.dataset.entityId);
       btn.disabled = false; btn.textContent = 'Move';
       if(upd.error){
         msg.hidden = false; msg.className = 'field-error'; msg.textContent = 'Error: ' + upd.error.message;
