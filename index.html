@@ -18,13 +18,13 @@
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
       --bg:#0B1016; --surface:#121922; --surface-2:#1D2A32; --line:#536971;
-      --text:#EAF2F5; --text-dim:#93A8B3; --text-dim2:#6B818C;
+      --text:#EAF2F5; --text-dim:#A7BBC4; --text-dim2:#8CA0AA;
       --accent:#47D1C6; --accent-ink:#06201D; --danger:#FF6B5B; --focus:#47D1C6;
     }
   }
   :root[data-theme="dark"]{
     --bg:#0B1016; --surface:#121922; --surface-2:#1D2A32; --line:#536971;
-    --text:#EAF2F5; --text-dim:#93A8B3; --text-dim2:#6B818C;
+    --text:#EAF2F5; --text-dim:#A7BBC4; --text-dim2:#8CA0AA;
     --accent:#47D1C6; --accent-ink:#06201D; --danger:#FF6B5B; --focus:#47D1C6;
   }
   *{box-sizing:border-box;}
@@ -299,7 +299,7 @@
   .tier-up-banner strong{color:var(--accent);}
   .badge-row{display:flex;flex-wrap:wrap;gap:8px;}
   .badge-chip{display:inline-flex;align-items:center;gap:6px;font-family:'Courier Prime',monospace;font-size:12.5px;color:var(--text);background:var(--surface);border:1px solid var(--accent);border-radius:999px;padding:7px 13px;cursor:default;}
-  .badge-chip::before{content:'\2605';color:var(--accent);}
+  .badge-chip svg{flex-shrink:0;color:var(--accent);width:14px;height:14px;}
   .jersey-card:hover{border-color:var(--accent);transform:translateY(-2px);}
   .jersey-thumb{aspect-ratio:1/1;background:var(--surface-2);border-radius:8px;overflow:hidden;display:flex;align-items:center;justify-content:center;}
   .jersey-thumb img{width:100%;height:100%;object-fit:contain;}
@@ -459,6 +459,6 @@
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="config.js?v=94"></script>
-<script src="app.js?v=187"></script>
+<script src="app.js?v=188"></script>
 </body>
 </html>

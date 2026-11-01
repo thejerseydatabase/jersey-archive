@@ -5,6 +5,24 @@
   var ICON_PHOTO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="26" height="26"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M3 17l5-4 4 3 3-2 6 5"/><path d="M17 3v4M15 5h4"/></svg>';
   var ICON_PENCIL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>';
   var ICON_FLAG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22V3"/></svg>';
+  // Achievement badge icons (see achievements.sql / badgesSectionHtml) —
+  // one per category rather than one per badge, so a chip's label and
+  // tooltip carry the distinction between tiers (First Kit vs Getting
+  // Started both use ICON_SHIRT), not a different icon each time.
+  var ICON_SHIELD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M12 2l8 3v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V5z"/></svg>';
+  var ICON_HEART = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 1 0-7.78 7.78L12 21l8.84-8.61a5.5 5.5 0 0 0 0-7.78z"/></svg>';
+  var ICON_STAR_OUTLINE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M12 2.5l3.09 6.26 6.91 1-5 4.87L18.18 21.5 12 18.27 5.82 21.5 7 14.63l-5-4.87 6.91-1z"/></svg>';
+  var ICON_GLOBE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/></svg>';
+  var ICON_TROPHY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4z"/><path d="M7 5H4a3 3 0 0 0 3 3M17 5h3a3 3 0 0 1-3 3"/></svg>';
+  // Keyed by badge slug prefix (see achievements.sql's insert) rather
+  // than needing its own category column in the database.
+  function badgeIcon(slug){
+    if(/^(first-logo|five-logos|twenty-five-logos)$/.test(slug)) return ICON_SHIELD;
+    if(slug === 'collector-ten') return ICON_HEART;
+    if(slug === 'trailblazer') return ICON_STAR_OUTLINE;
+    if(/^(all-sports|ten-competitions|twenty-five-competitions|ten-manufacturers|full-range)$/.test(slug)) return ICON_GLOBE;
+    return ICON_SHIRT;
+  }
   // Per-sport homepage icons — a sport not listed here (a brand new one
   // just added, say) falls back to the generic jersey icon rather than
   // erroring or showing nothing.
@@ -2349,6 +2367,8 @@
           TIERS.map(function(t){ return '<span style="color:'+t.color+';font-weight:700;">'+t.label+'</span> ('+t.min+'+)'; }).join(', ') + '.' +
         '</p>' +
 
+        '<div class="section-head" style="margin-top:30px;"><h2>Achievements</h2></div>' +
+        '<p>Separate from points and tiers, achievements are one-off badges for specific milestones &mdash; your first approved upload, your first logo, breadth across sports and competitions, and a few others. They show up on your profile page as a public &ldquo;trophy case&rdquo; (visible to anyone who looks at your profile, same as your points and uploads), and you&rsquo;ll get a banner on your own profile the first time you see a newly unlocked one. Nothing to opt into &mdash; they&rsquo;re awarded automatically the moment you qualify.</p>' +
         '<div class="section-head" style="margin-top:30px;"><h2>Upload limits</h2></div>' +
         '<p>To keep things sane for everyone, there&rsquo;s an hourly cap of 100 uploads per account. That&rsquo;s far more than a normal upload session needs &mdash; it only kicks in to stop runaway/accidental spam. If you hit it, just wait a bit and carry on. Each jersey is also capped at 6 photos.</p>' +
 
@@ -3508,7 +3528,7 @@
         .sort(function(a,b){ return a.badges.sort_order - b.badges.sort_order; });
       if(userBadges.length){
         var badgeChips = userBadges.map(function(b){
-          return '<span class="badge-chip" title="'+esc(b.badges.description)+'">'+esc(b.badges.label)+'</span>';
+          return '<span class="badge-chip" title="'+esc(b.badges.description)+'">'+badgeIcon(b.badge_slug)+' '+esc(b.badges.label)+'</span>';
         }).join('');
         badgesSectionHtml = '<div class="section-head" style="margin-top:34px;"><h2>Achievements</h2><span class="count">'+userBadges.length+'</span></div><div class="badge-row">'+badgeChips+'</div>';
       }
