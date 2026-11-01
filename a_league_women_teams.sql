@@ -7,7 +7,7 @@ insert into competitions (slug, sport_slug, name, tier) values
 on conflict (slug) do nothing;
 
 insert into teams (slug, competition_slug, name, primary_color, secondary_color, is_active) values
-  ('canberra-united-fc','a-league-women','Canberra United FC','#00A99D','#FFFFFF', true),
+  ('canberra-united-women','a-league-women','Canberra United Women','#00A99D','#FFFFFF', true),
   ('sydney-fc-women','a-league-women','Sydney FC Women','#4EC3E0','#002B5C', true),
   ('newcastle-jets-fc-women','a-league-women','Newcastle Jets FC Women','#E4032E','#002554', true),
   ('western-sydney-wanderers-wfc','a-league-women','Western Sydney Wanderers WFC','#E4032E','#000000', true),
