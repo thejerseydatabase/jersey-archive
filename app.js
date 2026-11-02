@@ -2,6 +2,7 @@
 
   var ICON_SHIRT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M8 3 5 5 2 8l3 3 2-1.5V21h10V9.5L19 11l3-3-3-3-3-2-2 2h-4z"/></svg>';
   var ICON_STAR = '<svg viewBox="0 0 24 24" fill="currentColor" width="21" height="21"><path d="M12 2.5l3.09 6.26 6.91 1-5 4.87L18.18 21.5 12 18.27 5.82 21.5 7 14.63l-5-4.87 6.91-1z"/></svg>';
+  var ICON_STAR_SMALL = '<svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M12 2.5l3.09 6.26 6.91 1-5 4.87L18.18 21.5 12 18.27 5.82 21.5 7 14.63l-5-4.87 6.91-1z"/></svg>';
   var ICON_PHOTO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="26" height="26"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M3 17l5-4 4 3 3-2 6 5"/><path d="M17 3v4M15 5h4"/></svg>';
   var ICON_PENCIL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>';
   var ICON_FLAG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22V3"/></svg>';
@@ -401,6 +402,15 @@
     } catch(e){ return null; }
   }
 
+  // Identifies "the same person" for view-dedup purposes - a signed-in
+  // user's own id, or the same anonymous per-browser token used for
+  // report rate-limiting. Visiting a jersey today and again tomorrow
+  // from the same account/browser is one view, not two; a different
+  // browser/device is a separate view, same as any such system.
+  function viewerKey(){
+    return currentUser ? currentUser.id : getClientToken();
+  }
+
   // Routed through a Cloudflare Worker (img.thejerseydatabase.com) that
   // caches these at Cloudflare's edge. Supabase Storage's own domain can't
   // be proxied directly through Cloudflare (it's already on Cloudflare
@@ -487,6 +497,13 @@
     var primary = opts.showTeam ? team.name : yearType;
     var secondary = opts.showTeam ? yearType : (jersey.manufacturer || 'Unlisted');
     var dateHtml = opts.ts ? '<span>'+esc(relativeTimeLabel(opts.ts))+'</span>' : '';
+    // At-a-glance rating/view line for a ranked grid (Top/Bottom Rated,
+    // Most Viewed) - not shown on an ordinary card, only when the
+    // caller passes one of these (the card is what makes the ranking
+    // legible, not just its position in the row).
+    var metaLineHtml = opts.ratingInfo
+      ? '<span class="card-meta-line">'+ICON_STAR_SMALL+' '+opts.ratingInfo.avg+' <span class="card-meta-count">('+opts.ratingInfo.count+' vote'+(opts.ratingInfo.count===1?'':'s')+')</span></span>'
+      : (opts.viewCount != null ? '<span class="card-meta-line">'+opts.viewCount+' view'+(opts.viewCount===1?'':'s')+'</span>' : '');
     var pendingBadge = jersey.status === 'rejected' ? '<span class="pending-badge is-rejected">Rejected</span>'
       : (jersey.status && jersey.status !== 'approved' ? '<span class="pending-badge">Pending</span>' : '');
     // Surfaces an extra-competition tag (a World Cup jersey filed under
@@ -501,7 +518,7 @@
       : '';
     return '<a class="jersey-card" href="#/jersey/'+jersey.id+'" data-format="'+esc(jersey.format || '')+'">' + pendingBadge + tagBadge +
       '<div class="jersey-thumb">'+jerseyThumb(jersey, team)+'</div>' +
-      '<div class="jersey-label"><strong>'+esc(primary)+'</strong><span>'+esc(secondary)+'</span>'+dateHtml+'</div>' +
+      '<div class="jersey-label"><strong>'+esc(primary)+'</strong><span>'+esc(secondary)+'</span>'+dateHtml+metaLineHtml+'</div>' +
     '</a>';
   }
 
@@ -858,32 +875,57 @@
     return '<div class="section-head" style="margin-top:34px;"><h2>Highest rated</h2></div><div class="jersey-grid">'+cards+'</div>';
   }
 
-  // The actual top and bottom of the ratings table, no minimum vote
-  // count - deliberately different from highestRatedHtml above, which
-  // requires MIN_RATINGS_FOR_HIGHEST_RATED votes before a jersey can
-  // appear there (so a single 5-star vote doesn't look like a real
-  // consensus). This is the opposite: every rated jersey is fair game,
-  // same as an RYM-style best/worst list. Home page only, site-wide.
+  // The actual top and bottom of the ratings table - deliberately
+  // different from highestRatedHtml above, which requires
+  // MIN_RATINGS_FOR_HIGHEST_RATED votes before a jersey can appear
+  // there (so a single 5-star vote doesn't look like a real
+  // consensus). Top Rated has no minimum here either, same idea as an
+  // RYM-style best/worst list - but Bottom Rated DOES need a real
+  // ceiling (avg_rating below LOW_RATING_CEILING), otherwise with only
+  // a handful of jerseys rated site-wide, "lowest rated" just means
+  // "the least of several good ratings" (4/5 showing up as "worst" is
+  // misleading, not actually a bad jersey). Home page only, site-wide.
+  var LOW_RATING_CEILING = 2.5;
   async function ratingExtremesHtml(){
     var ratingsRes = await supabaseClient.from('jersey_ratings').select('*').gte('rating_count', 1);
     var all = ratingsRes.data || [];
     if(!all.length) return '';
     var highest = all.slice().sort(function(a,b){ return (b.avg_rating - a.avg_rating) || (b.rating_count - a.rating_count); }).slice(0, 6);
-    var lowest = all.slice().sort(function(a,b){ return (a.avg_rating - b.avg_rating) || (b.rating_count - a.rating_count); }).slice(0, 6);
+    var lowest = all.filter(function(r){ return r.avg_rating < LOW_RATING_CEILING; })
+      .sort(function(a,b){ return (a.avg_rating - b.avg_rating) || (b.rating_count - a.rating_count); }).slice(0, 6);
     var wantedIds = highest.concat(lowest).map(function(r){ return r.jersey_id; })
       .filter(function(id, i, arr){ return arr.indexOf(id) === i; });
+    if(!wantedIds.length) return '';
     var jRes = await supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*), jersey_competitions(competitions(name))')
       .in('id', wantedIds).eq('status', 'approved');
     var byId = {};
     (jRes.data || []).forEach(function(j){ byId[j.id] = j; });
     function cardsFor(list){
-      return list.map(function(r){ return byId[r.jersey_id]; }).filter(Boolean)
-        .map(function(j){ return jerseyCard(j, j.teams, {showTeam:true}); }).join('');
+      return list.map(function(r){ var j = byId[r.jersey_id]; return j ? {j:j, r:r} : null; }).filter(Boolean)
+        .map(function(x){ return jerseyCard(x.j, x.j.teams, {showTeam:true, ratingInfo:{avg:x.r.avg_rating, count:x.r.rating_count}}); }).join('');
     }
     var highestCards = cardsFor(highest), lowestCards = cardsFor(lowest);
     if(!highestCards && !lowestCards) return '';
-    return (highestCards ? '<div class="section-head" style="margin-top:34px;"><h2>Top Rated</h2><span class="count">no minimum votes</span></div><div class="jersey-grid">'+highestCards+'</div>' : '') +
-      (lowestCards ? '<div class="section-head" style="margin-top:34px;"><h2>Bottom Rated</h2><span class="count">no minimum votes</span></div><div class="jersey-grid">'+lowestCards+'</div>' : '');
+    return (highestCards ? '<div class="section-head" style="margin-top:34px;"><h2>Top Rated</h2></div><div class="jersey-grid">'+highestCards+'</div>' : '') +
+      (lowestCards ? '<div class="section-head" style="margin-top:34px;"><h2>Bottom Rated</h2></div><div class="jersey-grid">'+lowestCards+'</div>' : '');
+  }
+
+  // Ranked by unique views (see jersey_views/viewerKey) - one person
+  // visiting the same jersey on two different days only counts once,
+  // same as the rest of this ranking only reflecting real distinct
+  // interest, not raw page-load noise. Home page only, site-wide.
+  async function mostViewedHtml(){
+    var vRes = await supabaseClient.from('jersey_view_counts').select('*').order('view_count', {ascending:false}).limit(60);
+    var candidates = vRes.data || [];
+    if(!candidates.length) return '';
+    var viewsByJersey = {};
+    candidates.forEach(function(v){ viewsByJersey[v.jersey_id] = v.view_count; });
+    var jRes = await supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*), jersey_competitions(competitions(name))')
+      .in('id', candidates.map(function(v){ return v.jersey_id; })).eq('status', 'approved');
+    var jerseys = (jRes.data || []).sort(function(a,b){ return viewsByJersey[b.id] - viewsByJersey[a.id]; }).slice(0, 6);
+    if(!jerseys.length) return '';
+    var cards = jerseys.map(function(j){ return jerseyCard(j, j.teams, {showTeam:true, viewCount: viewsByJersey[j.id]}); }).join('');
+    return '<div class="section-head" style="margin-top:34px;"><h2>Most Viewed</h2></div><div class="jersey-grid">'+cards+'</div>';
   }
 
   function sportCard(s){
@@ -911,6 +953,7 @@
     var recentHtml = await recentJerseysHtml(null);
     var highestRatedSectionHtml = await highestRatedHtml(null);
     var ratingExtremesSectionHtml = await ratingExtremesHtml();
+    var mostViewedSectionHtml = await mostViewedHtml();
     // 12 is enough to show the home page is alive without turning it
     // into an endless feed — anyone who wants to see everything else
     // that's gone up recently gets a dedicated page instead, same idea
@@ -926,7 +969,7 @@
       '<div class="section-head"><h2>Browse by sport</h2></div>' +
       '<div class="sport-grid">'+(cards || '<div class="empty-note">No sports found &mdash; has schema.sql been run?</div>')+'</div>' +
       moreSportsHtml +
-      recentHtml + highestRatedSectionHtml + ratingExtremesSectionHtml + updatesButtonHtml;
+      recentHtml + mostViewedSectionHtml + highestRatedSectionHtml + ratingExtremesSectionHtml + updatesButtonHtml;
   }
 
   // Full "what's gone up recently" feed — jerseys and logos together,
@@ -1432,6 +1475,15 @@
     var res = await supabaseClient.from('jerseys').select('*, jersey_images(*), teams(*, competitions(*, sports(*)))').eq('id', id).single();
     if(res.error) throw res.error;
     var j = res.data, team = j.teams, teamComp = team.competitions, sport = teamComp.sports;
+    // Logs a unique view for "Most Viewed" on the home page - fire and
+    // forget (not awaited, never blocks rendering), and only for an
+    // actually-live jersey; a moderator checking a pending/rejected
+    // one isn't "popularity". ignoreDuplicates means a repeat visit
+    // from the same person is a silent no-op, not a second view.
+    if(j.status === 'approved'){
+      var vk = viewerKey();
+      if(vk) supabaseClient.from('jersey_views').upsert({jersey_id: id, viewer_key: vk}, {onConflict: 'jersey_id,viewer_key', ignoreDuplicates: true});
+    }
     // The jersey's OWN tagged competition - usually the same as the
     // team's current one, but can differ (an older season logged while
     // the team was in a different division to the one it's in now; see
