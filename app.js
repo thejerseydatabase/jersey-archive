@@ -858,6 +858,34 @@
     return '<div class="section-head" style="margin-top:34px;"><h2>Highest rated</h2></div><div class="jersey-grid">'+cards+'</div>';
   }
 
+  // The actual top and bottom of the ratings table, no minimum vote
+  // count - deliberately different from highestRatedHtml above, which
+  // requires MIN_RATINGS_FOR_HIGHEST_RATED votes before a jersey can
+  // appear there (so a single 5-star vote doesn't look like a real
+  // consensus). This is the opposite: every rated jersey is fair game,
+  // same as an RYM-style best/worst list. Home page only, site-wide.
+  async function ratingExtremesHtml(){
+    var ratingsRes = await supabaseClient.from('jersey_ratings').select('*').gte('rating_count', 1);
+    var all = ratingsRes.data || [];
+    if(!all.length) return '';
+    var highest = all.slice().sort(function(a,b){ return (b.avg_rating - a.avg_rating) || (b.rating_count - a.rating_count); }).slice(0, 6);
+    var lowest = all.slice().sort(function(a,b){ return (a.avg_rating - b.avg_rating) || (b.rating_count - a.rating_count); }).slice(0, 6);
+    var wantedIds = highest.concat(lowest).map(function(r){ return r.jersey_id; })
+      .filter(function(id, i, arr){ return arr.indexOf(id) === i; });
+    var jRes = await supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*), jersey_competitions(competitions(name))')
+      .in('id', wantedIds).eq('status', 'approved');
+    var byId = {};
+    (jRes.data || []).forEach(function(j){ byId[j.id] = j; });
+    function cardsFor(list){
+      return list.map(function(r){ return byId[r.jersey_id]; }).filter(Boolean)
+        .map(function(j){ return jerseyCard(j, j.teams, {showTeam:true}); }).join('');
+    }
+    var highestCards = cardsFor(highest), lowestCards = cardsFor(lowest);
+    if(!highestCards && !lowestCards) return '';
+    return (highestCards ? '<div class="section-head" style="margin-top:34px;"><h2>Top Rated</h2><span class="count">no minimum votes</span></div><div class="jersey-grid">'+highestCards+'</div>' : '') +
+      (lowestCards ? '<div class="section-head" style="margin-top:34px;"><h2>Bottom Rated</h2><span class="count">no minimum votes</span></div><div class="jersey-grid">'+lowestCards+'</div>' : '');
+  }
+
   function sportCard(s){
     return '<a class="sport-card" href="#/sport/'+s.slug+'">' +
       '<div class="sport-icon">'+sportIcon(s.slug)+'</div>' +
@@ -882,6 +910,7 @@
       : '';
     var recentHtml = await recentJerseysHtml(null);
     var highestRatedSectionHtml = await highestRatedHtml(null);
+    var ratingExtremesSectionHtml = await ratingExtremesHtml();
     // 12 is enough to show the home page is alive without turning it
     // into an endless feed — anyone who wants to see everything else
     // that's gone up recently gets a dedicated page instead, same idea
@@ -897,7 +926,7 @@
       '<div class="section-head"><h2>Browse by sport</h2></div>' +
       '<div class="sport-grid">'+(cards || '<div class="empty-note">No sports found &mdash; has schema.sql been run?</div>')+'</div>' +
       moreSportsHtml +
-      recentHtml + highestRatedSectionHtml + updatesButtonHtml;
+      recentHtml + highestRatedSectionHtml + ratingExtremesSectionHtml + updatesButtonHtml;
   }
 
   // Full "what's gone up recently" feed — jerseys and logos together,
