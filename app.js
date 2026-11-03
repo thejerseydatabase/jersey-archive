@@ -1319,9 +1319,8 @@
     // one or two training tops a season is fine either way, but some
     // clubs log 10-20 of them, which buries the actual match kits in a
     // wall of cards if they're inline. "Training & other" only appears
-    // as a tab at all when the team has at least one.
-    var TRAINING_TYPES_BASE = ['training','pre-season','warm-up','pre-match'];
-    function isTrainingType(t){ return TRAINING_TYPES_BASE.indexOf(baseJerseyType(t).toLowerCase()) > -1; }
+    // as a tab at all when the team has at least one. (isTrainingType is
+    // shared - see its definition near baseJerseyType.)
     var mainJerseys = jerseys.filter(function(j){ return !isTrainingType(j.type); });
     var trainingJerseys = jerseys.filter(function(j){ return isTrainingType(j.type); });
     function seasonGroups(list, showSeasonLink){
@@ -1456,16 +1455,34 @@
     setCrumbs([{label:'Home', href:'#/'},{label:sport.name, href:'#/sport/'+sportSlug},{label:comp.name, href:'#/sport/'+sportSlug+'/'+compSlug},{label:year+' season', href:'#'}]);
 
     var jerseys = await fetchCompetitionJerseys(compSlug, {season: year});
-    var byTeam = {};
-    jerseys.forEach(function(j){ (byTeam[j.teams.id] = byTeam[j.teams.id] || {team:j.teams, jerseys:[]}).jerseys.push(j); });
+    // Same Match/Training split as a team's own page (see
+    // isTrainingType) - a season page across every club in a
+    // competition is exactly where a pile of training kit would bury
+    // the actual match jerseys if they weren't separated.
+    var mainJerseys = jerseys.filter(function(j){ return !isTrainingType(j.type); });
+    var trainingJerseys = jerseys.filter(function(j){ return isTrainingType(j.type); });
 
-    var groups = Object.keys(byTeam).map(function(id){ return byTeam[id]; })
-      .sort(function(a,b){ return a.team.name.localeCompare(b.team.name); })
-      .map(function(entry){
-        var sorted = sortJerseysByType(entry.jerseys, sportSlug, compSlug, year);
-        var cards = sorted.map(function(j){ return jerseyCard(j, entry.team); }).join('');
-        return '<div class="season-group"><h3><a class="spec-link" href="#/sport/'+sportSlug+'/'+compSlug+'/team/'+entry.team.slug+'">'+esc(entry.team.name)+'</a></h3><div class="jersey-grid">'+cards+'</div></div>';
-      }).join('');
+    function teamGroupsHtml(list){
+      var byTeam = {};
+      list.forEach(function(j){ (byTeam[j.teams.id] = byTeam[j.teams.id] || {team:j.teams, jerseys:[]}).jerseys.push(j); });
+      return Object.keys(byTeam).map(function(id){ return byTeam[id]; })
+        .sort(function(a,b){ return a.team.name.localeCompare(b.team.name); })
+        .map(function(entry){
+          var sorted = sortJerseysByType(entry.jerseys, sportSlug, compSlug, year);
+          var cards = sorted.map(function(j){ return jerseyCard(j, entry.team); }).join('');
+          return '<div class="season-group"><h3><a class="spec-link" href="#/sport/'+sportSlug+'/'+compSlug+'/team/'+entry.team.slug+'">'+esc(entry.team.name)+'</a></h3><div class="jersey-grid">'+cards+'</div></div>';
+        }).join('');
+    }
+
+    var mainGroupsRaw = teamGroupsHtml(mainJerseys);
+    var groups = trainingJerseys.length
+      ? '<div class="jersey-tabs" id="season-jersey-tabs">' +
+          '<button class="chip is-active" data-tab="season-tab-main" type="button">Match jerseys <span class="count">'+mainJerseys.length+'</span></button>' +
+          '<button class="chip" data-tab="season-tab-training" type="button">Training &amp; other <span class="count">'+trainingJerseys.length+'</span></button>' +
+        '</div>' +
+        '<div id="season-tab-main">'+(mainGroupsRaw || '<div class="empty-note">No match jerseys logged yet.</div>')+'</div>' +
+        '<div id="season-tab-training" hidden>'+teamGroupsHtml(trainingJerseys)+'</div>'
+      : mainGroupsRaw;
 
     return '<div class="section-head"><h2>'+esc(comp.name)+' &mdash; '+year+'</h2></div>' +
       (groups || '<div class="empty-note">No jerseys logged for '+year+' yet.</div>');
@@ -2370,6 +2387,12 @@
     var base = stripped || s;
     return TYPE_SYNONYMS[base.toLowerCase()] || base;
   }
+
+  // Shared by any page that splits match jerseys from training/other
+  // kit into tabs (a team's own page, a competition's season page) -
+  // one shared list rather than each page keeping its own copy.
+  var TRAINING_TYPES_BASE = ['training','pre-season','warm-up','pre-match'];
+  function isTrainingType(t){ return TRAINING_TYPES_BASE.indexOf(baseJerseyType(t).toLowerCase()) > -1; }
 
   async function viewTypes(){
     setCrumbs([{label:'Home', href:'#/'},{label:'Types', href:'#/types'}]);
@@ -3784,19 +3807,25 @@
         btn.remove();
       });
     });
-    var jerseyTabs = document.getElementById('team-jersey-tabs');
-    if(jerseyTabs){
+    // Generic Match/Training tab wiring - handles however many
+    // `.jersey-tabs` groups are on the current page (a team's own page
+    // has one, a competition's season page has one, never both at
+    // once in this SPA, but written to not care either way). Each
+    // group's own panel ids come from its chips' own data-tab values,
+    // not a hardcoded list, so a new page can reuse this for free.
+    document.querySelectorAll('.jersey-tabs').forEach(function(jerseyTabs){
+      var panelIds = Array.prototype.map.call(jerseyTabs.querySelectorAll('.chip'), function(c){ return c.dataset.tab; });
       jerseyTabs.querySelectorAll('.chip').forEach(function(chip){
         chip.addEventListener('click', function(){
           jerseyTabs.querySelectorAll('.chip').forEach(function(c){ c.classList.remove('is-active'); });
           chip.classList.add('is-active');
-          ['team-tab-main','team-tab-training'].forEach(function(id){
+          panelIds.forEach(function(id){
             var panel = document.getElementById(id);
             if(panel) panel.hidden = id !== chip.dataset.tab;
           });
         });
       });
-    }
+    });
     var formatFilterRow = document.getElementById('format-filter-row');
     if(formatFilterRow){
       formatFilterRow.querySelectorAll('.format-filter-chip').forEach(function(chip){
