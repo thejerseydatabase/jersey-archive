@@ -197,7 +197,16 @@
   var expandedHomeSports = false;
 
   /* ================= helpers ================= */
-  function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  // Escapes all 5 standard entities, not just the 4 needed for text
+  // content - data-edit="'"+esc(JSON.stringify(...))+"'" (and anything
+  // else that wraps esc() output in single quotes) needs the apostrophe
+  // escaped too, or any field whose value contains one breaks the
+  // attribute early and corrupts the data silently (the pencil-edit
+  // button then does nothing - JSON.parse on the truncated/mangled
+  // remainder throws, uncaught, inside the click handler). Harmless
+  // everywhere esc() is used for plain visible text, since &#39;
+  // renders as ' either way.
+  function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
   // Strips apostrophes/periods too (not just accents+case) - search is
   // substring-based, so "O'Neills" needs to become "oneills" or typing
   // "on" (a natural way to start that name) would never match, since
