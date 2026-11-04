@@ -3724,20 +3724,22 @@
           sportCounts[s.slug].count++;
         }
       });
-      var topTeam = Object.keys(teamCounts).map(function(k){ return teamCounts[k]; }).sort(function(a,b){ return b.count - a.count; })[0];
-      var topSport = Object.keys(sportCounts).map(function(k){ return sportCounts[k]; }).sort(function(a,b){ return b.count - a.count; })[0];
-      var statTiles = '';
-      if(topTeam && topTeam.sportSlug){
-        statTiles += '<div class="profile-stat"><span class="profile-stat-label">Most uploaded team</span>' +
-          '<a class="profile-stat-value" href="#/sport/'+topTeam.sportSlug+'/'+topTeam.compSlug+'/team/'+topTeam.slug+'">'+esc(topTeam.name)+'</a>' +
-          '<span class="profile-stat-sub">'+topTeam.count+' jersey'+(topTeam.count===1?'':'s')+'</span></div>';
+      var topTeams = Object.keys(teamCounts).map(function(k){ return teamCounts[k]; })
+        .filter(function(t){ return t.sportSlug; }).sort(function(a,b){ return b.count - a.count; }).slice(0, 3);
+      var topSports = Object.keys(sportCounts).map(function(k){ return sportCounts[k]; })
+        .sort(function(a,b){ return b.count - a.count; }).slice(0, 3);
+      function statGroupHtml(label, rows, hrefFor){
+        if(!rows.length) return '';
+        var rowsHtml = rows.map(function(r, i){
+          return '<a class="profile-stat-row" href="'+hrefFor(r)+'"><span class="profile-stat-rank">'+(i+1)+'</span>' +
+            '<span class="profile-stat-name">'+esc(r.name)+'</span>' +
+            '<span class="profile-stat-sub">'+r.count+' jersey'+(r.count===1?'':'s')+'</span></a>';
+        }).join('');
+        return '<div class="profile-stat-group"><span class="profile-stat-label">'+esc(label)+'</span><div class="profile-stat-list">'+rowsHtml+'</div></div>';
       }
-      if(topSport){
-        statTiles += '<div class="profile-stat"><span class="profile-stat-label">Most uploaded sport</span>' +
-          '<a class="profile-stat-value" href="#/sport/'+topSport.slug+'">'+esc(topSport.name)+'</a>' +
-          '<span class="profile-stat-sub">'+topSport.count+' jersey'+(topSport.count===1?'':'s')+'</span></div>';
-      }
-      if(statTiles) statsSectionHtml = '<div class="profile-stats">'+statTiles+'</div>';
+      var statGroups = statGroupHtml('Most uploaded teams', topTeams, function(r){ return '#/sport/'+r.sportSlug+'/'+r.compSlug+'/team/'+r.slug; }) +
+        statGroupHtml('Most uploaded sports', topSports, function(r){ return '#/sport/'+r.slug; });
+      if(statGroups) statsSectionHtml = '<div class="profile-stats">'+statGroups+'</div>';
     }
 
     var collectionSectionHtml = '';
