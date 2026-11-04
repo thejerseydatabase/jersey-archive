@@ -2656,10 +2656,20 @@
     if(existing.error) throw existing.error;
     if(existing.data) return existing.data;
     if(sportSlug){
+      // Not .maybeSingle() - a club that's moved between divisions over
+      // the years (promoted/relegated, or a genuine "same team,
+      // different era" split) can easily have more than one row
+      // sharing this slug within the same sport, and .maybeSingle()
+      // throws ("JSON object requested, multiple (or no) rows
+      // returned") the moment there's more than one, crashing the
+      // whole upload instead of just reusing one of them. Most recently
+      // touched wins - the best available guess at "the current one"
+      // without knowing anything else about which era this jersey is from.
       var sportWide = await supabaseClient.from('teams').select('*, competitions!inner(sport_slug)')
-        .eq('competitions.sport_slug', sportSlug).eq('slug', slug).maybeSingle();
+        .eq('competitions.sport_slug', sportSlug).eq('slug', slug)
+        .order('created_at', {ascending:false}).limit(1);
       if(sportWide.error) throw sportWide.error;
-      if(sportWide.data) return sportWide.data;
+      if(sportWide.data && sportWide.data.length) return sportWide.data[0];
     }
     var c = hashColors(name);
     var ins = await supabaseClient.from('teams').insert({
