@@ -2391,7 +2391,10 @@
   // Shared by any page that splits match jerseys from training/other
   // kit into tabs (a team's own page, a competition's season page) -
   // one shared list rather than each page keeping its own copy.
-  var TRAINING_TYPES_BASE = ['training','pre-season','warm-up','pre-match'];
+  // Premiers/Premiership (a post-win celebration jersey) belongs here
+  // too - never actually worn on-field, unlike a Grand Final jersey,
+  // which stays out of this list on purpose.
+  var TRAINING_TYPES_BASE = ['training','pre-season','warm-up','pre-match','premiers','premiership'];
   function isTrainingType(t){ return TRAINING_TYPES_BASE.indexOf(baseJerseyType(t).toLowerCase()) > -1; }
 
   async function viewTypes(){
