@@ -943,6 +943,58 @@
       '<div><div class="sport-name">'+esc(s.name)+'</div></div>' +
     '</a>';
   }
+
+  // Site-wide "at a glance" leaderboard - top 5 teams/sports/competitions
+  // by approved jersey count, across every contributor. Same
+  // per-exact-team-row counting as a user's own profile stats (a
+  // club's different competition-tier entries stay separate, not
+  // merged) - with a team name alone often ambiguous site-wide
+  // ("Australia" exists in a dozen sports), each team/competition row
+  // also names its sport. Home page only.
+  async function siteStatsHtml(){
+    var rows = await fetchAllRows('jerseys',
+      'team_id, teams(name, slug, competition_slug, competitions(name, slug, sport_slug, sports(name, slug)))',
+      function(q){ return q.eq('status', 'approved'); });
+    var teamCounts = {}, sportCounts = {}, compCounts = {};
+    rows.forEach(function(j){
+      var t = j.teams, c = t && t.competitions, s = c && c.sports;
+      if(!t || !c || !s) return;
+      var tKey = t.competition_slug + '|' + t.slug;
+      if(!teamCounts[tKey]) teamCounts[tKey] = {count:0, name:t.name, slug:t.slug, compSlug:t.competition_slug, sportSlug:s.slug, sportName:s.name};
+      teamCounts[tKey].count++;
+      if(!sportCounts[s.slug]) sportCounts[s.slug] = {count:0, name:s.name, slug:s.slug};
+      sportCounts[s.slug].count++;
+      if(!compCounts[c.slug]) compCounts[c.slug] = {count:0, name:c.name, slug:c.slug, sportSlug:s.slug, sportName:s.name};
+      compCounts[c.slug].count++;
+    });
+    var topTeams = Object.keys(teamCounts).map(function(k){ return teamCounts[k]; }).sort(function(a,b){ return b.count - a.count; }).slice(0, 5);
+    var topSports = Object.keys(sportCounts).map(function(k){ return sportCounts[k]; }).sort(function(a,b){ return b.count - a.count; }).slice(0, 5);
+    var topComps = Object.keys(compCounts).map(function(k){ return compCounts[k]; }).sort(function(a,b){ return b.count - a.count; }).slice(0, 5);
+
+    function row(i, nameHtml, href, count){
+      return '<a class="profile-stat-row" href="'+href+'"><span class="profile-stat-rank">'+(i+1)+'</span>' +
+        '<span class="profile-stat-name">'+nameHtml+'</span>' +
+        '<span class="profile-stat-sub">'+count+' jersey'+(count===1?'':'s')+'</span></a>';
+    }
+    function groupHtml(label, rowsHtml){
+      return rowsHtml ? '<div class="profile-stat-group"><span class="profile-stat-label">'+esc(label)+'</span><div class="profile-stat-list">'+rowsHtml+'</div></div>' : '';
+    }
+
+    var teamRows = topTeams.map(function(t, i){
+      return row(i, esc(t.name)+' <span class="profile-stat-context">('+esc(t.sportName)+')</span>', '#/sport/'+t.sportSlug+'/'+t.compSlug+'/team/'+t.slug, t.count);
+    }).join('');
+    var sportRows = topSports.map(function(s, i){
+      return row(i, esc(s.name), '#/sport/'+s.slug, s.count);
+    }).join('');
+    var compRows = topComps.map(function(c, i){
+      return row(i, esc(c.name)+' <span class="profile-stat-context">('+esc(c.sportName)+')</span>', '#/sport/'+c.sportSlug+'/'+c.slug, c.count);
+    }).join('');
+
+    var groups = groupHtml('Top 5 Teams', teamRows) + groupHtml('Top 5 Sports', sportRows) + groupHtml('Top 5 Competitions', compRows);
+    if(!groups) return '';
+    return '<div class="section-head" style="margin-top:34px;"><h2>Site Stats</h2></div><div class="profile-stats">'+groups+'</div>';
+  }
+
   async function viewHome(){
     setCrumbs([{label:'Home', href:'#/'}]);
     var res = await supabaseClient.from('sports').select('*').order('sort_order');
@@ -963,6 +1015,7 @@
     var highestRatedSectionHtml = await highestRatedHtml(null);
     var ratingExtremesSectionHtml = await ratingExtremesHtml();
     var mostViewedSectionHtml = await mostViewedHtml();
+    var siteStatsSectionHtml = await siteStatsHtml();
     // 12 is enough to show the home page is alive without turning it
     // into an endless feed — anyone who wants to see everything else
     // that's gone up recently gets a dedicated page instead, same idea
@@ -978,7 +1031,7 @@
       '<div class="section-head"><h2>Browse by sport</h2></div>' +
       '<div class="sport-grid">'+(cards || '<div class="empty-note">No sports found &mdash; has schema.sql been run?</div>')+'</div>' +
       moreSportsHtml +
-      recentHtml + mostViewedSectionHtml + highestRatedSectionHtml + ratingExtremesSectionHtml + updatesButtonHtml;
+      recentHtml + mostViewedSectionHtml + highestRatedSectionHtml + ratingExtremesSectionHtml + updatesButtonHtml + siteStatsSectionHtml;
   }
 
   // Full "what's gone up recently" feed — jerseys and logos together,
