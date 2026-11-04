@@ -3762,36 +3762,40 @@
     var statsSectionHtml = '';
     if(page === 1 && totalJerseys > 0){
       var statsJerseys = await fetchAllRows('jerseys',
-        'team_id, teams(name, slug, competition_slug, competitions(sport_slug, sports(name, slug)))',
+        'team_id, teams(name, slug, competition_slug, competitions(name, slug, sport_slug, sports(name, slug)))',
         function(q){ return q.eq('uploaded_by', profile.id).eq('status', 'approved'); });
-      var teamCounts = {}, sportCounts = {};
+      var teamCounts = {}, sportCounts = {}, compCounts = {};
       statsJerseys.forEach(function(j){
         var t = j.teams, c = t && t.competitions, s = c && c.sports;
-        if(t && t.competition_slug){
-          var tKey = t.competition_slug + '|' + t.slug;
-          if(!teamCounts[tKey]) teamCounts[tKey] = {count:0, name:t.name, slug:t.slug, compSlug:t.competition_slug, sportSlug: c && c.sport_slug};
-          teamCounts[tKey].count++;
-        }
-        if(s && s.slug){
-          if(!sportCounts[s.slug]) sportCounts[s.slug] = {count:0, name:s.name, slug:s.slug};
-          sportCounts[s.slug].count++;
-        }
+        if(!t || !c || !s) return;
+        var tKey = t.competition_slug + '|' + t.slug;
+        if(!teamCounts[tKey]) teamCounts[tKey] = {count:0, name:t.name, slug:t.slug, compSlug:t.competition_slug, sportSlug:s.slug, sportName:s.name};
+        teamCounts[tKey].count++;
+        if(!sportCounts[s.slug]) sportCounts[s.slug] = {count:0, name:s.name, slug:s.slug};
+        sportCounts[s.slug].count++;
+        if(!compCounts[c.slug]) compCounts[c.slug] = {count:0, name:c.name, slug:c.slug, sportSlug:s.slug, sportName:s.name};
+        compCounts[c.slug].count++;
       });
-      var topTeams = Object.keys(teamCounts).map(function(k){ return teamCounts[k]; })
-        .filter(function(t){ return t.sportSlug; }).sort(function(a,b){ return b.count - a.count; }).slice(0, 3);
-      var topSports = Object.keys(sportCounts).map(function(k){ return sportCounts[k]; })
-        .sort(function(a,b){ return b.count - a.count; }).slice(0, 3);
-      function statGroupHtml(label, rows, hrefFor){
+      var topTeams = Object.keys(teamCounts).map(function(k){ return teamCounts[k]; }).sort(function(a,b){ return b.count - a.count; }).slice(0, 3);
+      var topSports = Object.keys(sportCounts).map(function(k){ return sportCounts[k]; }).sort(function(a,b){ return b.count - a.count; }).slice(0, 3);
+      var topComps = Object.keys(compCounts).map(function(k){ return compCounts[k]; }).sort(function(a,b){ return b.count - a.count; }).slice(0, 3);
+      // Sport shown in brackets next to a team/competition name, same
+      // as the home page's site-wide version - a bare name is
+      // ambiguous even on one person's own stats ("Australia" could be
+      // cricket, football, rugby league...).
+      function statGroupHtml(label, rows, hrefFor, nameFor){
         if(!rows.length) return '';
         var rowsHtml = rows.map(function(r, i){
           return '<a class="profile-stat-row" href="'+hrefFor(r)+'"><span class="profile-stat-rank">'+(i+1)+'</span>' +
-            '<span class="profile-stat-name">'+esc(r.name)+'</span>' +
+            '<span class="profile-stat-name">'+nameFor(r)+'</span>' +
             '<span class="profile-stat-sub">'+r.count+' jersey'+(r.count===1?'':'s')+'</span></a>';
         }).join('');
         return '<div class="profile-stat-group"><span class="profile-stat-label">'+esc(label)+'</span><div class="profile-stat-list">'+rowsHtml+'</div></div>';
       }
-      var statGroups = statGroupHtml('Most uploaded teams', topTeams, function(r){ return '#/sport/'+r.sportSlug+'/'+r.compSlug+'/team/'+r.slug; }) +
-        statGroupHtml('Most uploaded sports', topSports, function(r){ return '#/sport/'+r.slug; });
+      function nameWithSport(r){ return esc(r.name)+' <span class="profile-stat-context">('+esc(r.sportName)+')</span>'; }
+      var statGroups = statGroupHtml('Most uploaded teams', topTeams, function(r){ return '#/sport/'+r.sportSlug+'/'+r.compSlug+'/team/'+r.slug; }, nameWithSport) +
+        statGroupHtml('Most uploaded sports', topSports, function(r){ return '#/sport/'+r.slug; }, function(r){ return esc(r.name); }) +
+        statGroupHtml('Most uploaded competitions', topComps, function(r){ return '#/sport/'+r.sportSlug+'/'+r.slug; }, nameWithSport);
       if(statGroups) statsSectionHtml = '<div class="profile-stats">'+statGroups+'</div>';
     }
 
