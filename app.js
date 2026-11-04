@@ -3699,6 +3699,47 @@
       }
     }
 
+    // Small "at a glance" facts about this person's uploads - which
+    // real team entry and which sport they've logged the most jerseys
+    // for. Counted per exact team row (not merged across a club's
+    // different competition-tier entries - Canberra Raiders NRL and
+    // Canberra Raiders Holden Cup stay separate counts), since those
+    // can genuinely be different squads, not just a naming overlap.
+    // Page 1 only, same as logos/collection/achievements below.
+    var statsSectionHtml = '';
+    if(page === 1 && totalJerseys > 0){
+      var statsJerseys = await fetchAllRows('jerseys',
+        'team_id, teams(name, slug, competition_slug, competitions(sport_slug, sports(name, slug)))',
+        function(q){ return q.eq('uploaded_by', profile.id).eq('status', 'approved'); });
+      var teamCounts = {}, sportCounts = {};
+      statsJerseys.forEach(function(j){
+        var t = j.teams, c = t && t.competitions, s = c && c.sports;
+        if(t && t.competition_slug){
+          var tKey = t.competition_slug + '|' + t.slug;
+          if(!teamCounts[tKey]) teamCounts[tKey] = {count:0, name:t.name, slug:t.slug, compSlug:t.competition_slug, sportSlug: c && c.sport_slug};
+          teamCounts[tKey].count++;
+        }
+        if(s && s.slug){
+          if(!sportCounts[s.slug]) sportCounts[s.slug] = {count:0, name:s.name, slug:s.slug};
+          sportCounts[s.slug].count++;
+        }
+      });
+      var topTeam = Object.keys(teamCounts).map(function(k){ return teamCounts[k]; }).sort(function(a,b){ return b.count - a.count; })[0];
+      var topSport = Object.keys(sportCounts).map(function(k){ return sportCounts[k]; }).sort(function(a,b){ return b.count - a.count; })[0];
+      var statTiles = '';
+      if(topTeam && topTeam.sportSlug){
+        statTiles += '<div class="profile-stat"><span class="profile-stat-label">Most uploaded team</span>' +
+          '<a class="profile-stat-value" href="#/sport/'+topTeam.sportSlug+'/'+topTeam.compSlug+'/team/'+topTeam.slug+'">'+esc(topTeam.name)+'</a>' +
+          '<span class="profile-stat-sub">'+topTeam.count+' jersey'+(topTeam.count===1?'':'s')+'</span></div>';
+      }
+      if(topSport){
+        statTiles += '<div class="profile-stat"><span class="profile-stat-label">Most uploaded sport</span>' +
+          '<a class="profile-stat-value" href="#/sport/'+topSport.slug+'">'+esc(topSport.name)+'</a>' +
+          '<span class="profile-stat-sub">'+topSport.count+' jersey'+(topSport.count===1?'':'s')+'</span></div>';
+      }
+      if(statTiles) statsSectionHtml = '<div class="profile-stats">'+statTiles+'</div>';
+    }
+
     var collectionSectionHtml = '';
     if(page === 1 && (isOwnProfile || profile.collection_public)){
       var colJRes = await supabaseClient.from('collection_items')
@@ -3737,6 +3778,7 @@
     return tierUpBannerHtml + newBadgesBannerHtml +
       '<div class="section-head"><h2>'+esc(profile.username)+' '+pointsChip(profile.points)+'</h2><span class="count">'+totalJerseys+' upload'+(totalJerseys===1?'':'s')+'</span></div>' +
       '<p style="margin:-10px 0 18px;"><a class="spec-link" href="#/contributors">See the full leaderboard &rarr;</a></p>' +
+      statsSectionHtml +
       badgesSectionHtml +
       profileTabsHtml +
       '<div id="profile-tab-uploads">' +
