@@ -357,16 +357,29 @@
     return SPORT_TYPE_ORDERS[sportSlug] || GENERIC_TYPE_ORDER;
   }
   function typeSortIndex(orderGroups, typeStr){
-    var t = String(typeStr || '').trim().toLowerCase();
+    var t = baseJerseyType(typeStr).trim().toLowerCase();
     for(var i=0; i<orderGroups.length; i++){ if(orderGroups[i].indexOf(t) > -1) return i; }
     return orderGroups.length;
   }
+  // "Home 2"/"Home 3" (same role, different sponsor/print run) should
+  // land right after "Home", in number order - strips the same " -
+  // Suffix" and trailing-number patterns baseJerseyType does, so the
+  // two stay consistent with each other.
+  function typeSortSuffix(typeStr){
+    var s = String(typeStr || '').replace(/\s+-\s+.+$/, '').trim();
+    var m = s.match(/\s+v\.?\s*(\d+)$/i) || s.match(/\s+(\d+)$/);
+    return m ? parseInt(m[1], 10) : 1;
+  }
   // Stable sort (guaranteed by the spec) — ties (unrecognised types, or two
-  // of the same recognised type) keep whatever order the query gave them,
-  // which is upload order since callers select with a created_at tiebreak.
+  // of the same recognised type and number) keep whatever order the query
+  // gave them, which is upload order since callers select with a
+  // created_at tiebreak.
   function sortJerseysByType(jerseys, sportSlug, compSlug, seasonLabel){
     var groups = typeOrderGroupsFor(sportSlug, compSlug, seasonLabel);
-    return jerseys.slice().sort(function(a, b){ return typeSortIndex(groups, a.type) - typeSortIndex(groups, b.type); });
+    return jerseys.slice().sort(function(a, b){
+      return (typeSortIndex(groups, a.type) - typeSortIndex(groups, b.type))
+        || (typeSortSuffix(a.type) - typeSortSuffix(b.type));
+    });
   }
 
   // Used to flag the SAME team appearing under more than one competition
