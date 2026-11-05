@@ -1464,7 +1464,7 @@
       .sort(function(a, b){ return b.sortKey - a.sortKey; });
     var decadeNavHtml = decadeChips.length > 1
       ? '<div class="anchor-nav" style="margin-bottom:18px;">'+decadeChips.map(function(d){
-          return '<button class="chip anchor-nav-btn" type="button" data-scroll-target="team-season-'+slugify(String(d.firstYear))+'">'+esc(d.label)+'</button>';
+          return '<button class="chip anchor-nav-btn" type="button" data-scroll-target="team-season-'+slugify(String(d.firstYear))+'" data-scroll-instant="1">'+esc(d.label)+'</button>';
         }).join('')+'</div>'
       : '';
     var mainGroupsRaw = seasonGroups(mainJerseys, true);
@@ -6717,7 +6717,7 @@
     var anchorBtn = e.target.closest('.anchor-nav-btn');
     if(anchorBtn){
       var scrollTarget = document.getElementById(anchorBtn.dataset.scrollTarget);
-      if(scrollTarget) scrollTarget.scrollIntoView({behavior:'smooth', block:'start'});
+      if(scrollTarget) scrollTarget.scrollIntoView({behavior: anchorBtn.dataset.scrollInstant ? 'auto' : 'smooth', block:'start'});
     }
     // Profile page's Uploads/Collection tabs - both panels are already
     // in the page, this just shows one and hides the other.
