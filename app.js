@@ -814,6 +814,24 @@
       if(i === items.length-1) return '<span class="current">'+esc(it.label)+'</span>';
       return '<a href="'+it.href+'">'+esc(it.label)+'</a><span class="sep">/</span>';
     }).join('');
+    // Every view already calls setCrumbs with its own breadcrumb trail,
+    // so this is the one place a real per-page <title>/description can
+    // hook in without touching every view function individually. Won't
+    // fix search-engine indexing on its own - this is a client-side
+    // route (#/...), which browsers treat as the SAME url as far as a
+    // crawler cares, title and all; it only helps whoever actually
+    // lands on a shared link see the right thing in their tab/bookmark/
+    // link preview.
+    var meaningful = items.filter(function(it){ return it.label !== 'Home'; }).map(function(it){ return it.label; });
+    document.title = meaningful.length
+      ? meaningful.slice().reverse().slice(0, 2).join(' – ') + ' | Jersey Archive'
+      : 'Jersey Archive';
+    var metaDesc = document.querySelector('meta[name="description"]');
+    if(metaDesc){
+      metaDesc.setAttribute('content', meaningful.length
+        ? meaningful.join(', ') + ' — part of the Jersey Archive, a fan-uploaded jersey photo archive across every sport.'
+        : 'The Jersey Archive - a fan-uploaded jersey photo archive across every sport, part of The Jersey Database.');
+    }
   }
 
   function errorBox(err){
@@ -1407,9 +1425,35 @@
         var heading = showSeasonLink
           ? '<a class="spec-link" href="#/sport/'+sportSlug+'/'+linkCompSlug+'/season/'+y+'">'+y+'</a>'+compLabel
           : y+compLabel;
-        return '<div class="season-group"><h3>'+heading+'</h3><div class="jersey-grid">'+cards+'</div></div>';
+        return '<div class="season-group" id="team-season-'+slugify(String(y))+'"><h3>'+heading+'</h3><div class="jersey-grid">'+cards+'</div></div>';
       }).join('');
     }
+    // Jump-to-decade nav (FKA-style) for a team with years of jerseys
+    // logged - reuses the site's existing anchor-nav/scrollIntoView
+    // pattern (see renderGroupedBySport), so no new JS wiring is
+    // needed. Only worth showing once there's more than one decade on
+    // the page; a team with just its last couple of seasons logged
+    // doesn't need it. Targets the Match jerseys list specifically
+    // (each season-group's own id), not the Training tab.
+    function decadeOf(y){
+      var n = parseInt(String(y), 10);
+      return isNaN(n) ? null : Math.floor(n / 10) * 10;
+    }
+    var mainYears = Object.keys(mainJerseys.reduce(function(by, j){ by[j.season] = true; return by; }, {}))
+      .sort(function(a, b){ return seasonSortKey(b) - seasonSortKey(a); });
+    var decadeMap = {};
+    mainYears.forEach(function(y){
+      var d = decadeOf(y);
+      var key = d === null ? 'Other' : d + 's';
+      if(!decadeMap[key]) decadeMap[key] = {label: key, firstYear: y, sortKey: d === null ? -Infinity : d};
+    });
+    var decadeChips = Object.keys(decadeMap).map(function(k){ return decadeMap[k]; })
+      .sort(function(a, b){ return b.sortKey - a.sortKey; });
+    var decadeNavHtml = decadeChips.length > 1
+      ? '<div class="anchor-nav" style="margin-bottom:18px;">'+decadeChips.map(function(d){
+          return '<button class="chip anchor-nav-btn" type="button" data-scroll-target="team-season-'+slugify(String(d.firstYear))+'">'+esc(d.label)+'</button>';
+        }).join('')+'</div>'
+      : '';
     var mainGroupsRaw = seasonGroups(mainJerseys, true);
     // Only falls back to a fallback string when a training tab exists
     // (so it reads as "no match kits yet, but see the Training tab")
@@ -1505,6 +1549,7 @@
       historyHtml +
       logoBlock +
       formatFilterHtml +
+      decadeNavHtml +
       (groups || '<div class="empty-note">No jerseys logged yet.</div>') +
       renderReportButton('team', team.id, team.name) +
       adminSettingsBlock;
