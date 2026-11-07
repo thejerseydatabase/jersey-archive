@@ -2778,6 +2778,16 @@
     var existing = await supabaseClient.from('teams').select('*').eq('competition_slug', compSlug).eq('slug', slug).maybeSingle();
     if(existing.error) throw existing.error;
     if(existing.data) return existing.data;
+    // A team whose display name was corrected after the fact (a one-off
+    // SQL rename, e.g. "Hunslet" -> "Hunslet RLFC") keeps its original
+    // slug, so typing/picking the new full name here generates a
+    // different slug and misses the row above - this exact-name (not
+    // substring) fallback catches that before falling through to
+    // creating a duplicate team.
+    var byName = await supabaseClient.from('teams').select('*').eq('competition_slug', compSlug).ilike('name', name)
+      .order('created_at', {ascending:true}).limit(1);
+    if(byName.error) throw byName.error;
+    if(byName.data && byName.data.length) return byName.data[0];
     if(sportSlug){
       // Not .maybeSingle() - a club that's moved between divisions over
       // the years (promoted/relegated, or a genuine "same team,
