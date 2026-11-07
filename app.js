@@ -463,7 +463,7 @@
       // team page, and stacking a zoom action on top of that would fight
       // the card's own click-to-navigate behavior.
       var triggerClass = large ? ' lightbox-trigger' : '';
-      return '<div class="team-swatch team-swatch-logo'+sizeClass+'"><img class="'+triggerClass.trim()+'" src="'+esc(publicLogoUrl(team.logo_path))+'" alt="" loading="lazy"></div>';
+      return '<div class="team-swatch team-swatch-logo'+sizeClass+'"><img class="'+triggerClass.trim()+'" src="'+esc(publicLogoUrl(team.logo_path))+'" alt="'+esc(team.name)+' logo" loading="lazy"></div>';
     }
     return '<div class="team-swatch'+sizeClass+'"><div class="a" style="background:'+esc(team.primary_color)+'"></div><div class="b" style="background:'+esc(team.secondary_color)+'"></div></div>';
   }
@@ -475,7 +475,7 @@
     var large = opts && opts.large;
     var sizeClass = large ? ' team-swatch-lg' : '';
     var triggerClass = large ? ' lightbox-trigger' : '';
-    return '<div class="team-swatch team-swatch-logo'+sizeClass+'"><img class="'+triggerClass.trim()+'" src="'+esc(publicLogoUrl(comp.logo_path))+'" alt="" loading="lazy"></div>';
+    return '<div class="team-swatch team-swatch-logo'+sizeClass+'"><img class="'+triggerClass.trim()+'" src="'+esc(publicLogoUrl(comp.logo_path))+'" alt="'+esc(comp.name)+' logo" loading="lazy"></div>';
   }
 
   // The photo labeled "Front" should always be what a visitor sees first,
@@ -490,10 +490,18 @@
     });
   }
 
+  // Shared so a jersey's photo always gets the same descriptive alt text
+  // wherever it shows up (a grid thumbnail, the gallery strip, the main
+  // detail image) - real search-indexable text instead of the empty
+  // alt="" every jersey photo had before, which told Google Images
+  // nothing about what's actually in the photo.
+  function jerseyAltText(jersey, team){
+    return (jersey.season ? jersey.season+' ' : '') + (team ? team.name+' ' : '') + (jersey.type || 'jersey') + (jersey.type ? ' jersey' : '');
+  }
   function jerseyThumb(jersey, team){
     var images = sortImagesForDisplay(jersey.jersey_images);
     if(images.length){
-      return '<img src="'+esc(publicImageUrl(images[0].storage_path))+'" alt="" loading="lazy">';
+      return '<img src="'+esc(publicImageUrl(images[0].storage_path))+'" alt="'+esc(jerseyAltText(jersey, team))+'" loading="lazy">';
     }
     return '<div class="thumb-placeholder" style="background:linear-gradient(135deg,'+esc(team.primary_color)+','+esc(team.secondary_color)+')"><span>No photo yet</span></div>';
   }
@@ -557,7 +565,7 @@
     var dateHtml = (opts && opts.ts) ? '<span>'+esc(relativeTimeLabel(opts.ts))+'</span>' : '';
     var sportSlug = team.competitions.sport_slug;
     return '<a class="jersey-card" href="/sport/'+sportSlug+'/'+team.competition_slug+'/team/'+team.slug+'">' +
-      '<div class="jersey-thumb"><img src="'+esc(publicLogoUrl(logo.storage_path))+'" alt="" loading="lazy"></div>' +
+      '<div class="jersey-thumb"><img src="'+esc(publicLogoUrl(logo.storage_path))+'" alt="'+esc(team.name)+' logo" loading="lazy"></div>' +
       '<div class="jersey-label"><strong>'+esc(team.name)+'</strong><span>'+esc(label)+'</span>'+dateHtml+'</div>' +
     '</a>';
   }
@@ -568,7 +576,7 @@
       : 'New logo');
     var dateHtml = (opts && opts.ts) ? '<span>'+esc(relativeTimeLabel(opts.ts))+'</span>' : '';
     return '<a class="jersey-card" href="/sport/'+comp.sport_slug+'/'+comp.slug+'">' +
-      '<div class="jersey-thumb"><img src="'+esc(publicLogoUrl(logo.storage_path))+'" alt="" loading="lazy"></div>' +
+      '<div class="jersey-thumb"><img src="'+esc(publicLogoUrl(logo.storage_path))+'" alt="'+esc(comp.name)+' logo" loading="lazy"></div>' +
       '<div class="jersey-label"><strong>'+esc(comp.name)+'</strong><span>'+esc(label)+'</span>'+dateHtml+'</div>' +
     '</a>';
   }
@@ -736,7 +744,7 @@
       : '';
 
     return statusHtml +
-      '<div class="jersey-thumb" style="max-width:220px;"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(p.storage_path))+'" alt="" loading="lazy"></div>' +
+      '<div class="jersey-thumb" style="max-width:220px;"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(p.storage_path))+'" alt="Proposed logo" loading="lazy"></div>' +
       '<div class="spec-list" style="margin-top:18px;">' +
         '<div class="spec-item"><span>Logo for</span><div class="spec-value-row"><strong>'+esc(subjectName)+'</strong></div></div>' +
         (p.years_used ? '<div class="spec-item"><span>Years used</span><div class="spec-value-row"><strong>'+esc(p.years_used)+'</strong></div></div>' : '') +
@@ -831,17 +839,37 @@
     // so this is the one place a real per-page <title>/description can
     // hook in without touching every view function individually.
     var meaningful = items.filter(function(it){ return it.label !== 'Home'; }).map(function(it){ return it.label; });
-    document.title = meaningful.length
+    var pageTitle = meaningful.length
       ? meaningful.slice().reverse().slice(0, 2).join(' – ') + ' | Jersey Archive'
       : 'Jersey Archive';
+    var pageDesc = meaningful.length
+      ? meaningful.join(', ') + ' — part of the Jersey Archive, a fan-uploaded jersey photo archive across every sport.'
+      : 'The Jersey Archive - a fan-uploaded jersey photo archive across every sport, part of The Jersey Database.';
+    document.title = pageTitle;
     var metaDesc = document.querySelector('meta[name="description"]');
-    if(metaDesc){
-      metaDesc.setAttribute('content', meaningful.length
-        ? meaningful.join(', ') + ' — part of the Jersey Archive, a fan-uploaded jersey photo archive across every sport.'
-        : 'The Jersey Archive - a fan-uploaded jersey photo archive across every sport, part of The Jersey Database.');
-    }
+    if(metaDesc) metaDesc.setAttribute('content', pageDesc);
+    var canonicalUrl = 'https://archive.thejerseydatabase.com' + location.pathname;
     var canonical = document.getElementById('canonical-link');
-    if(canonical) canonical.setAttribute('href', 'https://archive.thejerseydatabase.com' + location.pathname);
+    if(canonical) canonical.setAttribute('href', canonicalUrl);
+    // Open Graph/Twitter Card tags - what shows up when a page link is
+    // pasted into Discord, a forum, Reddit, Facebook etc. Reset here on
+    // every navigation so a page with nothing more specific (most of
+    // them) still gets a sensible title/description; a jersey or team
+    // page follows up with its own photo/logo via setOgImage() once it
+    // knows what that is.
+    [['og-title', pageTitle], ['og-description', pageDesc], ['og-url', canonicalUrl],
+     ['twitter-title', pageTitle], ['twitter-description', pageDesc]].forEach(function(pair){
+      var el = document.getElementById(pair[0]);
+      if(el) el.setAttribute('content', pair[1]);
+    });
+    setOgImage('');
+  }
+
+  function setOgImage(url){
+    var og = document.getElementById('og-image');
+    var tw = document.getElementById('twitter-image');
+    if(og) og.setAttribute('content', url || '');
+    if(tw) tw.setAttribute('content', url || '');
   }
 
   function errorBox(err){
@@ -1397,6 +1425,7 @@
     if(teamRes.error) throw teamRes.error;
     var team = teamRes.data, comp = team.competitions, sport = comp.sports;
     setCrumbs([{label:'Home', href:'/'},{label:sport.name, href:'/sport/'+sportSlug},{label:comp.name, href:'/sport/'+sportSlug+'/'+compSlug},{label:team.name, href:'#'}]);
+    if(team.logo_path) setOgImage(publicLogoUrl(team.logo_path));
 
     var jRes = await supabaseClient.from('jerseys').select('*, jersey_images(*), competitions!competition_slug(name), jersey_competitions(competitions(name))').eq('team_id', team.id).order('season', {ascending:false}).order('created_at', {ascending:true});
     if(jRes.error) throw jRes.error;
@@ -1643,9 +1672,11 @@
     var extraComps = (extraCompsRes.data || []).map(function(r){ return r.competitions; }).filter(Boolean);
 
     var images = j.jersey_images && j.jersey_images.length ? sortImagesForDisplay(j.jersey_images) : null;
-    var mainHtml = images ? '<img class="lightbox-trigger" src="'+esc(publicImageUrl(images[0].storage_path))+'" alt="">' : jerseyThumb(j, team);
+    var jAlt = jerseyAltText(j, team);
+    if(images) setOgImage(publicImageUrl(images[0].storage_path));
+    var mainHtml = images ? '<img class="lightbox-trigger" src="'+esc(publicImageUrl(images[0].storage_path))+'" alt="'+esc(jAlt)+'">' : jerseyThumb(j, team);
     var thumbs = images ? images.map(function(img,i){
-      return '<button class="gallery-thumb'+(i===0?' is-active':'')+'" data-idx="'+i+'" type="button" title="'+esc(img.label)+'"><img src="'+esc(publicImageUrl(img.storage_path))+'" alt="" loading="lazy"></button>';
+      return '<button class="gallery-thumb'+(i===0?' is-active':'')+'" data-idx="'+i+'" type="button" title="'+esc(img.label)+'"><img src="'+esc(publicImageUrl(img.storage_path))+'" alt="'+esc(jAlt+' ('+img.label+')')+'" loading="lazy"></button>';
     }).join('') : '';
 
     var rating = await fetchRating(id);
@@ -1885,7 +1916,7 @@
     var dl = await supabaseClient.storage.from(bucket).download(storagePath);
     if(dl.error){ stage.innerHTML = '<div class="empty-note">Couldn\'t load image: '+esc(dl.error.message)+'</div>'; return; }
     objectUrl = URL.createObjectURL(dl.data);
-    stage.innerHTML = '<img id="crop-img" src="'+objectUrl+'" alt="">' +
+    stage.innerHTML = '<img id="crop-img" src="'+objectUrl+'" alt="Crop preview">' +
       '<div class="crop-rect">' +
         '<div class="crop-handle" data-handle="nw"></div><div class="crop-handle" data-handle="ne"></div>' +
         '<div class="crop-handle" data-handle="sw"></div><div class="crop-handle" data-handle="se"></div>' +
@@ -2077,7 +2108,7 @@
     // with another, and a jersey always needs at least one left).
     var relabelHtml = (images && images.length)
       ? '<label class="rate-label">Photos</label><div class="logo-history-grid lightbox-group">' + images.map(function(img){
-          return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicImageUrl(img.storage_path))+'" alt="" loading="lazy">' +
+          return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicImageUrl(img.storage_path))+'" alt="'+esc(img.label+' photo')+'" loading="lazy">' +
             (images.length > 1 ? (
               '<select class="photo-label-select" data-image-id="'+img.id+'">' +
                 ['Front','Back','Other'].map(function(l){ return '<option value="'+l+'"'+(img.label===l?' selected':'')+'>'+l+'</option>'; }).join('') +
@@ -3423,7 +3454,7 @@
       var uploader = uploaderNames[j.uploaded_by] || 'unknown';
       var images = sortImagesForDisplay(j.jersey_images);
       var thumb = images.length
-        ? '<img class="lightbox-trigger" src="'+esc(publicImageUrl(images[0].storage_path))+'" alt="" loading="lazy">'
+        ? '<img class="lightbox-trigger" src="'+esc(publicImageUrl(images[0].storage_path))+'" alt="'+esc(jerseyAltText(j, team))+'" loading="lazy">'
         : '<div class="thumb-placeholder" style="background:var(--surface-2)"><span>No photo</span></div>';
       // All submitted photos, not just the first — admin needs to check
       // every one for wrong/bad images before approving, not just the
@@ -3438,7 +3469,7 @@
       // case) — label/delete stay gated to images.length > 1 as before.
       var allPhotosHtml = images.length
         ? '<div class="logo-history-grid lightbox-group" style="margin-top:8px;">' + images.map(function(img){
-            return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicImageUrl(img.storage_path))+'" alt="" loading="lazy">' +
+            return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicImageUrl(img.storage_path))+'" alt="'+esc(img.label+' photo')+'" loading="lazy">' +
               (images.length > 1 ? (
                 '<select class="photo-label-select" data-image-id="'+img.id+'">' +
                   ['Front','Back','Other'].map(function(l){ return '<option value="'+l+'"'+(img.label===l?' selected':'')+'>'+l+'</option>'; }).join('') +
@@ -3497,7 +3528,7 @@
       var j = img.jerseys, team = j ? j.teams : null;
       var uploader = uploaderNames[img.uploaded_by] || 'unknown';
       return '<div class="mod-card">' +
-        '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(publicImageUrl(img.storage_path))+'" alt="" loading="lazy"></div>' +
+        '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(publicImageUrl(img.storage_path))+'" alt="'+esc(img.label+' photo for '+(j ? j.season+' '+team.name+' '+j.type : 'a jersey'))+'" loading="lazy"></div>' +
         '<div class="mod-info">' +
           '<strong>'+esc(img.label)+' photo for '+(j ? j.season+' '+esc(team.name)+' '+esc(j.type) : 'a jersey')+'</strong>' +
           '<span>proposed by '+esc(uploader)+'</span>' +
@@ -3521,7 +3552,7 @@
       var reporter = uploaderNames[r.reported_by] || (r.reported_by ? 'unknown' : 'anonymous');
       var link = reportLink(r);
       var thumb = r.attachment_path
-        ? '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(toCdnUrl(supabaseClient.storage.from('report-attachments').getPublicUrl(r.attachment_path).data.publicUrl))+'" alt="" loading="lazy"></div>'
+        ? '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(toCdnUrl(supabaseClient.storage.from('report-attachments').getPublicUrl(r.attachment_path).data.publicUrl))+'" alt="Report attachment" loading="lazy"></div>'
         : '';
       var useAsLogoBtn = (r.attachment_path && r.page_type === 'team')
         ? '<button class="btn" data-type="report-logo" data-action="use" data-id="'+r.id+'" data-team-id="'+esc(r.page_ref)+'" data-path="'+esc(r.attachment_path)+'" data-reported-by="'+esc(r.reported_by || '')+'" type="button">Use as team logo</button>'
@@ -3552,7 +3583,7 @@
       var makeCurrentId = 'mod-make-current-logo-'+l.id;
       var logoRejectId = 'mod-logo-reject-'+l.id;
       return '<div class="mod-card">' +
-        '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(l.storage_path))+'" alt="" loading="lazy"></div>' +
+        '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(l.storage_path))+'" alt="'+esc('Proposed logo for '+(l.teams ? l.teams.name : 'a team'))+'" loading="lazy"></div>' +
         '<div class="mod-info">' +
           '<strong>Logo for '+(l.teams ? esc(l.teams.name) : 'a team')+'</strong>' +
           '<span>proposed by '+esc(proposer)+'</span>' +
@@ -3579,7 +3610,7 @@
       var makeCurrentId = 'mod-make-current-complogo-'+l.id;
       var compLogoRejectId = 'mod-complogo-reject-'+l.id;
       return '<div class="mod-card">' +
-        '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(l.storage_path))+'" alt="" loading="lazy"></div>' +
+        '<div class="jersey-thumb"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(l.storage_path))+'" alt="'+esc('Proposed logo for '+(l.competitions ? l.competitions.name : 'a competition'))+'" loading="lazy"></div>' +
         '<div class="mod-info">' +
           '<strong>Logo for '+(l.competitions ? esc(l.competitions.name) : 'a competition')+'</strong>' +
           '<span>proposed by '+esc(proposer)+'</span>' +
@@ -4107,7 +4138,7 @@
         btn.addEventListener('click', function(){
           thumbsWrap.querySelectorAll('.gallery-thumb').forEach(function(b){ b.classList.remove('is-active'); });
           btn.classList.add('is-active');
-          main.innerHTML = '<img class="lightbox-trigger" src="'+esc(publicImageUrl(images[Number(btn.dataset.idx)].storage_path))+'" alt="">';
+          main.innerHTML = '<img class="lightbox-trigger" src="'+esc(publicImageUrl(images[Number(btn.dataset.idx)].storage_path))+'" alt="'+esc(btn.querySelector('img').alt)+'">';
         });
       });
     }
@@ -4630,7 +4661,7 @@
           var msgLinkHtml = (isAdmin && r.proposal_id)
             ? ' <a class="spec-link" href="/logo-proposal/'+kind+'/'+r.proposal_id+'" target="_blank" rel="noopener" style="font-size:10.5px;">View / message</a>'
             : '';
-          return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(r.storage_path))+'" alt="" loading="lazy">' +
+          return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(r.storage_path))+'" alt="Logo, '+caption+'" loading="lazy">' +
             '<div class="spec-value-row"><span>'+caption+'</span>'+editBtn+makeCurrentBtn+deleteBtn+replaceBtn+'</div>' + noteHtml + creditHtml + msgLinkHtml + '</div>';
         }).join('') + '</div>'
       : '<div class="empty-note">No logo history yet.</div>';
@@ -4753,7 +4784,7 @@
     function renderPreviews(){
       previewsEl.innerHTML = selected.map(function(p, i){
         return '<div class="photo-preview-item">' +
-          '<div class="photo-preview-thumb"><img src="'+p.url+'" alt=""></div>' +
+          '<div class="photo-preview-thumb"><img src="'+p.url+'" alt="'+esc(p.label || labelForIndex(i))+' photo preview"></div>' +
           '<select class="photo-label-select" data-idx="'+i+'">' +
             ['Front','Back','Other'].map(function(l){ return '<option value="'+l+'"'+(p.label===l?' selected':'')+'>'+l+'</option>'; }).join('') +
           '</select>' +
@@ -4883,7 +4914,7 @@
       var entry = {file: file, url: URL.createObjectURL(file)};
       picked = entry;
       pickedCompression = compressImageForUpload(file, LOGO_WEBP_QUALITY).then(function(compressed){ entry.file = compressed; });
-      previewEl.innerHTML = '<div class="photo-preview-item"><div class="photo-preview-thumb"><img src="'+picked.url+'" alt=""></div>' +
+      previewEl.innerHTML = '<div class="photo-preview-item"><div class="photo-preview-thumb"><img src="'+picked.url+'" alt="Logo preview"></div>' +
         '<button type="button" class="photo-remove-btn" id="pl-remove-btn" aria-label="Remove">✕</button></div>';
       document.getElementById('pl-remove-btn').addEventListener('click', function(){
         URL.revokeObjectURL(picked.url); picked = null; previewEl.innerHTML = ''; submitBtn.disabled = true;
@@ -5490,7 +5521,7 @@
     function renderPhotoPreviews(){
       previewsEl.innerHTML = selectedPhotos.map(function(p, i){
         return '<div class="photo-preview-item">' +
-          '<div class="photo-preview-thumb"><img src="'+p.url+'" alt=""></div>' +
+          '<div class="photo-preview-thumb"><img src="'+p.url+'" alt="'+esc(p.label || labelForIndex(i))+' photo preview"></div>' +
           '<select class="photo-label-select" data-idx="'+i+'">' +
             ['Front','Back','Other'].map(function(l){ return '<option value="'+l+'"'+(p.label===l?' selected':'')+'>'+l+'</option>'; }).join('') +
           '</select>' +
