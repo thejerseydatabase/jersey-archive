@@ -3825,9 +3825,11 @@
       }
       var logoCountsRes = await Promise.all([
         supabaseClient.from('team_logos').select('id', {count:'exact', head:true}).eq('proposed_by', profile.id),
-        supabaseClient.from('competition_logos').select('id', {count:'exact', head:true}).eq('proposed_by', profile.id)
+        supabaseClient.from('competition_logos').select('id', {count:'exact', head:true}).eq('proposed_by', profile.id),
+        supabaseClient.from('sports').select('id', {count:'exact', head:true})
       ]);
       logoCount = (logoCountsRes[0].count || 0) + (logoCountsRes[1].count || 0);
+      var totalSportCount = logoCountsRes[2].count || 0;
       if(isOwnProfile || profile.collection_public){
         var collectionCountRes = await supabaseClient.from('collection_items').select('id', {count:'exact', head:true}).eq('user_id', profile.id);
         collectionCount = collectionCountRes.count || 0;
@@ -3849,7 +3851,8 @@
       'collector-ten': (isOwnProfile || profile.collection_public) ? {current: collectionCount, threshold: 10} : null,
       'ten-competitions': {current: compCount, threshold: 10},
       'twenty-five-competitions': {current: compCount, threshold: 25},
-      'ten-manufacturers': {current: mfrCount, threshold: 10}
+      'ten-manufacturers': {current: mfrCount, threshold: 10},
+      'all-sports': totalSportCount ? {current: Object.keys(sportCounts).length, threshold: totalSportCount} : null
     };
 
     // Achievement badges (see achievements.sql) - separate from the
