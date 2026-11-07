@@ -538,7 +538,7 @@
     var tagBadge = tags.length
       ? '<span class="tag-badge" title="Also worn in: '+esc(tags.join(', '))+'">'+esc(tags[0])+(tags.length>1 ? ' +'+(tags.length-1) : '')+'</span>'
       : '';
-    return '<a class="jersey-card" href="#/jersey/'+jersey.id+'" data-format="'+esc(jersey.format || '')+'">' + pendingBadge + tagBadge +
+    return '<a class="jersey-card" href="/jersey/'+jersey.id+'" data-format="'+esc(jersey.format || '')+'">' + pendingBadge + tagBadge +
       '<div class="jersey-thumb">'+jerseyThumb(jersey, team)+'</div>' +
       '<div class="jersey-label"><strong>'+esc(primary)+'</strong><span>'+esc(secondary)+'</span>'+dateHtml+metaLineHtml+'</div>' +
     '</a>';
@@ -556,7 +556,7 @@
       : 'New logo');
     var dateHtml = (opts && opts.ts) ? '<span>'+esc(relativeTimeLabel(opts.ts))+'</span>' : '';
     var sportSlug = team.competitions.sport_slug;
-    return '<a class="jersey-card" href="#/sport/'+sportSlug+'/'+team.competition_slug+'/team/'+team.slug+'">' +
+    return '<a class="jersey-card" href="/sport/'+sportSlug+'/'+team.competition_slug+'/team/'+team.slug+'">' +
       '<div class="jersey-thumb"><img src="'+esc(publicLogoUrl(logo.storage_path))+'" alt="" loading="lazy"></div>' +
       '<div class="jersey-label"><strong>'+esc(team.name)+'</strong><span>'+esc(label)+'</span>'+dateHtml+'</div>' +
     '</a>';
@@ -567,7 +567,7 @@
       ? (logo.years_used ? 'Logo added · '+logo.years_used : 'Logo added (historical)')
       : 'New logo');
     var dateHtml = (opts && opts.ts) ? '<span>'+esc(relativeTimeLabel(opts.ts))+'</span>' : '';
-    return '<a class="jersey-card" href="#/sport/'+comp.sport_slug+'/'+comp.slug+'">' +
+    return '<a class="jersey-card" href="/sport/'+comp.sport_slug+'/'+comp.slug+'">' +
       '<div class="jersey-thumb"><img src="'+esc(publicLogoUrl(logo.storage_path))+'" alt="" loading="lazy"></div>' +
       '<div class="jersey-label"><strong>'+esc(comp.name)+'</strong><span>'+esc(label)+'</span>'+dateHtml+'</div>' +
     '</a>';
@@ -641,7 +641,7 @@
   // and admins to have the same kind of conversation a jersey's own
   // page already supports. Not linked from anywhere public.
   async function viewLogoProposal(kind, id){
-    setCrumbs([{label:'Home', href:'#/'},{label:'Moderate', href:'#/moderate'},{label:'Logo proposal', href:'#'}]);
+    setCrumbs([{label:'Home', href:'/'},{label:'Moderate', href:'/moderate'},{label:'Logo proposal', href:'#'}]);
     var table = kind === 'team' ? 'team_logo_proposals' : 'competition_logo_proposals';
     var selectCols = kind === 'team'
       ? '*, teams(name, slug, competition_slug, competitions(sport_slug))'
@@ -829,12 +829,7 @@
     }).join('');
     // Every view already calls setCrumbs with its own breadcrumb trail,
     // so this is the one place a real per-page <title>/description can
-    // hook in without touching every view function individually. Won't
-    // fix search-engine indexing on its own - this is a client-side
-    // route (#/...), which browsers treat as the SAME url as far as a
-    // crawler cares, title and all; it only helps whoever actually
-    // lands on a shared link see the right thing in their tab/bookmark/
-    // link preview.
+    // hook in without touching every view function individually.
     var meaningful = items.filter(function(it){ return it.label !== 'Home'; }).map(function(it){ return it.label; });
     document.title = meaningful.length
       ? meaningful.slice().reverse().slice(0, 2).join(' – ') + ' | Jersey Archive'
@@ -845,6 +840,8 @@
         ? meaningful.join(', ') + ' — part of the Jersey Archive, a fan-uploaded jersey photo archive across every sport.'
         : 'The Jersey Archive - a fan-uploaded jersey photo archive across every sport, part of The Jersey Database.');
     }
+    var canonical = document.getElementById('canonical-link');
+    if(canonical) canonical.setAttribute('href', 'https://archive.thejerseydatabase.com' + location.pathname);
   }
 
   function errorBox(err){
@@ -969,7 +966,7 @@
   }
 
   function sportCard(s){
-    return '<a class="sport-card" href="#/sport/'+s.slug+'">' +
+    return '<a class="sport-card" href="/sport/'+s.slug+'">' +
       '<div class="sport-icon">'+sportIcon(s.slug)+'</div>' +
       '<div><div class="sport-name">'+esc(s.name)+'</div></div>' +
     '</a>';
@@ -1012,13 +1009,13 @@
     }
 
     var teamRows = topTeams.map(function(t, i){
-      return row(i, esc(t.name)+' <span class="profile-stat-context">('+esc(t.sportName)+')</span>', '#/sport/'+t.sportSlug+'/'+t.compSlug+'/team/'+t.slug, t.count);
+      return row(i, esc(t.name)+' <span class="profile-stat-context">('+esc(t.sportName)+')</span>', '/sport/'+t.sportSlug+'/'+t.compSlug+'/team/'+t.slug, t.count);
     }).join('');
     var sportRows = topSports.map(function(s, i){
-      return row(i, esc(s.name), '#/sport/'+s.slug, s.count);
+      return row(i, esc(s.name), '/sport/'+s.slug, s.count);
     }).join('');
     var compRows = topComps.map(function(c, i){
-      return row(i, esc(c.name)+' <span class="profile-stat-context">('+esc(c.sportName)+')</span>', '#/sport/'+c.sportSlug+'/'+c.slug, c.count);
+      return row(i, esc(c.name)+' <span class="profile-stat-context">('+esc(c.sportName)+')</span>', '/sport/'+c.sportSlug+'/'+c.slug, c.count);
     }).join('');
 
     var groups = groupHtml('Top 5 Teams', teamRows) + groupHtml('Top 5 Sports', sportRows) + groupHtml('Top 5 Competitions', compRows);
@@ -1027,7 +1024,7 @@
   }
 
   async function viewHome(){
-    setCrumbs([{label:'Home', href:'#/'}]);
+    setCrumbs([{label:'Home', href:'/'}]);
     var res = await supabaseClient.from('sports').select('*').order('sort_order');
     if(res.error) throw res.error;
     var sports = res.data || [];
@@ -1052,7 +1049,7 @@
     // that's gone up recently gets a dedicated page instead, same idea
     // as FKA's "Latest Updates" button under its own recent grid.
     var updatesButtonHtml = recentHtml
-      ? '<div style="text-align:center;margin-top:22px;"><a class="btn" href="#/updates">Latest Updates</a></div>'
+      ? '<div style="text-align:center;margin-top:22px;"><a class="btn" href="/updates">Latest Updates</a></div>'
       : '';
     return '<header class="hero">' +
         '<p class="eyebrow">The Jersey Database &mdash; Archive</p>' +
@@ -1081,8 +1078,8 @@
       compSlugs = (compRes.data || []).map(function(c){ return c.slug; });
     }
     setCrumbs(sportSlug
-      ? [{label:'Home', href:'#/'},{label:sport.name, href:'#/sport/'+sportSlug},{label:'Latest Updates', href:'#'}]
-      : [{label:'Home', href:'#/'},{label:'Latest Updates', href:'#'}]);
+      ? [{label:'Home', href:'/'},{label:sport.name, href:'/sport/'+sportSlug},{label:'Latest Updates', href:'#'}]
+      : [{label:'Home', href:'/'},{label:'Latest Updates', href:'#'}]);
     var LIMIT = 60;
     var jq = supabaseClient.from('jerseys').select('*, jersey_images(*), teams!inner(*), jersey_competitions(competitions(name))').eq('status', 'approved').order('approved_at', {ascending:false}).limit(LIMIT);
     var lq = supabaseClient.from('team_logos').select('*, teams!inner(*, competitions!inner(sport_slug))').order('approved_at', {ascending:false}).limit(LIMIT);
@@ -1109,14 +1106,14 @@
     var sportRes = await supabaseClient.from('sports').select('*').eq('slug', sportSlug).single();
     if(sportRes.error) throw sportRes.error;
     var sport = sportRes.data;
-    setCrumbs([{label:'Home', href:'#/'},{label:sport.name, href:'#/sport/'+sportSlug}]);
+    setCrumbs([{label:'Home', href:'/'},{label:sport.name, href:'/sport/'+sportSlug}]);
 
     var compRes = await supabaseClient.from('competitions').select('*').eq('sport_slug', sportSlug).order('sort_order').order('name');
     if(compRes.error) throw compRes.error;
     var comps = compRes.data || [];
 
     function compCard(c){
-      return '<a class="comp-card" href="#/sport/'+sportSlug+'/'+c.slug+'"><strong>'+esc(c.name)+'</strong></a>';
+      return '<a class="comp-card" href="/sport/'+sportSlug+'/'+c.slug+'"><strong>'+esc(c.name)+'</strong></a>';
     }
     // Once there are enough "more" competitions that a general visitor
     // wouldn't recognise most of them by name alone (a country's own
@@ -1164,7 +1161,7 @@
     var recentHtml = comps.length ? await recentJerseysHtml(compSlugs) : '';
     var highestRatedSectionHtml = comps.length ? await highestRatedHtml(compSlugs) : '';
     var updatesButtonHtml = recentHtml
-      ? '<div style="text-align:center;margin-top:22px;"><a class="btn" href="#/sport/'+sportSlug+'/updates">Latest Updates</a></div>'
+      ? '<div style="text-align:center;margin-top:22px;"><a class="btn" href="/sport/'+sportSlug+'/updates">Latest Updates</a></div>'
       : '';
 
     return '<header class="hero" style="padding-bottom:26px;"><p class="eyebrow">Sport</p><h1>'+esc(sport.name)+'</h1></header>' +
@@ -1215,7 +1212,7 @@
     var res = await supabaseClient.from('competitions').select('*, sports(*)').eq('slug', compSlug).single();
     if(res.error) throw res.error;
     var comp = res.data, sport = comp.sports;
-    setCrumbs([{label:'Home', href:'#/'},{label:sport.name, href:'#/sport/'+sportSlug},{label:comp.name, href:'#'}]);
+    setCrumbs([{label:'Home', href:'/'},{label:sport.name, href:'/sport/'+sportSlug},{label:comp.name, href:'#'}]);
 
     var teamsRes = await supabaseClient.from('teams').select('*').eq('competition_slug', compSlug).order('name');
     if(teamsRes.error) throw teamsRes.error;
@@ -1240,7 +1237,7 @@
       var hideAttr = startHidden ? ' hidden data-paginated-overflow' : '';
       var count = jerseyCountByTeam[t.id] || 0;
       var countHtml = '<span class="team-jersey-count">'+(count ? count+' jersey'+(count===1?'':'s') : 'No jerseys yet')+'</span>';
-      return '<a class="team-card" href="#/sport/'+sportSlug+'/'+compSlug+'/team/'+t.slug+'"'+formatsAttr+hideAttr+'>'+teamSwatch(t)+'<div class="team-info"><h3>'+esc(t.name)+'</h3>'+note+countHtml+'</div></a>';
+      return '<a class="team-card" href="/sport/'+sportSlug+'/'+compSlug+'/team/'+t.slug+'"'+formatsAttr+hideAttr+'>'+teamSwatch(t)+'<div class="team-info"><h3>'+esc(t.name)+'</h3>'+note+countHtml+'</div></a>';
     }
     // A competition with a huge team list (the ~100+ countries under an
     // International comp) is a long scroll to a flat grid — past this
@@ -1273,8 +1270,8 @@
       ? '<div class="section-head" style="margin-top:34px;"><h2>Browse by season</h2></div>' + seasonYears.map(function(y){
           var js = bySeasonAll[y];
           var cards = js.slice(0, 6).map(function(j){ return jerseyCard(j, j.teams, {showTeam:true}); }).join('');
-          var seeAll = js.length > 6 ? ' <a class="spec-link" href="#/sport/'+sportSlug+'/'+compSlug+'/season/'+y+'" style="margin-left:14px;">See all '+js.length+' jerseys &rarr;</a>' : '';
-          return '<div class="season-group"><h3><a class="spec-link" href="#/sport/'+sportSlug+'/'+compSlug+'/season/'+y+'">'+y+' season</a>'+seeAll+'</h3><div class="jersey-grid">'+cards+'</div></div>';
+          var seeAll = js.length > 6 ? ' <a class="spec-link" href="/sport/'+sportSlug+'/'+compSlug+'/season/'+y+'" style="margin-left:14px;">See all '+js.length+' jerseys &rarr;</a>' : '';
+          return '<div class="season-group"><h3><a class="spec-link" href="/sport/'+sportSlug+'/'+compSlug+'/season/'+y+'">'+y+' season</a>'+seeAll+'</h3><div class="jersey-grid">'+cards+'</div></div>';
         }).join('')
       : '';
 
@@ -1399,7 +1396,7 @@
     var teamRes = await supabaseClient.from('teams').select('*, competitions(*, sports(*))').eq('competition_slug', compSlug).eq('slug', teamSlug).single();
     if(teamRes.error) throw teamRes.error;
     var team = teamRes.data, comp = team.competitions, sport = comp.sports;
-    setCrumbs([{label:'Home', href:'#/'},{label:sport.name, href:'#/sport/'+sportSlug},{label:comp.name, href:'#/sport/'+sportSlug+'/'+compSlug},{label:team.name, href:'#'}]);
+    setCrumbs([{label:'Home', href:'/'},{label:sport.name, href:'/sport/'+sportSlug},{label:comp.name, href:'/sport/'+sportSlug+'/'+compSlug},{label:team.name, href:'#'}]);
 
     var jRes = await supabaseClient.from('jerseys').select('*, jersey_images(*), competitions!competition_slug(name), jersey_competitions(competitions(name))').eq('team_id', team.id).order('season', {ascending:false}).order('created_at', {ascending:true});
     if(jRes.error) throw jRes.error;
@@ -1436,7 +1433,7 @@
           .filter(function(s, i, arr){ return arr.indexOf(s) === i; });
         var linkCompSlug = seasonCompSlugs.length === 1 ? seasonCompSlugs[0] : compSlug;
         var heading = showSeasonLink
-          ? '<a class="spec-link" href="#/sport/'+sportSlug+'/'+linkCompSlug+'/season/'+y+'">'+y+'</a>'+compLabel
+          ? '<a class="spec-link" href="/sport/'+sportSlug+'/'+linkCompSlug+'/season/'+y+'">'+y+'</a>'+compLabel
           : y+compLabel;
         return '<div class="season-group" id="team-season-'+slugify(String(y))+'"><h3>'+heading+'</h3><div class="jersey-grid">'+cards+'</div></div>';
       }).join('');
@@ -1488,7 +1485,7 @@
     });
     var siblingsHtml = siblings.length
       ? '<p class="also-see">Also see: ' + siblings.map(function(t){
-          return '<a class="spec-link" href="#/sport/'+sportSlug+'/'+t.competitions.slug+'/team/'+t.slug+'">'+esc(t.competitions.name)+'</a>';
+          return '<a class="spec-link" href="/sport/'+sportSlug+'/'+t.competitions.slug+'/team/'+t.slug+'">'+esc(t.competitions.name)+'</a>';
         }).join(' &middot; ') + '</p>'
       : '';
 
@@ -1572,7 +1569,7 @@
     var compRes = await supabaseClient.from('competitions').select('*, sports(*)').eq('slug', compSlug).single();
     if(compRes.error) throw compRes.error;
     var comp = compRes.data, sport = comp.sports;
-    setCrumbs([{label:'Home', href:'#/'},{label:sport.name, href:'#/sport/'+sportSlug},{label:comp.name, href:'#/sport/'+sportSlug+'/'+compSlug},{label:year+' season', href:'#'}]);
+    setCrumbs([{label:'Home', href:'/'},{label:sport.name, href:'/sport/'+sportSlug},{label:comp.name, href:'/sport/'+sportSlug+'/'+compSlug},{label:year+' season', href:'#'}]);
 
     var jerseys = await fetchCompetitionJerseys(compSlug, {season: year});
     // Same Match/Training split as a team's own page (see
@@ -1590,7 +1587,7 @@
         .map(function(entry){
           var sorted = sortJerseysByType(entry.jerseys, sportSlug, compSlug, year);
           var cards = sorted.map(function(j){ return jerseyCard(j, entry.team); }).join('');
-          return '<div class="season-group"><h3><a class="spec-link" href="#/sport/'+sportSlug+'/'+compSlug+'/team/'+entry.team.slug+'">'+esc(entry.team.name)+'</a></h3><div class="jersey-grid">'+cards+'</div></div>';
+          return '<div class="season-group"><h3><a class="spec-link" href="/sport/'+sportSlug+'/'+compSlug+'/team/'+entry.team.slug+'">'+esc(entry.team.name)+'</a></h3><div class="jersey-grid">'+cards+'</div></div>';
         }).join('');
     }
 
@@ -1633,9 +1630,9 @@
       if(!jCompRes.error && jCompRes.data) comp = jCompRes.data;
     }
     setCrumbs([
-      {label:'Home', href:'#/'},{label:sport.name, href:'#/sport/'+sport.slug},
-      {label:teamComp.name, href:'#/sport/'+sport.slug+'/'+teamComp.slug},
-      {label:team.name, href:'#/sport/'+sport.slug+'/'+teamComp.slug+'/team/'+team.slug},
+      {label:'Home', href:'/'},{label:sport.name, href:'/sport/'+sport.slug},
+      {label:teamComp.name, href:'/sport/'+sport.slug+'/'+teamComp.slug},
+      {label:team.name, href:'/sport/'+sport.slug+'/'+teamComp.slug+'/team/'+team.slug},
       {label:j.season+' '+j.type, href:'#'}
     ]);
 
@@ -1665,7 +1662,7 @@
     if(j.uploaded_by){
       var uploaderRes = await supabaseClient.from('profiles').select('username,points').eq('id', j.uploaded_by).maybeSingle();
       if(!uploaderRes.error && uploaderRes.data){
-        uploaderHtml = '<span>uploaded by <a class="spec-link" href="#/user/'+encodeURIComponent(uploaderRes.data.username)+'">'+esc(uploaderRes.data.username)+'</a> '+pointsChip(uploaderRes.data.points)+'</span>';
+        uploaderHtml = '<span>uploaded by <a class="spec-link" href="/user/'+encodeURIComponent(uploaderRes.data.username)+'">'+esc(uploaderRes.data.username)+'</a> '+pointsChip(uploaderRes.data.points)+'</span>';
       }
     }
 
@@ -1685,7 +1682,7 @@
     }
     var additionalCreditsHtml = additionalCredits.map(function(c){
       var uname = acUsernames[c.user_id] || 'unknown';
-      return '<span>also credited: <a class="spec-link" href="#/user/'+encodeURIComponent(uname)+'">'+esc(uname)+'</a>'+(c.note ? ' &mdash; '+esc(c.note) : '')+'</span>';
+      return '<span>also credited: <a class="spec-link" href="/user/'+encodeURIComponent(uname)+'">'+esc(uname)+'</a>'+(c.note ? ' &mdash; '+esc(c.note) : '')+'</span>';
     }).join('');
 
     var pendingBanner = j.status === 'rejected'
@@ -1753,15 +1750,15 @@
         '<h1 class="detail-title">'+j.season+' '+esc(team.name)+' '+esc(j.type)+'</h1>' +
         '<p class="detail-sub">'+esc(comp.name)+' &middot; '+esc(sport.name)+'</p>' +
         '<div class="spec-list">' +
-          specItem('Sport', '<a class="spec-link" href="#/sport/'+sport.slug+'">'+esc(sport.name)+'</a>', null) +
+          specItem('Sport', '<a class="spec-link" href="/sport/'+sport.slug+'">'+esc(sport.name)+'</a>', null) +
           specItem(extraComps.length ? 'Competitions' : 'Competition',
-            [comp].concat(extraComps).map(function(c){ return '<a class="spec-link" href="#/sport/'+sport.slug+'/'+c.slug+'">'+esc(c.name)+'</a>'; }).join(' &middot; '),
+            [comp].concat(extraComps).map(function(c){ return '<a class="spec-link" href="/sport/'+sport.slug+'/'+c.slug+'">'+esc(c.name)+'</a>'; }).join(' &middot; '),
             null) +
-          specItem('Team', '<a class="spec-link" href="#/sport/'+sport.slug+'/'+teamComp.slug+'/team/'+team.slug+'">'+esc(team.name)+'</a>', {table:'teams', matchCol:'id', matchVal:team.id, field:'name', current:team.name}) +
-          specItem('Season', '<a class="spec-link" href="#/sport/'+sport.slug+'/'+comp.slug+'/season/'+j.season+'">'+j.season+'</a>', {table:'jerseys', matchCol:'id', matchVal:j.id, field:'season', current:j.season}) +
-          specItem('Jersey type', '<a class="spec-link" href="#/type/'+encodeURIComponent(j.type)+'/'+encodeURIComponent(sport.slug)+'/'+encodeURIComponent(comp.slug)+'">'+esc(j.type)+'</a>', {table:'jerseys', matchCol:'id', matchVal:j.id, field:'type', current:j.type}) +
-          specItem('Manufacturer', j.manufacturer ? '<a class="spec-link" href="#/manufacturer/'+encodeURIComponent(j.manufacturer)+'">'+esc(j.manufacturer)+'</a>' : 'Unlisted', {table:'jerseys', matchCol:'id', matchVal:j.id, field:'manufacturer', current:j.manufacturer || ''}) +
-          (j.format ? specItem('Format', '<a class="spec-link" href="#/format/'+encodeURIComponent(j.format)+'">'+esc(j.format)+'</a>', {table:'jerseys', matchCol:'id', matchVal:j.id, field:'format', current:j.format}) : '') +
+          specItem('Team', '<a class="spec-link" href="/sport/'+sport.slug+'/'+teamComp.slug+'/team/'+team.slug+'">'+esc(team.name)+'</a>', {table:'teams', matchCol:'id', matchVal:team.id, field:'name', current:team.name}) +
+          specItem('Season', '<a class="spec-link" href="/sport/'+sport.slug+'/'+comp.slug+'/season/'+j.season+'">'+j.season+'</a>', {table:'jerseys', matchCol:'id', matchVal:j.id, field:'season', current:j.season}) +
+          specItem('Jersey type', '<a class="spec-link" href="/type/'+encodeURIComponent(j.type)+'/'+encodeURIComponent(sport.slug)+'/'+encodeURIComponent(comp.slug)+'">'+esc(j.type)+'</a>', {table:'jerseys', matchCol:'id', matchVal:j.id, field:'type', current:j.type}) +
+          specItem('Manufacturer', j.manufacturer ? '<a class="spec-link" href="/manufacturer/'+encodeURIComponent(j.manufacturer)+'">'+esc(j.manufacturer)+'</a>' : 'Unlisted', {table:'jerseys', matchCol:'id', matchVal:j.id, field:'manufacturer', current:j.manufacturer || ''}) +
+          (j.format ? specItem('Format', '<a class="spec-link" href="/format/'+encodeURIComponent(j.format)+'">'+esc(j.format)+'</a>', {table:'jerseys', matchCol:'id', matchVal:j.id, field:'format', current:j.format}) : '') +
         '</div>' +
         notesHtml +
         creditHtml +
@@ -2125,7 +2122,7 @@
           '<button type="button" class="btn btn-secondary" id="jersey-credit-add-btn" data-jersey-id="'+j.id+'" style="margin-top:8px;">Add credit</button>' +
           '<p class="field-hint" id="jersey-credit-msg" hidden></p>' +
           '<label class="rate-label" style="margin-top:14px;">Danger zone</label>' +
-          '<button type="button" class="btn btn-reject delete-jersey-btn" data-jersey-id="'+j.id+'" data-redirect="#/sport/'+esc(sportSlug)+'/'+esc(team.competition_slug)+'/team/'+esc(team.slug)+'">Delete this jersey</button>' +
+          '<button type="button" class="btn btn-reject delete-jersey-btn" data-jersey-id="'+j.id+'" data-redirect="/sport/'+esc(sportSlug)+'/'+esc(team.competition_slug)+'/team/'+esc(team.slug)+'">Delete this jersey</button>' +
           '<p class="field-hint">Permanently removes it and its photos &mdash; e.g. an approved duplicate. Can&rsquo;t be undone.</p>' +
         '</div>' +
       '</div>';
@@ -2224,7 +2221,7 @@
         expandedHtml = '<div class="sport-full-list" hidden>'+seasonGroupsHtml+'</div>' +
           '<button class="btn btn-secondary show-sport-all-btn" type="button">View all '+sorted.length+'</button>';
       }
-      return '<section class="block" id="sport-block-'+slug+'"><div class="section-head"><h2><a class="spec-link" href="#/sport/'+slug+'">'+esc(entry.sport.name)+'</a></h2><span class="count">'+sorted.length+'</span></div>'+previewHtml+expandedHtml+'</section>';
+      return '<section class="block" id="sport-block-'+slug+'"><div class="section-head"><h2><a class="spec-link" href="/sport/'+slug+'">'+esc(entry.sport.name)+'</a></h2><span class="count">'+sorted.length+'</span></div>'+previewHtml+expandedHtml+'</section>';
     }).join('');
     return anchorNav + blocks;
   }
@@ -2324,9 +2321,9 @@
       var entry = bySport[slug];
       var rows = entry.teams.map(function(t){
         var c = t.competitions, sport = c.sports;
-        return '<a class="team-row-compact" href="#/sport/'+sport.slug+'/'+c.slug+'/team/'+t.slug+'">'+teamSwatch(t)+'<span class="team-row-name">'+esc(t.name)+'</span><span class="team-row-comp">'+esc(c.name)+'</span></a>';
+        return '<a class="team-row-compact" href="/sport/'+sport.slug+'/'+c.slug+'/team/'+t.slug+'">'+teamSwatch(t)+'<span class="team-row-name">'+esc(t.name)+'</span><span class="team-row-comp">'+esc(c.name)+'</span></a>';
       }).join('');
-      return '<div class="season-group"><h3><a class="spec-link" href="#/sport/'+slug+'">'+esc(entry.sport.name)+'</a></h3><div class="team-list-compact">'+rows+'</div></div>';
+      return '<div class="season-group"><h3><a class="spec-link" href="/sport/'+slug+'">'+esc(entry.sport.name)+'</a></h3><div class="team-list-compact">'+rows+'</div></div>';
     }).join('');
     // Two columns (sport 1 left, sport 2 right, sport 3 back on the
     // left, etc.) instead of stacking every sport in one long column —
@@ -2357,7 +2354,7 @@
   }
 
   async function viewSearch(term){
-    setCrumbs([{label:'Home', href:'#/'},{label:'Search: '+term, href:'#'}]);
+    setCrumbs([{label:'Home', href:'/'},{label:'Search: '+term, href:'#'}]);
 
     // Matched by name so a team with nothing uploaded yet still shows up
     // and can be clicked into (and uploaded to) instead of the search
@@ -2399,7 +2396,7 @@
       }
       var maxDist = Math.max(2, Math.floor(nq.length * 0.34));
       var suggestHtml = (suggestion && bestDist <= maxDist)
-        ? '<p class="empty-note">Did you mean <a class="spec-link" href="#/search/'+encodeURIComponent(suggestion.name)+'">'+esc(suggestion.name)+'</a>?</p>'
+        ? '<p class="empty-note">Did you mean <a class="spec-link" href="/search/'+encodeURIComponent(suggestion.name)+'">'+esc(suggestion.name)+'</a>?</p>'
         : '';
       return '<div class="section-head"><h2>Results for &ldquo;'+esc(term)+'&rdquo;</h2><span class="count">0 results</span></div><div class="empty-note">Nothing matches yet.</div>'+suggestHtml;
     }
@@ -2416,7 +2413,7 @@
   }
 
   async function viewManufacturers(){
-    setCrumbs([{label:'Home', href:'#/'},{label:'Manufacturers', href:'#/manufacturers'}]);
+    setCrumbs([{label:'Home', href:'/'},{label:'Manufacturers', href:'/manufacturers'}]);
     var rows = await fetchAllRows('jerseys', 'manufacturer');
     var counts = {};
     rows.forEach(function(j){
@@ -2426,7 +2423,7 @@
     });
     var names = Object.keys(counts).sort(function(a,b){ return counts[b]-counts[a] || a.localeCompare(b); });
     var chips = names.map(function(m){
-      return '<a class="chip" href="#/manufacturer/'+encodeURIComponent(m)+'">'+esc(m)+' &middot; '+counts[m]+'</a>';
+      return '<a class="chip" href="/manufacturer/'+encodeURIComponent(m)+'">'+esc(m)+' &middot; '+counts[m]+'</a>';
     }).join('');
     return '<div class="section-head"><h2>Browse by manufacturer</h2></div>' +
       (chips ? '<div class="chip-row">'+chips+'</div>' : '<div class="empty-note">No manufacturers logged yet.</div>');
@@ -2439,7 +2436,7 @@
   // the main nav - a flat list of every contributor doesn't need a
   // permanent slot up there.
   async function viewContributors(){
-    setCrumbs([{label:'Home', href:'#/'},{label:'Contributors', href:'#/contributors'}]);
+    setCrumbs([{label:'Home', href:'/'},{label:'Contributors', href:'/contributors'}]);
     var res = await supabaseClient.from('profiles').select('username, points')
       .eq('is_banned', false).not('username', 'is', null).gt('points', 0)
       .order('points', {ascending:false});
@@ -2449,7 +2446,7 @@
       return '<div class="section-head"><h2>Contributors</h2></div><div class="empty-note">Nobody&rsquo;s had an upload approved yet.</div>';
     }
     var listHtml = rows.map(function(p, i){
-      return '<a class="contributor-row" href="#/user/'+encodeURIComponent(p.username)+'">' +
+      return '<a class="contributor-row" href="/user/'+encodeURIComponent(p.username)+'">' +
           '<span class="contributor-rank">'+(i+1)+'</span>' +
           '<span class="contributor-name">'+esc(p.username)+'</span>' +
           '<span class="contributor-points">'+pointsChip(p.points)+'</span>' +
@@ -2460,7 +2457,7 @@
   }
 
   async function viewManufacturer(name){
-    setCrumbs([{label:'Home', href:'#/'},{label:'Manufacturers', href:'#/manufacturers'},{label:name, href:'#'}]);
+    setCrumbs([{label:'Home', href:'/'},{label:'Manufacturers', href:'/manufacturers'},{label:name, href:'#'}]);
     var jerseys = await fetchAllRows('jerseys', '*, jersey_images(*), teams(*, competitions(*, sports(*))), jersey_competitions(competitions(name))', function(q){ return q.eq('manufacturer', name); });
     if(!jerseys.length){
       return '<div class="section-head"><h2>'+esc(name)+'</h2><span class="count">0 jerseys</span></div><div class="empty-note">Nothing matches yet.</div>';
@@ -2473,7 +2470,7 @@
   // viewManufacturer) since nothing stops another sport from adopting
   // formats later.
   async function viewFormat(name){
-    setCrumbs([{label:'Home', href:'#/'},{label:name, href:'#'}]);
+    setCrumbs([{label:'Home', href:'/'},{label:name, href:'#'}]);
     var jerseys = await fetchAllRows('jerseys', '*, jersey_images(*), teams(*, competitions(*, sports(*))), jersey_competitions(competitions(name))', function(q){ return q.eq('format', name); });
     if(!jerseys.length){
       return '<div class="section-head"><h2>'+esc(name)+'</h2><span class="count">0 jerseys</span></div><div class="empty-note">Nothing matches yet.</div>';
@@ -2518,7 +2515,7 @@
   function isTrainingType(t){ return TRAINING_TYPES_BASE.indexOf(baseJerseyType(t).toLowerCase()) > -1; }
 
   async function viewTypes(){
-    setCrumbs([{label:'Home', href:'#/'},{label:'Types', href:'#/types'}]);
+    setCrumbs([{label:'Home', href:'/'},{label:'Types', href:'/types'}]);
     var rows = await fetchAllRows('jerseys', 'type');
     var counts = {};
     rows.forEach(function(j){
@@ -2529,14 +2526,14 @@
     });
     var names = Object.keys(counts).sort(function(a,b){ return counts[b]-counts[a] || a.localeCompare(b); });
     var chips = names.map(function(t){
-      return '<a class="chip" href="#/type/'+encodeURIComponent(t)+'">'+esc(t)+' &middot; '+counts[t]+'</a>';
+      return '<a class="chip" href="/type/'+encodeURIComponent(t)+'">'+esc(t)+' &middot; '+counts[t]+'</a>';
     }).join('');
     return '<div class="section-head"><h2>Browse by type</h2></div>' +
       (chips ? '<div class="chip-row">'+chips+'</div>' : '<div class="empty-note">No jersey types logged yet.</div>');
   }
 
   async function viewType(name, originSportSlug, originCompSlug){
-    setCrumbs([{label:'Home', href:'#/'},{label:'Types', href:'#/types'},{label:name, href:'#'}]);
+    setCrumbs([{label:'Home', href:'/'},{label:'Types', href:'/types'},{label:name, href:'#'}]);
     var targetBase = baseJerseyType(name);
     var allJerseys = await fetchAllRows('jerseys', '*, jersey_images(*), teams(*, competitions(*, sports(*))), jersey_competitions(competitions(name))');
     var jerseys = allJerseys.filter(function(j){ return baseJerseyType(j.type) === targetBase; });
@@ -2547,7 +2544,7 @@
   }
 
   function viewHelp(){
-    setCrumbs([{label:'Home', href:'#/'},{label:'Help', href:'#/help'}]);
+    setCrumbs([{label:'Home', href:'/'},{label:'Help', href:'/help'}]);
     return '<header class="hero" style="border:none;padding:0 0 8px;margin-bottom:0;">' +
         '<h1>Help</h1>' +
         '<p class="sub">How to browse the archive, upload a jersey, and everything else you might want to know.</p>' +
@@ -2555,13 +2552,13 @@
       '<div class="help-content">' +
 
         '<div class="section-head"><h2>Finding a jersey</h2></div>' +
-        '<p>Start from <a class="spec-link" href="#/">the homepage</a> and pick a sport, then a competition, then a team &mdash; each page drills down further, and every team page groups its jerseys by season. If you already know what you&rsquo;re after, the search box at the top of every page matches team and season.</p>' +
-        '<p>You can also browse straight to a <a class="spec-link" href="#/manufacturers">manufacturer</a> or <a class="spec-link" href="#/types">jersey type</a> to see everything logged for it, across every sport.</p>' +
+        '<p>Start from <a class="spec-link" href="/">the homepage</a> and pick a sport, then a competition, then a team &mdash; each page drills down further, and every team page groups its jerseys by season. If you already know what you&rsquo;re after, the search box at the top of every page matches team and season.</p>' +
+        '<p>You can also browse straight to a <a class="spec-link" href="/manufacturers">manufacturer</a> or <a class="spec-link" href="/types">jersey type</a> to see everything logged for it, across every sport.</p>' +
 
         '<div class="section-head" style="margin-top:30px;"><h2>Uploading a jersey</h2></div>' +
         '<ol>' +
           '<li>Sign in with your email at the top right &mdash; it&rsquo;s a magic link, no password to remember.</li>' +
-          '<li>Go to <a class="spec-link" href="#/upload">Upload</a> and pick the sport, then the competition and team (or use &ldquo;+ Add a new one&hellip;&rdquo; if yours isn&rsquo;t listed yet).</li>' +
+          '<li>Go to <a class="spec-link" href="/upload">Upload</a> and pick the sport, then the competition and team (or use &ldquo;+ Add a new one&hellip;&rdquo; if yours isn&rsquo;t listed yet).</li>' +
           '<li>Fill in the season (a single year like 2024, or a split year like 2024-25 for competitions that span two calendar years &mdash; use a dash, not a slash: 2024-25, not 2024/25) and jersey type. Manufacturer is required too &mdash; pick &ldquo;Unknown&rdquo; if you genuinely can&rsquo;t tell, but most current jerseys are easy to identify, so it&rsquo;s worth a proper look first.</li>' +
           '<li>Attach at least one photo &mdash; front, back, and any other angle all help, and you can label each one.</li>' +
           '<li>Submit. After it&rsquo;s approved, the sport/competition/team/season/manufacturer stay filled in so you can upload the next kit for the same team (say, the away or alternate jersey) without retyping everything &mdash; just swap the photo and jersey type.</li>' +
@@ -2611,7 +2608,7 @@
   }
 
   async function viewUpload(){
-    setCrumbs([{label:'Home', href:'#/'},{label:'Upload', href:'#/upload'}]);
+    setCrumbs([{label:'Home', href:'/'},{label:'Upload', href:'/upload'}]);
     if(!currentUser){
       return '<div class="section-head"><h2>Upload a jersey</h2></div>' +
         '<div class="empty-note">Sign in first (top right) &mdash; it just needs an email, no password. Once you click the magic link we send you, come back to this page.</div>';
@@ -3217,7 +3214,7 @@
   }
 
   async function viewModerate(){
-    setCrumbs([{label:'Home', href:'#/'},{label:'Moderate', href:'#/moderate'}]);
+    setCrumbs([{label:'Home', href:'/'},{label:'Moderate', href:'/moderate'}]);
     if(!currentUser || !currentProfile || !currentProfile.is_admin){
       return '<div class="empty-note">Not authorized.</div>';
     }
@@ -3456,7 +3453,7 @@
       var rejectId = 'mod-reject-'+j.id;
       var dup = dupInfoByJersey[j.id];
       var dupHtml = dup
-        ? '<div class="dup-warning">&#9888; Possible duplicate &mdash; this team already has a<a href="#/jersey/'+dup.id+'" target="_blank" rel="noopener">'+(dup.status === 'approved' ? ' approved' : ' pending')+' '+esc(j.season)+' '+esc(j.type)+'</a> jersey logged.</div>'
+        ? '<div class="dup-warning">&#9888; Possible duplicate &mdash; this team already has a<a href="/jersey/'+dup.id+'" target="_blank" rel="noopener">'+(dup.status === 'approved' ? ' approved' : ' pending')+' '+esc(j.season)+' '+esc(j.type)+'</a> jersey logged.</div>'
         : '';
       return '<div class="mod-card">' +
         dupHtml +
@@ -3470,7 +3467,7 @@
           (j.image_credit ? '<span>Image credit: '+esc(j.image_credit)+'</span>' : '') +
           (extraCompByJersey[j.id] ? '<span>Also used in: '+esc(extraCompByJersey[j.id].name)+'</span>' : '') +
           allPhotosHtml +
-          (msgCountByJersey[j.id] ? '<a class="chip" href="#/jersey/'+j.id+'" target="_blank" rel="noopener">&#128172; '+msgCountByJersey[j.id]+' message'+(msgCountByJersey[j.id]===1?'':'s')+'</a>' : '') +
+          (msgCountByJersey[j.id] ? '<a class="chip" href="/jersey/'+j.id+'" target="_blank" rel="noopener">&#128172; '+msgCountByJersey[j.id]+' message'+(msgCountByJersey[j.id]===1?'':'s')+'</a>' : '') +
           '<button class="chip mod-edit-toggle" data-target="'+editId+'" type="button">Edit upload</button>' +
           '<div class="comp-move-panel" id="'+editId+'" hidden style="max-width:420px;" data-jersey-id="'+j.id+'" data-team-id="'+team.id+'" data-sport-slug="'+esc(sport.slug)+'">' +
             renderModEditControl(editId, j, team, comp, sport, extraCompByJersey, allComps) +
@@ -3484,7 +3481,7 @@
           // warning or an already-existing message thread happened to),
           // so there was no way to start that conversation from the
           // queue at all.
-          '<a class="btn btn-secondary" href="#/jersey/'+j.id+'" target="_blank" rel="noopener" style="text-decoration:none;">View / message</a>' +
+          '<a class="btn btn-secondary" href="/jersey/'+j.id+'" target="_blank" rel="noopener" style="text-decoration:none;">View / message</a>' +
           '<button class="btn" data-type="jersey" data-action="approve" data-id="'+j.id+'" type="button">Approve</button>' +
           '<button class="btn btn-reject mod-reject-toggle" data-target="'+rejectId+'" type="button">Reject</button>' +
         '</div>' +
@@ -3506,7 +3503,7 @@
           '<span>proposed by '+esc(uploader)+'</span>' +
         '</div>' +
         '<div class="mod-actions">' +
-          (j ? '<a class="btn btn-secondary" href="#/jersey/'+j.id+'" target="_blank" style="text-decoration:none;">View jersey</a>' : '') +
+          (j ? '<a class="btn btn-secondary" href="/jersey/'+j.id+'" target="_blank" style="text-decoration:none;">View jersey</a>' : '') +
           '<button type="button" class="photo-crop-btn" data-path="'+esc(img.storage_path)+'" data-image-id="'+img.id+'">Crop</button>' +
           '<button class="btn" data-type="photo" data-action="approve" data-id="'+img.id+'" type="button">Approve</button>' +
           '<button class="btn btn-reject" data-type="photo" data-action="reject" data-id="'+img.id+'" data-path="'+esc(img.storage_path)+'" type="button">Reject</button>' +
@@ -3515,7 +3512,7 @@
     }).join('');
 
     function reportLink(r){
-      if(r.page_type === 'jersey') return '#/jersey/' + r.page_ref;
+      if(r.page_type === 'jersey') return '/jersey/' + r.page_ref;
       if(r.page_type === 'team') return null; // team pages need sport+comp context we don't have here
       if(r.page_type === 'competition') return null;
       return null;
@@ -3564,7 +3561,7 @@
           '<label class="field-hint" style="display:block;cursor:pointer;"><input type="checkbox" id="'+makeCurrentId+'" '+(willReplace ? 'checked' : '')+' style="vertical-align:middle;margin-right:6px;">Make this the current logo</label>' +
         '</div>' +
         '<div class="mod-actions">' +
-          '<a class="btn btn-secondary" href="#/logo-proposal/team/'+l.id+'" target="_blank" rel="noopener" style="text-decoration:none;">View / message</a>' +
+          '<a class="btn btn-secondary" href="/logo-proposal/team/'+l.id+'" target="_blank" rel="noopener" style="text-decoration:none;">View / message</a>' +
           '<button class="btn" data-type="logo" data-action="approve" data-id="'+l.id+'" data-team-id="'+l.team_id+'" data-path="'+esc(l.storage_path)+'" data-years="'+esc(l.years_used || '')+'" data-note="'+esc(l.note || '')+'" data-make-current-id="'+makeCurrentId+'" data-proposed-by="'+esc(l.proposed_by || '')+'" type="button">Approve</button>' +
           '<button class="btn btn-reject mod-reject-toggle" data-target="'+logoRejectId+'" type="button">Reject</button>' +
         '</div>' +
@@ -3591,7 +3588,7 @@
           '<label class="field-hint" style="display:block;cursor:pointer;"><input type="checkbox" id="'+makeCurrentId+'" '+(willReplace ? 'checked' : '')+' style="vertical-align:middle;margin-right:6px;">Make this the current logo</label>' +
         '</div>' +
         '<div class="mod-actions">' +
-          '<a class="btn btn-secondary" href="#/logo-proposal/competition/'+l.id+'" target="_blank" rel="noopener" style="text-decoration:none;">View / message</a>' +
+          '<a class="btn btn-secondary" href="/logo-proposal/competition/'+l.id+'" target="_blank" rel="noopener" style="text-decoration:none;">View / message</a>' +
           '<button class="btn" data-type="comp-logo" data-action="approve" data-id="'+l.id+'" data-comp-slug="'+esc(l.competition_slug)+'" data-path="'+esc(l.storage_path)+'" data-years="'+esc(l.years_used || '')+'" data-note="'+esc(l.note || '')+'" data-make-current-id="'+makeCurrentId+'" data-proposed-by="'+esc(l.proposed_by || '')+'" type="button">Approve</button>' +
           '<button class="btn btn-reject mod-reject-toggle" data-target="'+compLogoRejectId+'" type="button">Reject</button>' +
         '</div>' +
@@ -3650,7 +3647,7 @@
   var USER_UPLOADS_PAGE_SIZE = 30;
   async function viewUserProfile(username, pageParam){
     var page = Math.max(1, parseInt(pageParam, 10) || 1);
-    setCrumbs([{label:'Home', href:'#/'},{label:username, href:'#'}]);
+    setCrumbs([{label:'Home', href:'/'},{label:username, href:'#'}]);
     var profRes = await supabaseClient.from('profiles').select('*').eq('username', username).maybeSingle();
     if(profRes.error) throw profRes.error;
     if(!profRes.data) return '<div class="empty-note">No user found with that username.</div>';
@@ -3673,9 +3670,9 @@
 
     var pagerHtml = totalPages > 1
       ? '<div style="display:flex;justify-content:center;align-items:center;gap:14px;margin-top:22px;">' +
-          (page > 1 ? '<a class="btn btn-secondary" href="#/user/'+encodeURIComponent(username)+'/'+(page-1)+'">&larr; Previous</a>' : '') +
+          (page > 1 ? '<a class="btn btn-secondary" href="/user/'+encodeURIComponent(username)+'/'+(page-1)+'">&larr; Previous</a>' : '') +
           '<span class="field-hint">Page '+page+' of '+totalPages+'</span>' +
-          (page < totalPages ? '<a class="btn btn-secondary" href="#/user/'+encodeURIComponent(username)+'/'+(page+1)+'">Next &rarr;</a>' : '') +
+          (page < totalPages ? '<a class="btn btn-secondary" href="/user/'+encodeURIComponent(username)+'/'+(page+1)+'">Next &rarr;</a>' : '') +
         '</div>'
       : '';
 
@@ -3861,9 +3858,9 @@
         return '<div class="profile-stat-group"><span class="profile-stat-label">'+esc(label)+'</span><div class="profile-stat-list">'+rowsHtml+'</div></div>';
       }
       function nameWithSport(r){ return esc(r.name)+' <span class="profile-stat-context">('+esc(r.sportName)+')</span>'; }
-      var statGroups = statGroupHtml('Most uploaded teams', topTeams, function(r){ return '#/sport/'+r.sportSlug+'/'+r.compSlug+'/team/'+r.slug; }, nameWithSport) +
-        statGroupHtml('Most uploaded sports', topSports, function(r){ return '#/sport/'+r.slug; }, function(r){ return esc(r.name); }) +
-        statGroupHtml('Most uploaded competitions', topComps, function(r){ return '#/sport/'+r.sportSlug+'/'+r.slug; }, nameWithSport);
+      var statGroups = statGroupHtml('Most uploaded teams', topTeams, function(r){ return '/sport/'+r.sportSlug+'/'+r.compSlug+'/team/'+r.slug; }, nameWithSport) +
+        statGroupHtml('Most uploaded sports', topSports, function(r){ return '/sport/'+r.slug; }, function(r){ return esc(r.name); }) +
+        statGroupHtml('Most uploaded competitions', topComps, function(r){ return '/sport/'+r.sportSlug+'/'+r.slug; }, nameWithSport);
       if(statGroups) statsSectionHtml = '<div class="profile-stats">'+statGroups+'</div>';
     }
 
@@ -3904,7 +3901,7 @@
 
     return tierUpBannerHtml + newBadgesBannerHtml +
       '<div class="section-head"><h2>'+esc(profile.username)+' '+pointsChip(profile.points)+'</h2><span class="count">'+totalJerseys+' upload'+(totalJerseys===1?'':'s')+'</span></div>' +
-      '<p style="margin:-10px 0 18px;"><a class="spec-link" href="#/contributors">See the full leaderboard &rarr;</a></p>' +
+      '<p style="margin:-10px 0 18px;"><a class="spec-link" href="/contributors">See the full leaderboard &rarr;</a></p>' +
       statsSectionHtml +
       badgesSectionHtml +
       profileTabsHtml +
@@ -3917,13 +3914,37 @@
   }
 
   function viewNotFound(){
-    setCrumbs([{label:'Home', href:'#/'}]);
-    return '<div class="empty-note">That page doesn&rsquo;t exist. <a href="#/" style="color:var(--accent);">Back to home</a>.</div>';
+    setCrumbs([{label:'Home', href:'/'}]);
+    return '<div class="empty-note">That page doesn&rsquo;t exist. <a href="/" style="color:var(--accent);">Back to home</a>.</div>';
   }
 
   /* ================= router ================= */
+  // Real paths (history.pushState), not #/-fragments - so each page is
+  // its own URL a search engine can actually index, and a direct/shared
+  // link loads the right page server-side too (see 404.html, which is
+  // what makes that work on GitHub Pages' static hosting).
+  function navigate(path){
+    if(location.pathname + location.search !== path) history.pushState(null, '', path);
+    render();
+    window.scrollTo(0, 0);
+  }
+  // Delegated click handler for every internal link in the app - they're
+  // all plain <a href="/..."> (real paths, so a crawler or a middle-click
+  // still works), intercepted here to route client-side instead of
+  // forcing a full page reload. Anything that isn't a same-app path
+  // (external links, mailto:, the lightbox/tab/anchor-nav buttons handled
+  // separately below, a new-tab link, a modified click) is left alone.
+  document.addEventListener('click', function(e){
+    if(e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    var a = e.target.closest('a');
+    if(!a || a.target === '_blank' || a.hasAttribute('download')) return;
+    var href = a.getAttribute('href');
+    if(!href || href.charAt(0) !== '/') return;
+    e.preventDefault();
+    navigate(href);
+  });
   async function render(){
-    var hash = location.hash.replace(/^#\/?/, '');
+    var hash = location.pathname.replace(/^\/+/, '');
     var parts = hash.split('/').filter(Boolean).map(decodeURIComponent);
     var app = document.getElementById('app');
     app.innerHTML = '<p class="loading">Loading&hellip;</p>';
@@ -4062,7 +4083,7 @@
         var panel = document.getElementById('more-comps');
         panel.hidden = !panel.hidden;
         moreBtn.textContent = panel.hidden ? 'More competitions ↓' : 'Show fewer ↑';
-        var parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
+        var parts = location.pathname.replace(/^\/+/, '').split('/').filter(Boolean).map(decodeURIComponent);
         if(parts[0]==='sport' && parts[1]){
           if(panel.hidden) delete expandedSportComps[parts[1]];
           else expandedSportComps[parts[1]] = true;
@@ -4407,7 +4428,7 @@
           panel.dataset.wired = '1';
           panel.hidden = false;
           wireCompetitionMoveControl('team-page', function(newSlug){
-            location.hash = '#/sport/'+teamPageSportSlug+'/'+newSlug+'/team/'+teamPageTeamSlug;
+            navigate('/sport/'+teamPageSportSlug+'/'+newSlug+'/team/'+teamPageTeamSlug);
           });
           return;
         }
@@ -4496,7 +4517,7 @@
                 // Storage isn't tied to that cascade.
                 var del = await supabaseClient.from('jerseys').delete().eq('id', jerseyId);
                 if(del.error) throw del.error;
-                location.hash = deleteJerseyBtn.dataset.redirect;
+                navigate(deleteJerseyBtn.dataset.redirect);
               } catch(err){
                 deleteJerseyBtn.disabled = false; deleteJerseyBtn.textContent = 'Delete this jersey';
                 alert('Error: ' + (err.message || err));
@@ -4607,7 +4628,7 @@
           // proposal_id column was added - older/manually-added history
           // has no proposal to link back to, so no link shows for those.
           var msgLinkHtml = (isAdmin && r.proposal_id)
-            ? ' <a class="spec-link" href="#/logo-proposal/'+kind+'/'+r.proposal_id+'" target="_blank" rel="noopener" style="font-size:10.5px;">View / message</a>'
+            ? ' <a class="spec-link" href="/logo-proposal/'+kind+'/'+r.proposal_id+'" target="_blank" rel="noopener" style="font-size:10.5px;">View / message</a>'
             : '';
           return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicLogoUrl(r.storage_path))+'" alt="" loading="lazy">' +
             '<div class="spec-value-row"><span>'+caption+'</span>'+editBtn+makeCurrentBtn+deleteBtn+replaceBtn+'</div>' + noteHtml + creditHtml + msgLinkHtml + '</div>';
@@ -4943,7 +4964,7 @@
         modUserResults.innerHTML = rows.length ? rows.map(function(p){
           var isSelf = currentUser && p.id === currentUser.id;
           return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);">' +
-            '<span style="display:flex;align-items:center;gap:8px;"><a class="spec-link" href="#/user/'+esc(p.username)+'">'+esc(p.username)+'</a>' +
+            '<span style="display:flex;align-items:center;gap:8px;"><a class="spec-link" href="/user/'+esc(p.username)+'">'+esc(p.username)+'</a>' +
               (p.is_admin ? '<span class="chip is-active" style="pointer-events:none;padding:2px 8px;">Moderator</span>' : '') + '</span>' +
             (isSelf
               ? '<span class="field-hint">(you)</span>'
@@ -4985,7 +5006,7 @@
             (p.is_admin ? ' <span class="chip is-active" style="pointer-events:none;padding:2px 8px;">Moderator</span>' : '') +
             (p.is_banned ? ' <span class="chip is-active" style="pointer-events:none;padding:2px 8px;background:var(--danger);border-color:var(--danger);color:var(--accent-ink);">Banned</span>' : '');
           return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);">' +
-            '<span style="display:flex;align-items:center;gap:8px;"><a class="spec-link" href="#/user/'+esc(p.username)+'">'+esc(p.username)+'</a>'+badges+'</span>' +
+            '<span style="display:flex;align-items:center;gap:8px;"><a class="spec-link" href="/user/'+esc(p.username)+'">'+esc(p.username)+'</a>'+badges+'</span>' +
             (canAct
               ? '<button class="btn '+(p.is_banned ? 'btn-secondary' : 'btn-reject')+'" data-ban-user-id="'+p.id+'" data-banned="'+p.is_banned+'" type="button">'+(p.is_banned ? 'Unban' : 'Ban')+'</button>'
               : (isSelf ? '<span class="field-hint">(you)</span>' : '')) +
@@ -5671,7 +5692,7 @@
       var res = await query.limit(1);
       if(res.error || !res.data || !res.data.length){ hintEl.hidden = true; return; }
       hintEl.hidden = false;
-      hintEl.innerHTML = 'Looks like this team already has a <a class="spec-link" href="#/jersey/'+res.data[0].id+'" target="_blank" rel="noopener">'+esc(seasonVal)+' '+esc(typeVal)+(formatVal ? ' ('+esc(formatVal)+')' : '')+'</a> logged &mdash; please double check this isn&rsquo;t a duplicate before submitting.';
+      hintEl.innerHTML = 'Looks like this team already has a <a class="spec-link" href="/jersey/'+res.data[0].id+'" target="_blank" rel="noopener">'+esc(seasonVal)+' '+esc(typeVal)+(formatVal ? ' ('+esc(formatVal)+')' : '')+'</a> logged &mdash; please double check this isn&rsquo;t a duplicate before submitting.';
     }
     // One optional extra competition in the same sport (the primary one
     // picked above is excluded — that's set via the Competition field,
@@ -6209,7 +6230,7 @@
             '<h3>Your jersey submission is under review</h3>' +
             '<p>The '+season+' '+esc(team.name)+' '+esc(type)+' jersey has been sent for approval. Once approved, it’ll automatically appear on its team, season, and sport pages &mdash; no extra work needed &mdash; and you’ll earn +1 point.</p>' +
             '<div class="result-links">' +
-              '<a href="#/jersey/'+jersey.id+'"><span>View your submission (only you and moderators can see it for now)</span><span class="go">View &rarr;</span></a>' +
+              '<a href="/jersey/'+jersey.id+'"><span>View your submission (only you and moderators can see it for now)</span><span class="go">View &rarr;</span></a>' +
             '</div>' +
           '</div>';
 
@@ -6240,7 +6261,7 @@
   document.getElementById('search-form').addEventListener('submit', function(e){
     e.preventDefault();
     var val = document.getElementById('search-input').value.trim();
-    if(val) location.hash = '#/search/' + encodeURIComponent(val);
+    if(val) navigate('/search/' + encodeURIComponent(val));
   });
 
   // Live suggestions under the search box, jumping straight to a team or
@@ -6364,13 +6385,13 @@
         return {
           rank: matchRank(t.name, qNorm), tier: tierRank(c.tier), compSort: compSortRank(c), sport: sportRank(sport),
           active: t.is_active === false ? 1 : 0, name: t.name,
-          html: '<a class="combo-option search-suggest-row" href="#/sport/'+sport.slug+'/'+c.slug+'/team/'+t.slug+'"><span>'+esc(t.name)+'</span><span class="meta">'+esc(c.name)+' &middot; '+esc(sport.name)+'</span></a>'
+          html: '<a class="combo-option search-suggest-row" href="/sport/'+sport.slug+'/'+c.slug+'/team/'+t.slug+'"><span>'+esc(t.name)+'</span><span class="meta">'+esc(c.name)+' &middot; '+esc(sport.name)+'</span></a>'
         };
       }).concat(compMatches.map(function(c){
         return {
           rank: matchRank(c.name, qNorm), tier: tierRank(c.tier), compSort: compSortRank(c), sport: sportRank(c.sports),
           active: 0, name: c.name,
-          html: '<a class="combo-option search-suggest-row" href="#/sport/'+c.sports.slug+'/'+c.slug+'"><span>'+esc(c.name)+'</span><span class="meta">'+esc(c.sports.name)+' &middot; Competition</span></a>'
+          html: '<a class="combo-option search-suggest-row" href="/sport/'+c.sports.slug+'/'+c.slug+'"><span>'+esc(c.name)+'</span><span class="meta">'+esc(c.sports.name)+' &middot; Competition</span></a>'
         };
       }));
       combined.sort(function(a, b){
@@ -6444,7 +6465,7 @@
       var username = currentProfile ? currentProfile.username : currentUser.email.split('@')[0];
       var points = currentProfile ? currentProfile.points : 0;
       var modLink = (currentProfile && currentProfile.is_admin)
-        ? '<a href="#/moderate" style="text-decoration:underline;">Moderate'+(pendingCount ? ' ('+pendingCount+')' : '')+'</a>' : '';
+        ? '<a href="/moderate" style="text-decoration:underline;">Moderate'+(pendingCount ? ' ('+pendingCount+')' : '')+'</a>' : '';
       // A reply on either side of a jersey_messages thread - links
       // straight to the most recent one with something new, since
       // there's rarely more than one or two at a time.
@@ -6452,7 +6473,7 @@
         ? '<a href="'+unreadMsgLink+'" style="text-decoration:underline;color:var(--danger);font-weight:700;">&#9993; '+unreadMsgCount+'</a>'
         : '';
       el.innerHTML =
-        '<div class="auth-status">'+modLink+msgLink+'<span><a class="spec-link" href="#/user/'+encodeURIComponent(username)+'">'+esc(username)+'</a> '+pointsChip(points)+'</span>' +
+        '<div class="auth-status">'+modLink+msgLink+'<span><a class="spec-link" href="/user/'+encodeURIComponent(username)+'">'+esc(username)+'</a> '+pointsChip(points)+'</span>' +
         '<button id="edit-username-btn" type="button">Edit</button>' +
         '<button id="sign-out-btn" type="button">Sign out</button></div>';
       document.getElementById('sign-out-btn').addEventListener('click', async function(){
@@ -6563,10 +6584,10 @@
       unreadMsgCount = unreadJerseyRows.length + unreadLogoRows.length + unreadTierRows.length + unreadBadgeRows.length;
       var newestJersey = unreadJerseyRows[0], newestLogo = unreadLogoRows[0], newestTier = unreadTierRows[0], newestBadge = unreadBadgeRows[0];
       var linkCandidates = [];
-      if(newestJersey) linkCandidates.push({ts: newestJersey.latest_at, link: '#/jersey/'+newestJersey.jersey_id});
-      if(newestLogo) linkCandidates.push({ts: newestLogo.latest_at, link: '#/logo-proposal/'+newestLogo.kind+'/'+newestLogo.proposal_id});
-      if(newestTier && currentProfile && currentProfile.username) linkCandidates.push({ts: newestTier.created_at, link: '#/user/'+encodeURIComponent(currentProfile.username)});
-      if(newestBadge && currentProfile && currentProfile.username) linkCandidates.push({ts: newestBadge.earned_at, link: '#/user/'+encodeURIComponent(currentProfile.username)});
+      if(newestJersey) linkCandidates.push({ts: newestJersey.latest_at, link: '/jersey/'+newestJersey.jersey_id});
+      if(newestLogo) linkCandidates.push({ts: newestLogo.latest_at, link: '/logo-proposal/'+newestLogo.kind+'/'+newestLogo.proposal_id});
+      if(newestTier && currentProfile && currentProfile.username) linkCandidates.push({ts: newestTier.created_at, link: '/user/'+encodeURIComponent(currentProfile.username)});
+      if(newestBadge && currentProfile && currentProfile.username) linkCandidates.push({ts: newestBadge.earned_at, link: '/user/'+encodeURIComponent(currentProfile.username)});
       linkCandidates.sort(function(a,b){ return new Date(b.ts) - new Date(a.ts); });
       unreadMsgLink = linkCandidates.length ? linkCandidates[0].link : null;
     } else {
@@ -6625,7 +6646,7 @@
     // an explicit action and the page genuinely needs to reflect it.
     var justSignedIn = (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && !wasSignedIn && currentUser;
     if(justSignedIn || event === 'SIGNED_OUT'){
-      var currentRoute = location.hash.replace(/^#\/?/,'').split('/')[0];
+      var currentRoute = location.pathname.replace(/^\/+/,'').split('/')[0];
       if(REAUTH_RERENDER_ROUTES.indexOf(currentRoute) > -1){
         // Moderate's gate also needs currentProfile.is_admin, which
         // syncCurrentUser() above never sets - only refreshAuthUI()
@@ -6811,6 +6832,12 @@
 
   refreshAuthUI();
   refreshFooterStats();
-  window.addEventListener('hashchange', render);
+  window.addEventListener('popstate', render);
+  // An old bookmarked/shared #/... link, from before the site moved to
+  // real paths - redirect it to the real path once, in place, rather
+  // than just falling through to the homepage.
+  if(location.hash.indexOf('#/') === 0){
+    history.replaceState(null, '', location.hash.slice(1) || '/');
+  }
   render();
 })();

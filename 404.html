@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Jersey Archive</title>
+<script>
+  // GitHub Pages serves this file for any path it has no static file
+  // for - which, now the app uses real paths (not #/ hash routes) for
+  // every page, is every in-app page on a direct load or an external
+  // link. Encodes the originally-requested path into a query string and
+  // sends the browser back to the real index.html, which decodes it
+  // back via history.replaceState before the app boots - see the
+  // matching script in index.html's <head>.
+  var path = location.pathname + location.search + location.hash;
+  location.replace('/?redirect=' + encodeURIComponent(path));
+</script>
+</head>
+<body></body>
+</html>
