@@ -3826,7 +3826,7 @@
       var logoCountsRes = await Promise.all([
         supabaseClient.from('team_logos').select('id', {count:'exact', head:true}).eq('proposed_by', profile.id),
         supabaseClient.from('competition_logos').select('id', {count:'exact', head:true}).eq('proposed_by', profile.id),
-        supabaseClient.from('sports').select('id', {count:'exact', head:true})
+        supabaseClient.from('sports').select('slug', {count:'exact', head:true})
       ]);
       logoCount = (logoCountsRes[0].count || 0) + (logoCountsRes[1].count || 0);
       var totalSportCount = logoCountsRes[2].count || 0;
