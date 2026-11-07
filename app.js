@@ -3788,6 +3788,70 @@
       }
     }
 
+    // Badge-progress metrics (page 1 only) - same metrics/thresholds
+    // check_and_award_badges() uses server-side (see
+    // achievements_regions.sql), kept here so the "3 / 5" progress on a
+    // locked achievement below can't drift from what actually earns it.
+    // teamCounts/sportCounts/compCounts double as the source for the "at
+    // a glance" stats section further down, instead of querying this
+    // user's uploads twice. Collection count is only computed when it's
+    // not private - a locked badge still shows without numbers for
+    // someone who's turned their collection list off, same as the
+    // Collection section itself respects that toggle.
+    var compCount = 0, mfrCount = 0, logoCount = 0, collectionCount = 0;
+    var teamCounts = {}, sportCounts = {}, compCounts = {};
+    if(page === 1){
+      if(totalJerseys > 0){
+        var statsJerseys = await fetchAllRows('jerseys',
+          'team_id, manufacturer, teams(name, slug, competition_slug, competitions(name, slug, sport_slug, sports(name, slug)))',
+          function(q){ return q.eq('uploaded_by', profile.id).eq('status', 'approved'); });
+        var mfrSet = {};
+        statsJerseys.forEach(function(j){
+          var t = j.teams, c = t && t.competitions, s = c && c.sports;
+          if(t && c && s){
+            var tKey = t.competition_slug + '|' + t.slug;
+            if(!teamCounts[tKey]) teamCounts[tKey] = {count:0, name:t.name, slug:t.slug, compSlug:t.competition_slug, sportSlug:s.slug, sportName:s.name};
+            teamCounts[tKey].count++;
+            if(!sportCounts[s.slug]) sportCounts[s.slug] = {count:0, name:s.name, slug:s.slug};
+            sportCounts[s.slug].count++;
+            if(!compCounts[c.slug]) compCounts[c.slug] = {count:0, name:c.name, slug:c.slug, sportSlug:s.slug, sportName:s.name};
+            compCounts[c.slug].count++;
+          }
+          var mfr = (j.manufacturer || '').trim().toLowerCase();
+          if(mfr) mfrSet[mfr] = true;
+        });
+        compCount = Object.keys(compCounts).length;
+        mfrCount = Object.keys(mfrSet).length;
+      }
+      var logoCountsRes = await Promise.all([
+        supabaseClient.from('team_logos').select('id', {count:'exact', head:true}).eq('proposed_by', profile.id),
+        supabaseClient.from('competition_logos').select('id', {count:'exact', head:true}).eq('proposed_by', profile.id)
+      ]);
+      logoCount = (logoCountsRes[0].count || 0) + (logoCountsRes[1].count || 0);
+      if(isOwnProfile || profile.collection_public){
+        var collectionCountRes = await supabaseClient.from('collection_items').select('id', {count:'exact', head:true}).eq('user_id', profile.id);
+        collectionCount = collectionCountRes.count || 0;
+      }
+    }
+    // Maps a locked badge to how close this profile actually is -
+    // only the clean numeric-threshold badges (not the one-off/boolean
+    // ones like Trailblazer or the region badges) have a meaningful
+    // "X more to go" to show.
+    var badgeProgress = {
+      'first-upload': {current: totalJerseys, threshold: 1},
+      'ten-uploads': {current: totalJerseys, threshold: 10},
+      'fifty-uploads': {current: totalJerseys, threshold: 50},
+      'hundred-uploads': {current: totalJerseys, threshold: 100},
+      'five-hundred-uploads': {current: totalJerseys, threshold: 500},
+      'first-logo': {current: logoCount, threshold: 1},
+      'five-logos': {current: logoCount, threshold: 5},
+      'twenty-five-logos': {current: logoCount, threshold: 25},
+      'collector-ten': (isOwnProfile || profile.collection_public) ? {current: collectionCount, threshold: 10} : null,
+      'ten-competitions': {current: compCount, threshold: 10},
+      'twenty-five-competitions': {current: compCount, threshold: 25},
+      'ten-manufacturers': {current: mfrCount, threshold: 10}
+    };
+
     // Achievement badges (see achievements.sql) - separate from the
     // points/tier system, these are one-off unlocks (upload milestones,
     // breadth across sports/competitions/manufacturers, etc.) rather
@@ -3824,9 +3888,20 @@
           // was actually for. The specific jersey/logo that earned it
           // (when there is one) is a second, dimmer line underneath.
           var contextLine = (earned && earned.context_label) ? '<span class="badge-catalog-context">'+esc(earned.context_label)+'</span>' : '';
+          var progress = !earned && badgeProgress[badge.slug];
+          var progressLine = '';
+          if(progress){
+            var pct = Math.max(0, Math.min(100, Math.round(progress.current / progress.threshold * 100)));
+            var remaining = Math.max(0, progress.threshold - progress.current);
+            progressLine = '<div class="badge-progress">' +
+              '<div class="badge-progress-track"><div class="badge-progress-fill" style="width:'+pct+'%"></div></div>' +
+              '<span class="badge-progress-text">'+Math.min(progress.current, progress.threshold)+' / '+progress.threshold +
+                (remaining > 0 ? ' · '+remaining+' more to go' : '') + '</span>' +
+            '</div>';
+          }
           return '<div class="badge-catalog-row'+(earned ? ' is-earned' : ' is-locked')+'">' +
             (earned ? badgeIcon(badge.slug) : ICON_LOCK) +
-            '<div><strong>'+esc(badge.label)+'</strong><span>'+esc(badge.description)+'</span>'+contextLine+'</div>' +
+            '<div><strong>'+esc(badge.label)+'</strong><span>'+esc(badge.description)+'</span>'+contextLine+progressLine+'</div>' +
           '</div>';
         }).join('');
         badgesSectionHtml = '<div class="section-head" style="margin-top:34px;">' +
@@ -3857,21 +3932,9 @@
     // Page 1 only, same as logos/collection/achievements below.
     var statsSectionHtml = '';
     if(page === 1 && totalJerseys > 0){
-      var statsJerseys = await fetchAllRows('jerseys',
-        'team_id, teams(name, slug, competition_slug, competitions(name, slug, sport_slug, sports(name, slug)))',
-        function(q){ return q.eq('uploaded_by', profile.id).eq('status', 'approved'); });
-      var teamCounts = {}, sportCounts = {}, compCounts = {};
-      statsJerseys.forEach(function(j){
-        var t = j.teams, c = t && t.competitions, s = c && c.sports;
-        if(!t || !c || !s) return;
-        var tKey = t.competition_slug + '|' + t.slug;
-        if(!teamCounts[tKey]) teamCounts[tKey] = {count:0, name:t.name, slug:t.slug, compSlug:t.competition_slug, sportSlug:s.slug, sportName:s.name};
-        teamCounts[tKey].count++;
-        if(!sportCounts[s.slug]) sportCounts[s.slug] = {count:0, name:s.name, slug:s.slug};
-        sportCounts[s.slug].count++;
-        if(!compCounts[c.slug]) compCounts[c.slug] = {count:0, name:c.name, slug:c.slug, sportSlug:s.slug, sportName:s.name};
-        compCounts[c.slug].count++;
-      });
+      // teamCounts/sportCounts/compCounts already computed above for
+      // badge-progress purposes - reused here rather than querying this
+      // user's uploads a second time.
       var topTeams = Object.keys(teamCounts).map(function(k){ return teamCounts[k]; }).sort(function(a,b){ return b.count - a.count; }).slice(0, 3);
       var topSports = Object.keys(sportCounts).map(function(k){ return sportCounts[k]; }).sort(function(a,b){ return b.count - a.count; }).slice(0, 3);
       var topComps = Object.keys(compCounts).map(function(k){ return compCounts[k]; }).sort(function(a,b){ return b.count - a.count; }).slice(0, 3);
