@@ -2143,6 +2143,7 @@
           renderJerseyReassignControl('jersey-reassign', j.id) +
           '<label class="rate-label" style="margin-top:14px;">Also used in <small>one extra competition this same jersey was also worn in, e.g. a World Cup</small></label>' +
           '<select id="jersey-extra-comp"><option value="">Loading&hellip;</option></select>' +
+          '<p class="field-hint" id="jersey-extra-comp-msg" hidden></p>' +
           '<label class="rate-label" style="margin-top:14px;">Additional credit <small>for a contribution that doesn&rsquo;t fit the uploader field, e.g. a photo you merged in yourself</small></label>' +
           creditListHtml +
           '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">' +
@@ -2174,15 +2175,31 @@
 
     select.innerHTML = '<option value="">&mdash; None &mdash;</option>' +
       comps.map(function(c){ return '<option value="'+esc(c.slug)+'"'+(c.slug===current?' selected':'')+'>'+esc(c.name)+'</option>'; }).join('');
+    var msg = document.getElementById('jersey-extra-comp-msg');
+    // Saves immediately on change - no separate confirm button, unlike
+    // the other admin controls in this same panel (Move/Reassign/Add
+    // credit all need a click) - that inconsistency is exactly what
+    // made this look broken/unconfirmed, so a visible "Saved." message
+    // stands in for the missing button's feedback.
     select.addEventListener('change', async function(){
       select.disabled = true;
+      if(msg){ msg.hidden = true; }
       var del = await supabaseClient.from('jersey_competitions').delete().eq('jersey_id', jerseyId);
-      if(del.error){ select.disabled = false; alert('Error: ' + del.error.message); return; }
+      if(del.error){
+        select.disabled = false;
+        if(msg){ msg.hidden = false; msg.className = 'field-error'; msg.textContent = 'Error: ' + del.error.message; }
+        return;
+      }
       if(select.value){
         var ins = await supabaseClient.from('jersey_competitions').insert({jersey_id: jerseyId, competition_slug: select.value});
-        if(ins.error){ select.disabled = false; alert('Error: ' + ins.error.message); return; }
+        if(ins.error){
+          select.disabled = false;
+          if(msg){ msg.hidden = false; msg.className = 'field-error'; msg.textContent = 'Error: ' + ins.error.message; }
+          return;
+        }
       }
       select.disabled = false;
+      if(msg){ msg.hidden = false; msg.className = 'field-hint'; msg.textContent = select.value ? 'Saved.' : 'Removed.'; }
     });
   }
 
