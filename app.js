@@ -2528,7 +2528,7 @@
     // Scotland vs Wales isn't lost. Hong Kong/Europe aren't real
     // country shapes at this map's resolution, so they're listed
     // separately rather than mis-shaded onto China or hidden outright.
-    var UK_NATIONS = {England:1, Scotland:1, Wales:1};
+    var UK_NATIONS = {England:1, Scotland:1, Wales:1, 'Northern Ireland':1};
     var NAME_MAP = {USA:'United States of America', UAE:'United Arab Emirates'};
     var EXCLUDE_FROM_MAP = {'Hong Kong':1, Europe:1};
     var merged = {}, excluded = {};
@@ -2571,6 +2571,11 @@
       '<p class="field-hint" style="margin-top:-6px;">'+total+' approved jerseys logged across '+countries.length+' countries. Click a country to see which teams are on file for it.</p>' +
       '<div class="map-page-grid">' +
         '<div class="map-panel">' +
+          '<div class="map-zoom-controls">' +
+            '<button class="chip" id="map-zoom-in" type="button">Zoom in</button>' +
+            '<button class="chip" id="map-zoom-out" type="button">Zoom out</button>' +
+            '<button class="chip" id="map-zoom-reset" type="button">Reset</button>' +
+          '</div>' +
           '<svg id="map-svg"></svg>' +
           '<div class="map-legend"><span>Fewer</span><div class="map-legend-ramp">' +
             '<span style="background:var(--seq-0)"></span><span style="background:var(--seq-1)"></span><span style="background:var(--seq-2)"></span><span style="background:var(--seq-3)"></span><span style="background:var(--seq-4)"></span>' +
@@ -2642,6 +2647,22 @@
         d3.select(event.currentTarget).classed('is-selected', true);
         document.getElementById('map-side-panel').innerHTML = teamListHtml(c);
       });
+
+    // Scroll/drag zoom - mainly for Europe, where a dozen small
+    // countries are packed too close together at the world view to
+    // click reliably. Double-click-to-zoom is turned off since a
+    // double click on a country is more likely meant as two quick
+    // selects than a zoom gesture, and would fight the click handler
+    // above.
+    var zoom = d3.zoom().scaleExtent([1, 8]).translateExtent([[0,0],[width,height]])
+      .on('zoom', function(event){ g.attr('transform', event.transform); });
+    svg.call(zoom).on('dblclick.zoom', null);
+    var zoomInBtn = document.getElementById('map-zoom-in');
+    var zoomOutBtn = document.getElementById('map-zoom-out');
+    var zoomResetBtn = document.getElementById('map-zoom-reset');
+    if(zoomInBtn) zoomInBtn.addEventListener('click', function(){ svg.transition().duration(200).call(zoom.scaleBy, 1.6); });
+    if(zoomOutBtn) zoomOutBtn.addEventListener('click', function(){ svg.transition().duration(200).call(zoom.scaleBy, 1/1.6); });
+    if(zoomResetBtn) zoomResetBtn.addEventListener('click', function(){ svg.transition().duration(200).call(zoom.transform, d3.zoomIdentity); });
   }
 
   async function viewManufacturer(name){
