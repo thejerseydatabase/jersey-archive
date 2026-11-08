@@ -1822,7 +1822,8 @@
         ) : '') +
         renderReportButton('jersey', j.id, j.season+' '+team.name+' '+j.type) +
         messagesHtml +
-        (isAdmin ? renderJerseyAdminBlock(j, images, sport.slug, additionalCredits, acUsernames, team, comp.slug) : '') +
+        (isAdmin ? renderJerseyAdminBlock(j, images, sport.slug, additionalCredits, acUsernames, team, comp.slug)
+          : (isUploader ? renderMyPhotosBlock(images) : '')) +
       '</div>' +
     '</div>';
   }
@@ -1892,10 +1893,14 @@
     overlay.innerHTML =
       '<div class="crop-modal-inner">' +
         '<div class="crop-stage"><div class="crop-loading">Loading image&hellip;</div></div>' +
-        '<p class="field-hint">Drag the box to choose what to keep, then save.</p>' +
+        '<div class="crop-rotate-row">' +
+          '<button class="btn btn-secondary" type="button" data-crop-rotate="-90">&#8634; Rotate left</button>' +
+          '<button class="btn btn-secondary" type="button" data-crop-rotate="90">&#8635; Rotate right</button>' +
+        '</div>' +
+        '<p class="field-hint">Drag the box to choose what to keep, rotate if needed, then save.</p>' +
         '<div class="crop-modal-actions">' +
           '<button class="btn btn-secondary" type="button" data-crop-cancel>Cancel</button>' +
-          '<button class="btn" type="button" data-crop-save disabled>Save crop</button>' +
+          '<button class="btn" type="button" data-crop-save disabled>Save</button>' +
         '</div>' +
       '</div>';
     document.body.appendChild(overlay);
@@ -1916,13 +1921,22 @@
     var dl = await supabaseClient.storage.from(bucket).download(storagePath);
     if(dl.error){ stage.innerHTML = '<div class="empty-note">Couldn\'t load image: '+esc(dl.error.message)+'</div>'; return; }
     objectUrl = URL.createObjectURL(dl.data);
-    stage.innerHTML = '<img id="crop-img" src="'+objectUrl+'" alt="Crop preview">' +
-      '<div class="crop-rect">' +
-        '<div class="crop-handle" data-handle="nw"></div><div class="crop-handle" data-handle="ne"></div>' +
-        '<div class="crop-handle" data-handle="sw"></div><div class="crop-handle" data-handle="se"></div>' +
-      '</div>';
-    var img = stage.querySelector('#crop-img');
-    var rect = stage.querySelector('.crop-rect');
+
+    // The source image loads once into a plain (off-stage) <img>, used
+    // purely as a pixel source from here on - what's actually shown and
+    // cropped against is a <canvas> redrawn at the current rotation.
+    // Keeping rotation as a quarter-turn count applied fresh from the
+    // original source each time (rather than rotating an already-
+    // rotated canvas repeatedly) avoids any cumulative quality loss
+    // across several rotate clicks.
+    var srcImg = new Image();
+    var rotation = 0; // 0, 90, 180, 270
+    var canvas = document.createElement('canvas');
+    canvas.id = 'crop-canvas';
+    var rect = document.createElement('div');
+    rect.className = 'crop-rect';
+    rect.innerHTML = '<div class="crop-handle" data-handle="nw"></div><div class="crop-handle" data-handle="ne"></div>' +
+      '<div class="crop-handle" data-handle="sw"></div><div class="crop-handle" data-handle="se"></div>';
     var box = {x:0, y:0, w:0, h:0};
 
     function setRectBox(x, y, w, h){
@@ -1939,7 +1953,50 @@
       setRectBox((stage.clientWidth - w) / 2, (stage.clientHeight - h) / 2, w, h);
       saveBtn.disabled = false;
     }
-    if(img.complete && img.naturalWidth) initRect(); else img.addEventListener('load', initRect);
+    // Redraws the visible canvas from the untouched source image at the
+    // current rotation, sized so a 90°/270° turn correctly swaps
+    // portrait/landscape instead of squashing into the old box. Any
+    // crop box from before this rotation doesn't mean anything against
+    // the new dimensions, so it's reset rather than remapped.
+    function redrawCanvas(){
+      var sw = srcImg.naturalWidth, sh = srcImg.naturalHeight;
+      var turned = rotation === 90 || rotation === 270;
+      var outW = turned ? sh : sw, outH = turned ? sw : sh;
+      // Same caps the old plain-<img> stage had (.crop-stage img's
+      // max-width/max-height) - computed from the source dimensions
+      // directly rather than measured off the stage, since the stage is
+      // empty (0×0) for an instant between being cleared and the canvas
+      // actually being appended to it.
+      var maxW = Math.min(560, window.innerWidth * 0.8);
+      var maxH = window.innerHeight * 0.6;
+      var scale = Math.min(1, maxW / outW, maxH / outH);
+      canvas.width = Math.max(1, Math.round(outW * scale));
+      canvas.height = Math.max(1, Math.round(outH * scale));
+      canvas.style.width = canvas.width + 'px';
+      canvas.style.height = canvas.height + 'px';
+      var ctx = canvas.getContext('2d');
+      ctx.save();
+      ctx.translate(canvas.width/2, canvas.height/2);
+      ctx.rotate(rotation * Math.PI / 180);
+      if(turned) ctx.drawImage(srcImg, -canvas.height/2, -canvas.width/2, canvas.height, canvas.width);
+      else ctx.drawImage(srcImg, -canvas.width/2, -canvas.height/2, canvas.width, canvas.height);
+      ctx.restore();
+      initRect();
+    }
+    srcImg.addEventListener('load', function(){
+      stage.innerHTML = '';
+      stage.appendChild(canvas);
+      stage.appendChild(rect);
+      redrawCanvas();
+    });
+    srcImg.src = objectUrl;
+
+    overlay.querySelectorAll('[data-crop-rotate]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        rotation = (rotation + Number(btn.dataset.cropRotate) + 360) % 360;
+        redrawCanvas();
+      });
+    });
 
     var dragMode = null, startPt = null, startBox = null;
     function onPointerMove(e){
@@ -1971,15 +2028,21 @@
     saveBtn.addEventListener('click', async function(){
       saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
       try {
-        var scaleX = img.naturalWidth / stage.clientWidth, scaleY = img.naturalHeight / stage.clientHeight;
-        var canvas = document.createElement('canvas');
-        canvas.width = Math.max(1, Math.round(box.w * scaleX));
-        canvas.height = Math.max(1, Math.round(box.h * scaleY));
-        var ctx = canvas.getContext('2d');
-        ctx.drawImage(img, box.x*scaleX, box.y*scaleY, box.w*scaleX, box.h*scaleY, 0, 0, canvas.width, canvas.height);
+        // Cropped straight out of the already-rotated preview canvas,
+        // not re-derived from the original source - one extra redraw is
+        // imperceptible for a web-sized jersey photo, and it keeps this
+        // simple: canvas.width/height are set equal to its own CSS
+        // pixel size (see redrawCanvas), so box's stage-relative
+        // coordinates already line up with the canvas 1:1 - no scale
+        // factor needed.
+        var outCanvas = document.createElement('canvas');
+        outCanvas.width = Math.max(1, Math.round(box.w));
+        outCanvas.height = Math.max(1, Math.round(box.h));
+        var ctx = outCanvas.getContext('2d');
+        ctx.drawImage(canvas, box.x, box.y, box.w, box.h, 0, 0, outCanvas.width, outCanvas.height);
         var ext = (storagePath.match(/\.(\w+)$/) || [,''])[1].toLowerCase();
         var mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-        var blob = await new Promise(function(resolve){ canvas.toBlob(resolve, mime, 0.92); });
+        var blob = await new Promise(function(resolve){ outCanvas.toBlob(resolve, mime, 0.92); });
         // upload(..., {upsert:true}) onto an existing path fails RLS on
         // this project even with a maximally permissive policy (upsert
         // clearly isn't going through a plain UPDATE the way the docs
@@ -2002,7 +2065,7 @@
         render();
       } catch(err){
         alert('Error: ' + err.message);
-        saveBtn.disabled = false; saveBtn.textContent = 'Save crop';
+        saveBtn.disabled = false; saveBtn.textContent = 'Save';
       }
     });
   }
@@ -2093,6 +2156,23 @@
     });
   }
 
+  // Crop/rotate for the uploader themselves on their own jersey - an
+  // admin gets the full admin block instead (which already includes
+  // this), so this only ever shows for a non-admin viewing their own
+  // submission. No status restriction - works the same on a jersey
+  // still pending as on one already approved, since a sideways photo
+  // is just as worth fixing either way.
+  function renderMyPhotosBlock(images){
+    if(!images || !images.length) return '';
+    var itemsHtml = images.map(function(img){
+      return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicImageUrl(img.storage_path))+'" alt="'+esc(img.label+' photo')+'" loading="lazy">' +
+        '<button type="button" class="photo-crop-btn" data-path="'+esc(img.storage_path)+'" data-image-id="'+img.id+'">Crop / Rotate</button>' +
+      '</div>';
+    }).join('');
+    return '<div id="my-photos-block"><label class="rate-label" style="margin-top:14px;">Your photos <small>crop or rotate a photo you uploaded</small></label>' +
+      '<div class="logo-history-grid lightbox-group">'+itemsHtml+'</div></div>';
+  }
+
   // Tucked away like the team page's own admin panel — fixes a mislabeled
   // front/back photo (which also fixes which one shows as the main image,
   // since that's always whichever is labeled "Front") and reassigns a
@@ -2114,7 +2194,7 @@
                 ['Front','Back','Other'].map(function(l){ return '<option value="'+l+'"'+(img.label===l?' selected':'')+'>'+l+'</option>'; }).join('') +
               '</select>'
             ) : '') +
-            '<button type="button" class="photo-crop-btn" data-path="'+esc(img.storage_path)+'" data-image-id="'+img.id+'">Crop</button>' +
+            '<button type="button" class="photo-crop-btn" data-path="'+esc(img.storage_path)+'" data-image-id="'+img.id+'">Crop / Rotate</button>' +
             (images.length > 1 ? '<button type="button" class="photo-delete-btn" data-image-id="'+img.id+'" title="Delete this photo">&#10005;</button>' : '') +
           '</div>';
         }).join('') + '</div>'
@@ -3690,7 +3770,7 @@
                   ['Front','Back','Other'].map(function(l){ return '<option value="'+l+'"'+(img.label===l?' selected':'')+'>'+l+'</option>'; }).join('') +
                 '</select>'
               ) : '') +
-              '<button type="button" class="photo-crop-btn" data-path="'+esc(img.storage_path)+'" data-image-id="'+img.id+'">Crop</button>' +
+              '<button type="button" class="photo-crop-btn" data-path="'+esc(img.storage_path)+'" data-image-id="'+img.id+'">Crop / Rotate</button>' +
               (images.length > 1 ? '<button type="button" class="photo-delete-btn" data-image-id="'+img.id+'" title="Delete this photo">&#10005;</button>' : '') +
             '</div>';
           }).join('') + '</div>'
@@ -3750,7 +3830,7 @@
         '</div>' +
         '<div class="mod-actions">' +
           (j ? '<a class="btn btn-secondary" href="/jersey/'+j.id+'" target="_blank" style="text-decoration:none;">View jersey</a>' : '') +
-          '<button type="button" class="photo-crop-btn" data-path="'+esc(img.storage_path)+'" data-image-id="'+img.id+'">Crop</button>' +
+          '<button type="button" class="photo-crop-btn" data-path="'+esc(img.storage_path)+'" data-image-id="'+img.id+'">Crop / Rotate</button>' +
           '<button class="btn" data-type="photo" data-action="approve" data-id="'+img.id+'" type="button">Approve</button>' +
           '<button class="btn btn-reject" data-type="photo" data-action="reject" data-id="'+img.id+'" data-path="'+esc(img.storage_path)+'" type="button">Reject</button>' +
         '</div>' +
@@ -4453,6 +4533,14 @@
         });
       });
     }
+    // Covers the uploader's own "Your photos" crop/rotate button
+    // (renderMyPhotosBlock) - scoped to that block specifically, not
+    // document, since an admin's identical buttons live in the admin
+    // panel and are wired separately, on-demand, only once that panel
+    // is first expanded (see adminSettingsToggle below); wiring them
+    // here too would attach two click listeners to the same button.
+    var myPhotosBlock = document.getElementById('my-photos-block');
+    if(myPhotosBlock) wireCropButtons(myPhotosBlock);
 
     var ratingWidget = document.getElementById('rating-widget');
     if(ratingWidget && currentUser){
