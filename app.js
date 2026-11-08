@@ -2504,6 +2504,146 @@
       '<div class="contributor-list">'+listHtml+'</div>';
   }
 
+  // Country-level only - teams only carry a country field, not a city or
+  // coordinates, so "zoom into Sydney and click Sydney Sixers vs Sydney
+  // FC separately" would need real geocoding data per team that doesn't
+  // exist yet. Clicking a country is as fine-grained as this gets for
+  // now; from there the team list in the side panel links to each
+  // team's own page.
+  //
+  // mapPageData/worldTopoCache are module-level since the actual map
+  // (the d3/topojson bit) can only be drawn once the <svg> this returns
+  // is actually in the DOM - wireMapPage() (called from wireViewEvents)
+  // picks them up right after.
+  var mapPageData = null, worldTopoCache = null;
+  async function viewMap(){
+    setCrumbs([{label:'Home', href:'/'},{label:'Map', href:'#'}]);
+    var rows = await fetchAllRows('jerseys',
+      'team_id, teams(name, slug, country, competition_slug, competitions(name, slug, sport_slug, region_group, sports(name)))',
+      function(q){ return q.eq('status', 'approved'); });
+
+    // Home nations share no single shape in a standard world map (the
+    // UK is one country, geographically) - merged for the map itself,
+    // broken back out as a sub-count in the side panel so England vs
+    // Scotland vs Wales isn't lost. Hong Kong/Europe aren't real
+    // country shapes at this map's resolution, so they're listed
+    // separately rather than mis-shaded onto China or hidden outright.
+    var UK_NATIONS = {England:1, Scotland:1, Wales:1};
+    var NAME_MAP = {USA:'United States of America', UAE:'United Arab Emirates'};
+    var EXCLUDE_FROM_MAP = {'Hong Kong':1, Europe:1};
+    var merged = {}, excluded = {};
+    rows.forEach(function(j){
+      var t = j.teams, c = t && t.competitions, s = c && c.sports;
+      if(!t || !c) return;
+      var country = t.country || c.region_group;
+      if(!country) return;
+      if(EXCLUDE_FROM_MAP[country]){
+        excluded[country] = (excluded[country] || 0) + 1;
+        return;
+      }
+      var key = UK_NATIONS[country] ? 'United Kingdom' : (NAME_MAP[country] || country);
+      if(!merged[key]) merged[key] = {name:key, count:0, teams:{}, sports:{}, sub:{}};
+      var m = merged[key];
+      m.count++;
+      if(UK_NATIONS[country]) m.sub[country] = (m.sub[country] || 0) + 1;
+      if(s) m.sports[s.name] = true;
+      var tKey = (t.competition_slug || '') + '|' + t.slug;
+      if(!m.teams[tKey]) m.teams[tKey] = {name:t.name, slug:t.slug, compSlug:t.competition_slug, sportSlug:c.sport_slug, count:0};
+      m.teams[tKey].count++;
+    });
+
+    var countries = Object.keys(merged).map(function(k){
+      var m = merged[k];
+      var teams = Object.keys(m.teams).map(function(tk){ return m.teams[tk]; }).sort(function(a,b){ return b.count - a.count; });
+      var sub = Object.keys(m.sub).map(function(n){ return {name:n, count:m.sub[n]}; }).sort(function(a,b){ return b.count - a.count; });
+      return {name:m.name, count:m.count, sports:Object.keys(m.sports).sort(), teams:teams, sub: sub.length ? sub : null};
+    }).sort(function(a,b){ return b.count - a.count; });
+    var excludedList = Object.keys(excluded).map(function(n){ return {name:n, count:excluded[n]}; });
+
+    mapPageData = {countries: countries, excluded: excludedList};
+
+    var total = countries.reduce(function(s,c){ return s + c.count; }, 0);
+    var excludedHtml = excludedList.length
+      ? '<p class="map-excluded-note">Also on file but not shown on the map (no matching country shape at this zoom): '+excludedList.map(function(e){ return esc(e.name)+' ('+e.count+')'; }).join(', ')+'.</p>'
+      : '';
+
+    return '<div class="section-head"><h2>Coverage Map</h2></div>' +
+      '<p class="field-hint" style="margin-top:-6px;">'+total+' approved jerseys logged across '+countries.length+' countries. Click a country to see which teams are on file for it.</p>' +
+      '<div class="map-page-grid">' +
+        '<div class="map-panel">' +
+          '<svg id="map-svg"></svg>' +
+          '<div class="map-legend"><span>Fewer</span><div class="map-legend-ramp">' +
+            '<span style="background:var(--seq-0)"></span><span style="background:var(--seq-1)"></span><span style="background:var(--seq-2)"></span><span style="background:var(--seq-3)"></span><span style="background:var(--seq-4)"></span>' +
+          '</div><span>More (log scale)</span></div>' +
+          excludedHtml +
+        '</div>' +
+        '<div class="map-side-panel" id="map-side-panel"><p class="map-side-empty">Click a shaded country to see which teams are logged there.</p></div>' +
+      '</div>';
+  }
+
+  async function wireMapPage(){
+    var svgEl = document.getElementById('map-svg');
+    if(!svgEl || !mapPageData) return;
+    if(!worldTopoCache){
+      var res = await fetch('/countries-110m.json');
+      worldTopoCache = await res.json();
+    }
+    var byName = {};
+    mapPageData.countries.forEach(function(c){ byName[c.name] = c; });
+    var maxCount = Math.max.apply(null, mapPageData.countries.map(function(c){ return c.count; }));
+    var seqColors = ['var(--seq-0)','var(--seq-1)','var(--seq-2)','var(--seq-3)','var(--seq-4)'];
+    var seqScale = d3.scaleLog().domain([1, maxCount]).range([0, 1]).clamp(true);
+    function colorFor(count){
+      if(!count) return 'var(--surface-2)';
+      var t = seqScale(count);
+      var idx = Math.min(seqColors.length - 1, Math.floor(t * seqColors.length));
+      return seqColors[idx];
+    }
+    function teamListHtml(country){
+      if(!country) return '<p class="map-side-empty">Click a shaded country to see which teams are logged there.</p>';
+      var subHtml = country.sub
+        ? '<div class="map-side-sub">'+country.sub.map(function(s){ return '<span>'+esc(s.name)+': '+s.count+'</span>'; }).join('')+'</div>'
+        : '';
+      var teamsHtml = country.teams.map(function(t){
+        var href = t.compSlug ? '/sport/'+t.sportSlug+'/'+t.compSlug+'/team/'+t.slug : '#';
+        return '<a href="'+href+'"><span>'+esc(t.name)+'</span><span class="n">'+t.count+'</span></a>';
+      }).join('');
+      return '<h3>'+esc(country.name)+'</h3>' +
+        '<div class="map-side-count">'+country.count+' jersey'+(country.count===1?'':'s')+' logged</div>' +
+        '<div class="map-side-sports">'+country.sports.map(esc).join(' &middot; ')+'</div>' +
+        subHtml +
+        '<ul class="map-team-list">'+teamsHtml+'</ul>';
+    }
+
+    var width = 760, height = 430;
+    var svg = d3.select(svgEl).attr('viewBox', '0 0 '+width+' '+height).attr('class', 'map-svg');
+    var worldFeatures = topojson.feature(worldTopoCache, worldTopoCache.objects.countries);
+    var projection = d3.geoNaturalEarth1().fitSize([width, height], worldFeatures);
+    var path = d3.geoPath(projection);
+    var g = svg.append('g');
+    var tip = document.getElementById('map-tip');
+    g.selectAll('path').data(worldFeatures.features).join('path')
+      .attr('class', function(d){ return 'map-country' + (byName[d.properties.name] ? ' has-data' : ''); })
+      .attr('d', path)
+      .attr('fill', function(d){ return colorFor((byName[d.properties.name] || {}).count); })
+      .on('mousemove', function(event, d){
+        var c = byName[d.properties.name];
+        if(!c){ tip.classList.remove('is-visible'); return; }
+        tip.textContent = c.name + ' — ' + c.count + ' jersey' + (c.count===1?'':'s');
+        tip.style.left = event.clientX + 'px';
+        tip.style.top = event.clientY + 'px';
+        tip.classList.add('is-visible');
+      })
+      .on('mouseleave', function(){ tip.classList.remove('is-visible'); })
+      .on('click', function(event, d){
+        var c = byName[d.properties.name];
+        if(!c) return;
+        g.selectAll('path').classed('is-selected', false);
+        d3.select(event.currentTarget).classed('is-selected', true);
+        document.getElementById('map-side-panel').innerHTML = teamListHtml(c);
+      });
+  }
+
   async function viewManufacturer(name){
     setCrumbs([{label:'Home', href:'/'},{label:'Manufacturers', href:'/manufacturers'},{label:name, href:'#'}]);
     var jerseys = await fetchAllRows('jerseys', '*, jersey_images(*), teams(*, competitions(*, sports(*))), jersey_competitions(competitions(name))', function(q){ return q.eq('manufacturer', name); });
@@ -4082,6 +4222,7 @@
       else if(parts[0]==='type' && parts[1]){ html = await viewType(parts[1], parts[2], parts[3]); }
       else if(parts[0]==='upload'){ html = await viewUpload(); }
       else if(parts[0]==='help'){ html = viewHelp(); }
+      else if(parts[0]==='map'){ html = await viewMap(); }
       else if(parts[0]==='moderate'){ html = await viewModerate(); }
       else if(parts[0]==='user' && parts[1]){ html = await viewUserProfile(parts[1], parts[2]); }
       else if(parts[0]==='logo-proposal' && parts[1] && parts[2]){ html = await viewLogoProposal(parts[1], parts[2]); }
@@ -4094,6 +4235,7 @@
   }
 
   function wireViewEvents(parts){
+    if(parts[0] === 'map') wireMapPage();
     var teamFilter = document.getElementById('team-filter');
     if(teamFilter){
       teamFilter.addEventListener('input', function(){
