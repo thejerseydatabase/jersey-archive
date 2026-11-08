@@ -3983,6 +3983,33 @@
     // collection_items itself carries no status of its own to check.
     var isOwnProfile = !!(currentUser && currentUser.id === profile.id);
 
+    // A rejected jersey drops out of the approved query the uploads
+    // grid above runs, with nothing else pointing a visitor at it -
+    // the rejection reason only ever lived on the jersey's own page,
+    // findable only if they still had that link. Private to the owner,
+    // same as the collection-visibility and badge-progress logic
+    // above; a moderator still sees every rejection site-wide in the
+    // moderation queue regardless of whose it is.
+    var rejectedSectionHtml = '';
+    if(page === 1 && isOwnProfile){
+      var rejRes = await supabaseClient.from('jerseys')
+        .select('id, season, type, rejection_reason, created_at, teams(name)')
+        .eq('uploaded_by', profile.id).eq('status', 'rejected').order('created_at', {ascending:false});
+      var myRejected = rejRes.error ? [] : (rejRes.data || []);
+      if(myRejected.length){
+        var rejectedRows = myRejected.map(function(j){
+          return '<a class="rejected-row" href="/jersey/'+j.id+'">' +
+            '<strong>'+esc(j.season)+' '+esc((j.teams && j.teams.name) || 'Unknown team')+' '+esc(j.type)+'</strong>' +
+            '<span>'+(j.rejection_reason ? esc(j.rejection_reason) : 'No reason given')+'</span>' +
+            '<time>'+fmtDate(j.created_at)+'</time>' +
+          '</a>';
+        }).join('');
+        rejectedSectionHtml = '<div class="section-head" style="margin-top:34px;"><h2>Rejected</h2><span class="count">'+myRejected.length+'</span></div>' +
+          '<p class="field-hint" style="margin-top:-10px;">Only you can see this.</p>' +
+          '<div class="rejected-list">'+rejectedRows+'</div>';
+      }
+    }
+
     // Congratulates a member on reaching a new reputation tier (see
     // tier_up_notices.sql) - only ever shown to the member themselves,
     // once, right here on their own profile page (also where the
@@ -4220,6 +4247,7 @@
       '<div id="profile-tab-uploads">' +
         (cards ? '<div class="jersey-grid">'+cards+'</div>' : '<div class="empty-note">No approved uploads yet.</div>') +
         pagerHtml +
+        rejectedSectionHtml +
         logoSectionHtml +
       '</div>' +
       (collectionSectionHtml ? '<div id="profile-tab-collection" hidden>'+collectionSectionHtml+'</div>' : '');

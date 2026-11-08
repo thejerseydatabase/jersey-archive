@@ -256,6 +256,12 @@
   .chip-row{display:flex;flex-wrap:wrap;gap:10px;}
   .contributor-list{display:flex;flex-direction:column;gap:6px;}
   .contributor-row{display:flex;align-items:center;gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:11px 16px;text-decoration:none;color:var(--text);}
+  .rejected-list{display:flex;flex-direction:column;gap:10px;}
+  .rejected-row{display:block;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:12px 14px;text-decoration:none;color:var(--text);}
+  .rejected-row:hover{border-color:var(--danger);}
+  .rejected-row strong{display:block;font-size:13.5px;}
+  .rejected-row span{display:block;font-size:12.5px;color:var(--text-dim);margin-top:4px;}
+  .rejected-row time{display:block;font-size:11px;color:var(--text-dim2);margin-top:4px;font-family:'Courier Prime',monospace;}
   .contributor-row:hover{border-color:var(--accent);}
   .contributor-rank{font-family:'Courier Prime',monospace;font-size:13px;color:var(--text-dim2);width:28px;flex-shrink:0;}
   .contributor-name{flex:1;font-weight:600;font-size:14.5px;}
@@ -559,6 +565,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
 <script src="/config.js?v=94"></script>
-<script src="/app.js?v=213"></script>
+<script src="/app.js?v=214"></script>
 </body>
 </html>
