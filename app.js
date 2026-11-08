@@ -1938,6 +1938,11 @@
     rect.innerHTML = '<div class="crop-handle" data-handle="nw"></div><div class="crop-handle" data-handle="ne"></div>' +
       '<div class="crop-handle" data-handle="sw"></div><div class="crop-handle" data-handle="se"></div>';
     var box = {x:0, y:0, w:0, h:0};
+    // How much smaller the on-screen preview canvas is than the actual
+    // (rotated) source resolution - set by redrawCanvas, read by the
+    // save handler so the crop box's on-screen coordinates can be
+    // scaled back up to full resolution before cropping (see there).
+    var previewScale = 1;
 
     function setRectBox(x, y, w, h){
       var stageW = stage.clientWidth, stageH = stage.clientHeight;
@@ -1970,6 +1975,7 @@
       var maxW = Math.min(560, window.innerWidth * 0.8);
       var maxH = window.innerHeight * 0.6;
       var scale = Math.min(1, maxW / outW, maxH / outH);
+      previewScale = scale;
       canvas.width = Math.max(1, Math.round(outW * scale));
       canvas.height = Math.max(1, Math.round(outH * scale));
       canvas.style.width = canvas.width + 'px';
@@ -2028,18 +2034,34 @@
     saveBtn.addEventListener('click', async function(){
       saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
       try {
-        // Cropped straight out of the already-rotated preview canvas,
-        // not re-derived from the original source - one extra redraw is
-        // imperceptible for a web-sized jersey photo, and it keeps this
-        // simple: canvas.width/height are set equal to its own CSS
-        // pixel size (see redrawCanvas), so box's stage-relative
-        // coordinates already line up with the canvas 1:1 - no scale
-        // factor needed.
+        // Cropping straight out of the on-screen preview canvas would
+        // bake in whatever shrink redrawCanvas applied to fit the
+        // screen (max 560px / 60% of viewport tall) - fine for most
+        // photos, but a real quality/resolution loss for anything
+        // bigger, which is most phone photos. So the crop box (in
+        // on-screen pixels) is scaled back up by 1/previewScale to get
+        // the same box against a freshly-drawn, full-resolution,
+        // already-rotated version of the original source image, and
+        // the final crop comes from that instead.
+        var turned = rotation === 90 || rotation === 270;
+        var fullW = turned ? srcImg.naturalHeight : srcImg.naturalWidth;
+        var fullH = turned ? srcImg.naturalWidth : srcImg.naturalHeight;
+        var fullCanvas = document.createElement('canvas');
+        fullCanvas.width = fullW; fullCanvas.height = fullH;
+        var fctx = fullCanvas.getContext('2d');
+        fctx.save();
+        fctx.translate(fullW/2, fullH/2);
+        fctx.rotate(rotation * Math.PI / 180);
+        if(turned) fctx.drawImage(srcImg, -fullH/2, -fullW/2, fullH, fullW);
+        else fctx.drawImage(srcImg, -fullW/2, -fullH/2, fullW, fullH);
+        fctx.restore();
+
+        var fx = box.x / previewScale, fy = box.y / previewScale, fw = box.w / previewScale, fh = box.h / previewScale;
         var outCanvas = document.createElement('canvas');
-        outCanvas.width = Math.max(1, Math.round(box.w));
-        outCanvas.height = Math.max(1, Math.round(box.h));
+        outCanvas.width = Math.max(1, Math.round(fw));
+        outCanvas.height = Math.max(1, Math.round(fh));
         var ctx = outCanvas.getContext('2d');
-        ctx.drawImage(canvas, box.x, box.y, box.w, box.h, 0, 0, outCanvas.width, outCanvas.height);
+        ctx.drawImage(fullCanvas, fx, fy, fw, fh, 0, 0, outCanvas.width, outCanvas.height);
         var ext = (storagePath.match(/\.(\w+)$/) || [,''])[1].toLowerCase();
         var mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
         var blob = await new Promise(function(resolve){ outCanvas.toBlob(resolve, mime, 0.92); });
