@@ -724,7 +724,7 @@
           '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:14px;">' +
             '<div class="field" style="flex:1;min-width:120px;"><label for="lp-year-first">First used <small>optional</small></label>' +
               '<input type="number" id="lp-year-first" value="'+esc(yearFirst)+'" placeholder="e.g. 2016" min="1850" max="2100"></div>' +
-            '<div class="field" style="flex:1;min-width:160px;"><label for="lp-year-last">Last used <small>leave blank if only used for one year</small></label>' +
+            '<div class="field" style="flex:1;min-width:160px;"><label for="lp-year-last">Last used <small>leave blank if only used for one year or is current</small></label>' +
               '<input type="number" id="lp-year-last" value="'+esc(yearLast)+'" placeholder="e.g. 2025" min="1850" max="2100"></div>' +
           '</div>' +
           '<div class="field" style="margin-top:10px;"><label for="lp-note-input">Special occasion <small>optional &mdash; e.g. &ldquo;60th Anniversary&rdquo;</small></label>' +
@@ -5386,7 +5386,7 @@
       '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:14px;">' +
         '<div class="field" style="flex:1;min-width:120px;"><label for="pl-year-first">First used <small>optional</small></label>' +
           '<input type="number" id="pl-year-first" placeholder="e.g. 2016" min="1850" max="2100"></div>' +
-        '<div class="field" style="flex:1;min-width:160px;"><label for="pl-year-last">Last used <small>leave blank if only used for one year</small></label>' +
+        '<div class="field" style="flex:1;min-width:160px;"><label for="pl-year-last">Last used <small>leave blank if only used for one year or is current</small></label>' +
           '<input type="number" id="pl-year-last" placeholder="e.g. 2025" min="1850" max="2100"></div>' +
       '</div>' +
       '<div class="field" style="margin-top:14px;"><label for="pl-note">Special occasion <small>optional &mdash; e.g. &ldquo;90th Anniversary&rdquo;, worth flagging if this one looks different to the regular logo either side of it</small></label>' +
