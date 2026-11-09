@@ -1900,6 +1900,7 @@
         '<p class="field-hint">Drag the box to choose what to keep, rotate if needed, then save.</p>' +
         '<div class="crop-modal-actions">' +
           '<button class="btn btn-secondary" type="button" data-crop-cancel>Cancel</button>' +
+          '<button class="btn btn-secondary" type="button" data-crop-reset>Reset</button>' +
           '<button class="btn" type="button" data-crop-save disabled>Save</button>' +
         '</div>' +
       '</div>';
@@ -2002,6 +2003,14 @@
         rotation = (rotation + Number(btn.dataset.cropRotate) + 360) % 360;
         redrawCanvas();
       });
+    });
+    // Undoes any rotation and drags without closing the modal - back to
+    // the exact same starting point as when it was first opened
+    // (rotation 0, box centered at 80% - redrawCanvas's initRect() call
+    // is what sets that box, same as on first load).
+    overlay.querySelector('[data-crop-reset]').addEventListener('click', function(){
+      rotation = 0;
+      redrawCanvas();
     });
 
     var dragMode = null, startPt = null, startBox = null;
