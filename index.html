@@ -185,6 +185,10 @@
   .photo-delete-btn:hover{border-color:var(--danger);color:var(--danger);}
   .photo-crop-btn{border:1px solid var(--line);background:var(--surface);color:var(--text-dim2);border-radius:6px;font-size:12px;line-height:1;padding:4px 8px;cursor:pointer;}
   .photo-crop-btn:hover{border-color:var(--accent);color:var(--accent);}
+  .photo-reorder-row{display:flex;gap:6px;}
+  .photo-move-btn{border:1px solid var(--line);background:var(--surface);color:var(--text-dim2);border-radius:6px;font-size:13px;line-height:1;padding:4px 10px;cursor:pointer;}
+  .photo-move-btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent);}
+  .photo-move-btn:disabled{opacity:.35;cursor:default;}
   .crop-modal{position:fixed;inset:0;background:rgba(5,10,8,.85);display:flex;align-items:center;justify-content:center;padding:24px;z-index:65;}
   .crop-modal-inner{max-width:min(640px,92vw);width:100%;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px;}
   .crop-stage{position:relative;display:inline-block;max-width:100%;line-height:0;margin:0 auto;}
@@ -566,6 +570,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
 <script src="/config.js?v=94"></script>
-<script src="/app.js?v=217"></script>
+<script src="/app.js?v=218"></script>
 </body>
 </html>

@@ -478,15 +478,22 @@
     return '<div class="team-swatch team-swatch-logo'+sizeClass+'"><img class="'+triggerClass.trim()+'" src="'+esc(publicLogoUrl(comp.logo_path))+'" alt="'+esc(comp.name)+' logo" loading="lazy"></div>';
   }
 
-  // The photo labeled "Front" should always be what a visitor sees first,
-  // no matter which order the files were actually dropped/uploaded in —
-  // sort_order alone isn't enough since that just reflects upload order.
+  // sort_order is the real, manually-set display order (see
+  // wirePhotoReorder and the upload form's move-left/right buttons) — it
+  // normally already starts out as Front, Back, Other since that's the
+  // order new photos get added/labeled in, but a photo can be dragged
+  // ahead of its label's "usual" spot on purpose (e.g. a second Front-ish
+  // shot someone wants featured, labeled Other so it doesn't collide with
+  // the real Front). Label is only a tiebreaker, for older rows from
+  // before sort_order was kept meaningfully distinct per photo (several
+  // rows sharing the same value, commonly 0) — same effective order
+  // those always had.
   var IMAGE_LABEL_ORDER = {Front: 0, Back: 1, Other: 2};
   function sortImagesForDisplay(images){
     return (images || []).slice().sort(function(a, b){
       var la = IMAGE_LABEL_ORDER.hasOwnProperty(a.label) ? IMAGE_LABEL_ORDER[a.label] : 2;
       var lb = IMAGE_LABEL_ORDER.hasOwnProperty(b.label) ? IMAGE_LABEL_ORDER[b.label] : 2;
-      return (la - lb) || (a.sort_order - b.sort_order);
+      return (a.sort_order - b.sort_order) || (la - lb);
     });
   }
 
@@ -1872,6 +1879,55 @@
     });
   }
 
+  // Lets a mislabeled or awkwardly-ordered set of photos be rearranged
+  // into whatever order should actually show - needed because the label
+  // dropdown alone can't put a second Front-ish shot first unless it's
+  // literally labeled "Front" (and only one photo can be). grid is the
+  // .logo-history-grid holding the photos as direct .logo-history-item
+  // children, each carrying its own jersey_images id via data-image-id.
+  //
+  // A move repositions the two items in the live DOM and re-numbers
+  // every photo's sort_order to match (not only the two that swapped,
+  // which also quietly fixes any legacy rows that never had a
+  // meaningful sort_order of their own - several sharing the same
+  // value, commonly 0) - deliberately NOT a full render(): every other
+  // action in this same admin/moderation panel (relabel, crop, delete)
+  // already does call render(), which collapses the panel shut again
+  // (see adminSettingsToggle) and needs reopening. Rearranging is
+  // usually several clicks in a row, so re-rendering after each one
+  // would mean reopening the panel between every single click - this
+  // way it only touches the grid, and index is read fresh off the DOM
+  // each click rather than captured once, so it stays correct across
+  // any number of moves without needing a re-render to re-sync it.
+  function wirePhotoReorder(grid){
+    if(!grid) return;
+    function wireItem(item){
+      item.querySelectorAll('[data-move]').forEach(function(btn){
+        btn.addEventListener('click', async function(){
+          var items = Array.prototype.slice.call(grid.querySelectorAll('.logo-history-item'));
+          var i = items.indexOf(item);
+          var j = i + (btn.dataset.move === 'left' ? -1 : 1);
+          if(j < 0 || j >= items.length) return;
+          if(j < i) grid.insertBefore(item, items[j]);
+          else grid.insertBefore(items[j], item);
+          var newItems = Array.prototype.slice.call(grid.querySelectorAll('.logo-history-item'));
+          newItems.forEach(function(it){ it.querySelectorAll('[data-move]').forEach(function(b){ b.disabled = true; }); });
+          var updates = newItems.map(function(it, idx){
+            return supabaseClient.from('jersey_images').update({sort_order: idx}).eq('id', it.dataset.imageId);
+          });
+          var results = await Promise.all(updates);
+          var err = results.filter(function(r){ return r.error; })[0];
+          if(err) alert('Error: ' + err.error.message);
+          newItems.forEach(function(it, idx){
+            it.querySelectorAll('[data-move="left"]').forEach(function(b){ b.disabled = idx === 0; });
+            it.querySelectorAll('[data-move="right"]').forEach(function(b){ b.disabled = idx === newItems.length - 1; });
+          });
+        });
+      });
+    }
+    Array.prototype.slice.call(grid.querySelectorAll('.logo-history-item')).forEach(wireItem);
+  }
+
   // Lets a moderator tighten a photo's framing in place instead of
   // rejecting/asking for a re-upload over a crop that's otherwise fine.
   // Downloads the file through the authenticated storage client (not an
@@ -2218,8 +2274,14 @@
     // gated to images.length > 1 as before (a lone photo can't conflict
     // with another, and a jersey always needs at least one left).
     var relabelHtml = (images && images.length)
-      ? '<label class="rate-label">Photos</label><div class="logo-history-grid lightbox-group">' + images.map(function(img){
-          return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicImageUrl(img.storage_path))+'" alt="'+esc(img.label+' photo')+'" loading="lazy">' +
+      ? '<label class="rate-label">Photos <small>use &larr;&rarr; to change which shows first</small></label><div class="logo-history-grid lightbox-group">' + images.map(function(img, i){
+          return '<div class="logo-history-item" data-image-id="'+img.id+'"><img class="lightbox-trigger" src="'+esc(publicImageUrl(img.storage_path))+'" alt="'+esc(img.label+' photo')+'" loading="lazy">' +
+            (images.length > 1 ? (
+              '<div class="photo-reorder-row">' +
+                '<button type="button" class="photo-move-btn" data-move="left"'+(i===0?' disabled':'')+' title="Move left" aria-label="Move left">&#8592;</button>' +
+                '<button type="button" class="photo-move-btn" data-move="right"'+(i===images.length-1?' disabled':'')+' title="Move right" aria-label="Move right">&#8594;</button>' +
+              '</div>'
+            ) : '') +
             (images.length > 1 ? (
               '<select class="photo-label-select" data-image-id="'+img.id+'">' +
                 ['Front','Back','Other'].map(function(l){ return '<option value="'+l+'"'+(img.label===l?' selected':'')+'>'+l+'</option>'; }).join('') +
@@ -3794,8 +3856,14 @@
       // Crop always shows, even for a single pending photo (the common
       // case) — label/delete stay gated to images.length > 1 as before.
       var allPhotosHtml = images.length
-        ? '<div class="logo-history-grid lightbox-group" style="margin-top:8px;">' + images.map(function(img){
-            return '<div class="logo-history-item"><img class="lightbox-trigger" src="'+esc(publicImageUrl(img.storage_path))+'" alt="'+esc(img.label+' photo')+'" loading="lazy">' +
+        ? '<div class="logo-history-grid lightbox-group" style="margin-top:8px;">' + images.map(function(img, i){
+            return '<div class="logo-history-item" data-image-id="'+img.id+'"><img class="lightbox-trigger" src="'+esc(publicImageUrl(img.storage_path))+'" alt="'+esc(img.label+' photo')+'" loading="lazy">' +
+              (images.length > 1 ? (
+                '<div class="photo-reorder-row">' +
+                  '<button type="button" class="photo-move-btn" data-move="left"'+(i===0?' disabled':'')+' title="Move left" aria-label="Move left">&#8592;</button>' +
+                  '<button type="button" class="photo-move-btn" data-move="right"'+(i===images.length-1?' disabled':'')+' title="Move right" aria-label="Move right">&#8594;</button>' +
+                '</div>'
+              ) : '') +
               (images.length > 1 ? (
                 '<select class="photo-label-select" data-image-id="'+img.id+'">' +
                   ['Front','Back','Other'].map(function(l){ return '<option value="'+l+'"'+(img.label===l?' selected':'')+'>'+l+'</option>'; }).join('') +
@@ -4904,6 +4972,7 @@
           panel.dataset.wired = '1';
           panel.hidden = false;
           wirePhotoLabelSwap(panel.querySelectorAll('.photo-label-select'));
+          wirePhotoReorder(panel.querySelector('.logo-history-grid'));
           panel.querySelectorAll('.photo-delete-btn').forEach(function(btn){
             btn.addEventListener('click', async function(){
               if(!confirm('Delete this photo? This can\'t be undone.')) return;
@@ -5491,6 +5560,7 @@
     }
     document.querySelectorAll('.mod-card').forEach(function(card){
       wirePhotoLabelSwap(card.querySelectorAll('.photo-label-select'));
+      wirePhotoReorder(card.querySelector('.logo-history-grid'));
     });
     document.querySelectorAll('.mod-card .photo-delete-btn').forEach(function(btn){
       btn.addEventListener('click', async function(){
@@ -5952,6 +6022,12 @@
       previewsEl.innerHTML = selectedPhotos.map(function(p, i){
         return '<div class="photo-preview-item">' +
           '<div class="photo-preview-thumb"><img src="'+p.url+'" alt="'+esc(p.label || labelForIndex(i))+' photo preview"></div>' +
+          (selectedPhotos.length > 1 ? (
+            '<div class="photo-reorder-row">' +
+              '<button type="button" class="photo-move-btn" data-idx="'+i+'" data-move="left"'+(i===0?' disabled':'')+' title="Move left" aria-label="Move left">&#8592;</button>' +
+              '<button type="button" class="photo-move-btn" data-idx="'+i+'" data-move="right"'+(i===selectedPhotos.length-1?' disabled':'')+' title="Move right" aria-label="Move right">&#8594;</button>' +
+            '</div>'
+          ) : '') +
           '<select class="photo-label-select" data-idx="'+i+'">' +
             ['Front','Back','Other'].map(function(l){ return '<option value="'+l+'"'+(p.label===l?' selected':'')+'>'+l+'</option>'; }).join('') +
           '</select>' +
@@ -5965,6 +6041,17 @@
         btn.addEventListener('click', function(){
           URL.revokeObjectURL(selectedPhotos[Number(btn.dataset.idx)].url);
           selectedPhotos.splice(Number(btn.dataset.idx), 1);
+          renderPhotoPreviews();
+        });
+      });
+      // Not yet uploaded - nothing to persist to the DB, just reorder the
+      // in-memory array and re-render; submit() inserts jersey_images with
+      // sort_order set from this same array's final index order.
+      previewsEl.querySelectorAll('.photo-move-btn').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          var i = Number(btn.dataset.idx), j = i + (btn.dataset.move === 'left' ? -1 : 1);
+          if(j < 0 || j >= selectedPhotos.length) return;
+          var tmp = selectedPhotos[i]; selectedPhotos[i] = selectedPhotos[j]; selectedPhotos[j] = tmp;
           renderPhotoPreviews();
         });
       });
