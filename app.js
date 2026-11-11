@@ -7266,6 +7266,20 @@
     return null;
   }
 
+  // A lazy-loaded photo/logo whose first request drops (a brief network
+  // hiccup, nothing to do with the data itself) just stays broken forever
+  // otherwise - plain <img> tags never retry on their own. One delayed
+  // retry, applied globally rather than to each place a photo is
+  // rendered, covers that. 'error' doesn't bubble, so this only ever
+  // sees it via the capture phase. data-retried caps it at one retry per
+  // image, so a genuinely missing file doesn't loop forever.
+  document.addEventListener('error', function(e){
+    var img = e.target;
+    if(!img || img.tagName !== 'IMG' || img.dataset.retried) return;
+    img.dataset.retried = '1';
+    setTimeout(function(){ var src = img.src; img.src = ''; img.src = src; }, 800);
+  }, true);
+
   document.addEventListener('click', function(e){
     var trigger = e.target.closest('.lightbox-trigger');
     if(trigger){
