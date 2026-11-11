@@ -1842,12 +1842,23 @@
   // instead of ending up with two "Front" photos and an ambiguous main
   // image. "Other" has no such cap; any number of photos can share it.
   function reassignPhotoLabel(list, idx, newLabel){
-    var oldLabel = list[idx].label;
+    var photo = list[idx];
+    var oldLabel = photo.label;
     if(newLabel !== oldLabel && (newLabel === 'Front' || newLabel === 'Back')){
       var conflictIdx = list.findIndex(function(p, i){ return i !== idx && p.label === newLabel; });
-      if(conflictIdx > -1) list[conflictIdx].label = oldLabel;
+      if(conflictIdx > -1){
+        list[conflictIdx].label = oldLabel;
+        // Swaps their positions too, not just the label text - the
+        // array's final order becomes each photo's sort_order at
+        // submit, so without this the one just promoted to Front/Back
+        // would keep whatever position it was dropped in at (often
+        // last, if it had been mislabeled Other) instead of actually
+        // showing first.
+        list[idx] = list[conflictIdx];
+        list[conflictIdx] = photo;
+      }
     }
-    list[idx].label = newLabel;
+    photo.label = newLabel;
   }
   // Same swap, for editing an already-saved jersey's photos (moderation
   // queue, jersey detail admin block) — two DB writes instead of a local
@@ -1865,8 +1876,16 @@
           : null;
         sel.disabled = true;
         if(conflict) conflict.disabled = true;
-        var updates = [supabaseClient.from('jersey_images').update({label: newLabel}).eq('id', sel.dataset.imageId)];
-        if(conflict) updates.push(supabaseClient.from('jersey_images').update({label: oldLabel}).eq('id', conflict.dataset.imageId));
+        // sort_order (what actually decides display order - see
+        // sortImagesForDisplay) swaps along with the label whenever two
+        // photos trade Front/Back, so promoting a photo to Front also
+        // puts it first instead of leaving it wherever it happened to
+        // land at upload time.
+        var updates = [supabaseClient.from('jersey_images').update(conflict
+          ? {label: newLabel, sort_order: Number(conflict.dataset.sortOrder)}
+          : {label: newLabel}
+        ).eq('id', sel.dataset.imageId)];
+        if(conflict) updates.push(supabaseClient.from('jersey_images').update({label: oldLabel, sort_order: Number(sel.dataset.sortOrder)}).eq('id', conflict.dataset.imageId));
         var results = await Promise.all(updates);
         var err = results.filter(function(r){ return r.error; })[0];
         if(err){
@@ -2283,7 +2302,7 @@
               '</div>'
             ) : '') +
             (images.length > 1 ? (
-              '<select class="photo-label-select" data-image-id="'+img.id+'">' +
+              '<select class="photo-label-select" data-image-id="'+img.id+'" data-sort-order="'+img.sort_order+'">' +
                 ['Front','Back','Other'].map(function(l){ return '<option value="'+l+'"'+(img.label===l?' selected':'')+'>'+l+'</option>'; }).join('') +
               '</select>'
             ) : '') +
@@ -3865,7 +3884,7 @@
                 '</div>'
               ) : '') +
               (images.length > 1 ? (
-                '<select class="photo-label-select" data-image-id="'+img.id+'">' +
+                '<select class="photo-label-select" data-image-id="'+img.id+'" data-sort-order="'+img.sort_order+'">' +
                   ['Front','Back','Other'].map(function(l){ return '<option value="'+l+'"'+(img.label===l?' selected':'')+'>'+l+'</option>'; }).join('') +
                 '</select>'
               ) : '') +
