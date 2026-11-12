@@ -1844,18 +1844,25 @@
   function reassignPhotoLabel(list, idx, newLabel){
     var photo = list[idx];
     var oldLabel = photo.label;
-    if(newLabel !== oldLabel && (newLabel === 'Front' || newLabel === 'Back')){
-      var conflictIdx = list.findIndex(function(p, i){ return i !== idx && p.label === newLabel; });
-      if(conflictIdx > -1){
-        list[conflictIdx].label = oldLabel;
-        // Swaps their positions too, not just the label text - the
-        // array's final order becomes each photo's sort_order at
-        // submit, so without this the one just promoted to Front/Back
-        // would keep whatever position it was dropped in at (often
-        // last, if it had been mislabeled Other) instead of actually
-        // showing first.
-        list[idx] = list[conflictIdx];
-        list[conflictIdx] = photo;
+    if(newLabel === oldLabel) return;
+    if(newLabel === 'Front'){
+      // Front always ends up first - whether that's because it's taking
+      // the label FROM another photo (which only matters for giving
+      // that one photo's old label back) or simply because nothing else
+      // happened to be labeled Front yet. Only swapping on an actual
+      // label conflict missed this second, far more common case: a
+      // fresh upload where nothing has been labeled Front before, this
+      // is the first Front it's ever had.
+      var conflictIdx = list.findIndex(function(p, i){ return i !== idx && p.label === 'Front'; });
+      if(conflictIdx > -1) list[conflictIdx].label = oldLabel;
+      list.splice(idx, 1);
+      list.unshift(photo);
+    } else if(newLabel === 'Back'){
+      var backConflictIdx = list.findIndex(function(p, i){ return i !== idx && p.label === 'Back'; });
+      if(backConflictIdx > -1){
+        list[backConflictIdx].label = oldLabel;
+        var curIdx = list.indexOf(photo);
+        var tmp = list[curIdx]; list[curIdx] = list[backConflictIdx]; list[backConflictIdx] = tmp;
       }
     }
     photo.label = newLabel;
@@ -1876,16 +1883,29 @@
           : null;
         sel.disabled = true;
         if(conflict) conflict.disabled = true;
-        // sort_order (what actually decides display order - see
-        // sortImagesForDisplay) swaps along with the label whenever two
-        // photos trade Front/Back, so promoting a photo to Front also
-        // puts it first instead of leaving it wherever it happened to
-        // land at upload time.
-        var updates = [supabaseClient.from('jersey_images').update(conflict
-          ? {label: newLabel, sort_order: Number(conflict.dataset.sortOrder)}
-          : {label: newLabel}
-        ).eq('id', sel.dataset.imageId)];
-        if(conflict) updates.push(supabaseClient.from('jersey_images').update({label: oldLabel, sort_order: Number(sel.dataset.sortOrder)}).eq('id', conflict.dataset.imageId));
+        var updates;
+        if(newLabel === 'Front'){
+          // Front always ends up first - whether or not this displaced
+          // an existing Front. Swapping sort_order only on a genuine
+          // conflict missed the far more common case: nothing else was
+          // labeled Front yet, so there was nothing to swap WITH, and
+          // sort_order (what actually decides display order - see
+          // sortImagesForDisplay) never got touched at all.
+          var others = arr.filter(function(o){ return o !== sel; }).map(function(o){ return Number(o.dataset.sortOrder); });
+          var newSortOrder = others.length ? Math.min.apply(null, others) - 1 : 0;
+          updates = [supabaseClient.from('jersey_images').update({label: newLabel, sort_order: newSortOrder}).eq('id', sel.dataset.imageId)];
+          if(conflict) updates.push(supabaseClient.from('jersey_images').update({label: oldLabel}).eq('id', conflict.dataset.imageId));
+        } else if(conflict){
+          // Back taking over from another Back - swap sort_order along
+          // with the label so the one just promoted doesn't stay stuck
+          // wherever it happened to land at upload time.
+          updates = [
+            supabaseClient.from('jersey_images').update({label: newLabel, sort_order: Number(conflict.dataset.sortOrder)}).eq('id', sel.dataset.imageId),
+            supabaseClient.from('jersey_images').update({label: oldLabel, sort_order: Number(sel.dataset.sortOrder)}).eq('id', conflict.dataset.imageId)
+          ];
+        } else {
+          updates = [supabaseClient.from('jersey_images').update({label: newLabel}).eq('id', sel.dataset.imageId)];
+        }
         var results = await Promise.all(updates);
         var err = results.filter(function(r){ return r.error; })[0];
         if(err){
