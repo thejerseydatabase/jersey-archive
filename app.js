@@ -3275,7 +3275,17 @@
   // team's current default and isn't moved by picking an older jersey's
   // competition. See jerseys.competition_slug for what actually records
   // which competition THIS jersey belongs to.
-  async function ensureTeam(compSlug, name, sportSlug){
+  // The standalone word "Women" anywhere in a competition's own name
+  // ("... (Women)", "Women's ...", "A-League Women") - used only to
+  // stop ensureTeam's sport-wide fallback below from treating a men's
+  // and women's side of the same club as the same team (there's no
+  // actual gender/category column on competitions to check instead).
+  // Doesn't catch an abbreviation like NRLW/AFLW/WBBL - those stay as
+  // the pre-existing (smaller) risk this never fully solved.
+  function isWomensCompName(name){
+    return /\bwomen\b/i.test(name || '');
+  }
+  async function ensureTeam(compSlug, name, sportSlug, compName){
     var slug = slugify(name);
     var existing = await supabaseClient.from('teams').select('*').eq('competition_slug', compSlug).eq('slug', slug).maybeSingle();
     if(existing.error) throw existing.error;
@@ -3300,11 +3310,20 @@
       // whole upload instead of just reusing one of them. Most recently
       // touched wins - the best available guess at "the current one"
       // without knowing anything else about which era this jersey is from.
-      var sportWide = await supabaseClient.from('teams').select('*, competitions!inner(sport_slug)')
+      //
+      // Filtered to only candidates on the same side of a men's/women's
+      // split as the competition this upload is actually going into -
+      // without this, a club whose men's side folded before ever being
+      // added (Melbourne Rebels, Super Rugby Pacific) got a new men's
+      // jersey silently merged into the separate, already-existing
+      // women's team instead of getting its own row.
+      var sportWide = await supabaseClient.from('teams').select('*, competitions!inner(sport_slug, name)')
         .eq('competitions.sport_slug', sportSlug).eq('slug', slug)
-        .order('created_at', {ascending:false}).limit(1);
+        .order('created_at', {ascending:false});
       if(sportWide.error) throw sportWide.error;
-      if(sportWide.data && sportWide.data.length) return sportWide.data[0];
+      var targetIsWomens = isWomensCompName(compName);
+      var match = (sportWide.data || []).find(function(t){ return isWomensCompName(t.competitions.name) === targetIsWomens; });
+      if(match) return match;
     }
     var c = hashColors(name);
     var ins = await supabaseClient.from('teams').insert({
@@ -3617,7 +3636,7 @@
       if(creatingComp){
         try {
           var newComp = await ensureCompetition(sportSel.value, newCompName);
-          var newTeam = await ensureTeam(newComp.slug, newTeamName, sportSel.value);
+          var newTeam = await ensureTeam(newComp.slug, newTeamName, sportSel.value, newComp.name);
           teamId = newTeam.id;
           competitionSlug = newComp.slug;
         } catch(e){
@@ -6786,7 +6805,7 @@
       try {
         var sportSlug = sportSel.value;
         var comp = await ensureCompetition(sportSlug, fieldValue(compSelect, compNew));
-        var team = await ensureTeam(comp.slug, fieldValue(teamSelect, teamNew), sportSlug);
+        var team = await ensureTeam(comp.slug, fieldValue(teamSelect, teamNew), sportSlug, comp.name);
         var season = seasonVal;
         var type = fieldValue(typeSelect, typeNew);
         if(type === 'Training'){
