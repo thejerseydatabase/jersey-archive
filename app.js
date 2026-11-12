@@ -271,7 +271,11 @@
   function jerseyPhotoFileName(teamName, season, type, photoLabel, idx, ext){
     var base = [slugify(teamName), slugify(season), slugify(type), 'kit'].join('-');
     var suffix = photoLabel ? '-' + slugify(photoLabel) : '';
-    if(photoLabel === 'Other' && idx) suffix += '-' + idx;
+    // Front/Back have no cap on how many photos can share one, same as
+    // Other always allowed - the index always disambiguates now, not
+    // just for Other, so two same-labeled photos never collide onto the
+    // same filename and silently overwrite each other in storage.
+    if(idx) suffix += '-' + idx;
     return base + suffix + '.' + ext;
   }
   function hashStr(s){ var h=0; for(var i=0;i<s.length;i++){ h=(h*31+s.charCodeAt(i))>>>0; } return h; }
@@ -1843,34 +1847,74 @@
   // image. "Other" has no such cap; any number of photos can share it.
   function reassignPhotoLabel(list, idx, newLabel){
     var photo = list[idx];
-    var oldLabel = photo.label;
-    if(newLabel === oldLabel) return;
+    if(newLabel === photo.label) return;
+    photo.label = newLabel;
     if(newLabel === 'Front'){
-      // Front always ends up first - whether that's because it's taking
-      // the label FROM another photo (which only matters for giving
-      // that one photo's old label back) or simply because nothing else
-      // happened to be labeled Front yet. Only swapping on an actual
-      // label conflict missed this second, far more common case: a
-      // fresh upload where nothing has been labeled Front before, this
-      // is the first Front it's ever had.
-      var conflictIdx = list.findIndex(function(p, i){ return i !== idx && p.label === 'Front'; });
-      if(conflictIdx > -1) list[conflictIdx].label = oldLabel;
+      // Front/Back/Other have no cap - any number of photos can share
+      // one, same as Other always could (two different front-on shots,
+      // say) - so this never touches any other photo's label. Marking
+      // one Front just makes IT the one shown first.
       list.splice(idx, 1);
       list.unshift(photo);
-    } else if(newLabel === 'Back'){
-      var backConflictIdx = list.findIndex(function(p, i){ return i !== idx && p.label === 'Back'; });
-      if(backConflictIdx > -1){
-        list[backConflictIdx].label = oldLabel;
-        var curIdx = list.indexOf(photo);
-        var tmp = list[curIdx]; list[curIdx] = list[backConflictIdx]; list[backConflictIdx] = tmp;
-      }
     }
-    photo.label = newLabel;
   }
-  // Same swap, for editing an already-saved jersey's photos (moderation
-  // queue, jersey detail admin block) — two DB writes instead of a local
-  // mutation, scoped to whichever set of <select> elements is passed in
-  // (one jersey's photos) so it never swaps across two different jerseys.
+  // Keeps the jersey detail page's main photo/thumbnail strip, and a
+  // moderation card's own thumbnail, in sync with a photo grid's current
+  // DOM order - called after a relabel or reorder so neither needs a
+  // full render() (which was otherwise the only way either of those
+  // ever updated, collapsing the panel shut on a single-jersey page and
+  // reloading the WHOLE moderation queue from scratch on that page).
+  // Reads everything it needs straight off the grid's own DOM (storage
+  // path from each item's crop button, label from its <select>) rather
+  // than needing the original images array, since that's exactly the
+  // same source of truth wirePhotoReorder already treats as current.
+  function syncGalleryFromGrid(grid){
+    var items = Array.prototype.slice.call(grid.querySelectorAll('.logo-history-item'));
+    if(!items.length) return;
+    var images = items.map(function(item){
+      var sel = item.querySelector('.photo-label-select');
+      var cropBtn = item.querySelector('.photo-crop-btn');
+      return { storage_path: cropBtn ? cropBtn.dataset.path : '', label: sel ? sel.value : '' };
+    });
+    var mainWrap = document.getElementById('gallery-main');
+    var thumbsWrap = document.getElementById('gallery-thumbs');
+    if(mainWrap && thumbsWrap){
+      var jAlt = thumbsWrap.querySelectorAll('.gallery-thumb img')[0] ?
+        thumbsWrap.querySelectorAll('.gallery-thumb img')[0].alt.replace(/ \([^)]*\)$/, '') : '';
+      mainWrap.innerHTML = '<img class="lightbox-trigger" src="'+esc(publicImageUrl(images[0].storage_path))+'" alt="'+esc(jAlt)+'">';
+      thumbsWrap.dataset.images = JSON.stringify(images);
+      thumbsWrap.innerHTML = images.map(function(img, i){
+        return '<button class="gallery-thumb'+(i===0?' is-active':'')+'" data-idx="'+i+'" type="button" title="'+esc(img.label)+'"><img src="'+esc(publicImageUrl(img.storage_path))+'" alt="'+esc(jAlt+' ('+img.label+')')+'" loading="lazy"></button>';
+      }).join('');
+      thumbsWrap.querySelectorAll('.gallery-thumb').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          thumbsWrap.querySelectorAll('.gallery-thumb').forEach(function(b){ b.classList.remove('is-active'); });
+          btn.classList.add('is-active');
+          mainWrap.innerHTML = '<img class="lightbox-trigger" src="'+esc(publicImageUrl(images[Number(btn.dataset.idx)].storage_path))+'" alt="'+esc(btn.querySelector('img').alt)+'">';
+        });
+      });
+      return;
+    }
+    var card = grid.closest('.mod-card');
+    var cardThumb = card && card.querySelector('.jersey-thumb');
+    if(cardThumb){
+      // This thumbnail's alt text is just the jersey's own description
+      // (season/team/type) - never label-prefixed, unlike the jersey
+      // detail page's gallery above - so it stays exactly as it was,
+      // only the photo itself changes.
+      var existingImg = cardThumb.querySelector('img');
+      var alt = existingImg ? existingImg.alt : '';
+      cardThumb.innerHTML = '<img class="lightbox-trigger" src="'+esc(publicImageUrl(images[0].storage_path))+'" alt="'+esc(alt)+'" loading="lazy">';
+    }
+  }
+
+  // Relabels an already-saved jersey's photo (moderation queue, jersey
+  // detail admin block) - a DB write instead of a local mutation,
+  // scoped to whichever set of <select> elements is passed in (one
+  // jersey's photos). Front/Back/Other have no cap - any number of
+  // photos can share one (two different front-on shots, say), so this
+  // never touches another photo's label, only (for Front) this one's
+  // position.
   function wirePhotoLabelSwap(selects, onSaved){
     var arr = Array.prototype.slice.call(selects);
     arr.forEach(function(sel){ sel.dataset.prev = sel.value; });
@@ -1878,42 +1922,42 @@
       sel.addEventListener('change', async function(){
         var newLabel = sel.value, oldLabel = sel.dataset.prev;
         if(newLabel === oldLabel) return;
-        var conflict = (newLabel === 'Front' || newLabel === 'Back')
-          ? arr.filter(function(o){ return o !== sel; }).find(function(o){ return o.value === newLabel; })
-          : null;
         sel.disabled = true;
-        if(conflict) conflict.disabled = true;
+        var item = sel.closest('.logo-history-item');
+        var grid = item && item.parentElement;
         var updates;
         if(newLabel === 'Front'){
-          // Front always ends up first - whether or not this displaced
-          // an existing Front. Swapping sort_order only on a genuine
-          // conflict missed the far more common case: nothing else was
-          // labeled Front yet, so there was nothing to swap WITH, and
-          // sort_order (what actually decides display order - see
-          // sortImagesForDisplay) never got touched at all.
+          // Marking a photo Front always makes it the one shown first -
+          // sort_order is what actually decides display order (see
+          // sortImagesForDisplay), so this gives it the new lowest.
           var others = arr.filter(function(o){ return o !== sel; }).map(function(o){ return Number(o.dataset.sortOrder); });
           var newSortOrder = others.length ? Math.min.apply(null, others) - 1 : 0;
           updates = [supabaseClient.from('jersey_images').update({label: newLabel, sort_order: newSortOrder}).eq('id', sel.dataset.imageId)];
-          if(conflict) updates.push(supabaseClient.from('jersey_images').update({label: oldLabel}).eq('id', conflict.dataset.imageId));
-        } else if(conflict){
-          // Back taking over from another Back - swap sort_order along
-          // with the label so the one just promoted doesn't stay stuck
-          // wherever it happened to land at upload time.
-          updates = [
-            supabaseClient.from('jersey_images').update({label: newLabel, sort_order: Number(conflict.dataset.sortOrder)}).eq('id', sel.dataset.imageId),
-            supabaseClient.from('jersey_images').update({label: oldLabel, sort_order: Number(sel.dataset.sortOrder)}).eq('id', conflict.dataset.imageId)
-          ];
         } else {
           updates = [supabaseClient.from('jersey_images').update({label: newLabel}).eq('id', sel.dataset.imageId)];
         }
         var results = await Promise.all(updates);
         var err = results.filter(function(r){ return r.error; })[0];
+        sel.disabled = false;
         if(err){
-          sel.disabled = false; if(conflict) conflict.disabled = false;
+          sel.value = oldLabel; // the change never actually took - put the dropdown back
           alert('Error: ' + err.error.message);
           return;
         }
-        (onSaved || render)();
+        sel.dataset.prev = newLabel;
+        if(grid && item){
+          // Reflects the DB's new sort_order back into the grid's own
+          // DOM order and this <select>'s data-sort-order, so a second
+          // relabel right after this one (or a move-arrow click) still
+          // computes correctly without needing a page reload in between.
+          if(newLabel === 'Front') grid.insertBefore(item, grid.firstElementChild);
+          Array.prototype.slice.call(grid.querySelectorAll('.logo-history-item')).forEach(function(it, idx){
+            var s = it.querySelector('.photo-label-select');
+            if(s) s.dataset.sortOrder = idx;
+          });
+          syncGalleryFromGrid(grid);
+        }
+        if(onSaved) onSaved();
       });
     });
   }
@@ -1960,7 +2004,10 @@
           newItems.forEach(function(it, idx){
             it.querySelectorAll('[data-move="left"]').forEach(function(b){ b.disabled = idx === 0; });
             it.querySelectorAll('[data-move="right"]').forEach(function(b){ b.disabled = idx === newItems.length - 1; });
+            var s = it.querySelector('.photo-label-select');
+            if(s) s.dataset.sortOrder = idx;
           });
+          syncGalleryFromGrid(grid);
         });
       });
     }
