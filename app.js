@@ -364,10 +364,14 @@
     var t = baseJerseyType(typeStr).trim().toLowerCase();
     // World Club Challenge is a one-off end-of-season fixture (tag-only
     // competition, see add_world_club_challenge.sql) worn after a team's
-    // regular-season jerseys - it should always trail the rest of a
-    // season's jerseys, even the unrecognised ones (Promotional, Women
-    // In League, etc.), not just fall in upload order like those do.
-    if(t === 'world club challenge') return 9999;
+    // regular-season jerseys - it (and a retail-only "World Club
+    // Challenge Premiers" win jersey, same idea as a Grand Final
+    // Premiers piece but named distinctly so it isn't read as an NRL
+    // premiership) should always trail the rest of a season's jerseys,
+    // even the unrecognised ones (Promotional, Women In League, etc.),
+    // not just fall in upload order like those do. Prefix match so both
+    // variants land together.
+    if(t.indexOf('world club challenge') === 0) return 9999;
     for(var i=0; i<orderGroups.length; i++){ if(orderGroups[i].indexOf(t) > -1) return i; }
     return orderGroups.length;
   }
