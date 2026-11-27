@@ -121,7 +121,17 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/baseball/international-baseball-men</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/baseball/mlb</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/basketball/nba</loc>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -132,6 +142,11 @@
   </url>
   <url>
     <loc>https://archive.thejerseydatabase.com/sport/basketball/wnbl</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/australia-domestic</loc>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -156,6 +171,11 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/dean-jones-cup</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/cricket/etpl</loc>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
@@ -167,6 +187,16 @@
   </url>
   <url>
     <loc>https://archive.thejerseydatabase.com/sport/cricket/international</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/ipl</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/mlc</loc>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -187,6 +217,11 @@
   </url>
   <url>
     <loc>https://archive.thejerseydatabase.com/sport/cricket/wbbl</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/wpl</loc>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -212,6 +247,11 @@
   </url>
   <url>
     <loc>https://archive.thejerseydatabase.com/sport/football/bundesliga</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/football/bundesliga-2</loc>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -266,6 +306,11 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/football/usl-w-league</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/gaelic-football/all-ireland-senior-football-championship</loc>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
@@ -281,7 +326,27 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/ice-hockey/echl</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/ice-hockey/nhl</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/ice-hockey/pwhl</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/lacrosse/ncaa-division-i-lacrosse</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/lacrosse/nll</loc>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -301,12 +366,22 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/crl</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/rugby-league/holden-cup</loc>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://archive.thejerseydatabase.com/sport/rugby-league/international-rugby-league-men</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/irl-ipswich-rugby-league</loc>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -336,6 +411,11 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/representative</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/rugby-league/state-of-origin</loc>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
@@ -346,12 +426,32 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/world-club-challenge</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/rugby-union/celtic-league</loc>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/currie-cup</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/rugby-union/international-rugby-union-men</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/leinster-senior-league</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/national-division-5</loc>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -362,6 +462,11 @@
   </url>
   <url>
     <loc>https://archive.thejerseydatabase.com/sport/rugby-union/premiership-rugby</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/rfu-championship</loc>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -387,6 +492,11 @@
   </url>
   <url>
     <loc>https://archive.thejerseydatabase.com/sport/rugby-union/super-rugby-pacific-women</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/urc</loc>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -461,6 +571,26 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/baseball/abl/team/canberra-cavalry</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/baseball/abl/team/melbourne-aces</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/baseball/abl/team/perth-heat</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/baseball/international-baseball-men/team/chinese-taipei</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/baseball/mlb/team/minnesota-twins</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
@@ -472,6 +602,16 @@
   </url>
   <url>
     <loc>https://archive.thejerseydatabase.com/sport/baseball/mlb/team/tampa-bay-rays</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/basketball/nba/team/miami-heat</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/basketball/nba/team/philadelphia-76ers</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
@@ -586,6 +726,11 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/australia-domestic-women/team/tasmanian-tigers</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/cricket/australia-domestic-women/team/victoria</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
@@ -596,12 +741,42 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/australia-domestic/team/tasmanian-tigers</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/bbl/team/adelaide-strikers</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/bbl/team/brisbane-heat</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/bbl/team/hobart-hurricanes</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/cricket/bbl/team/melbourne-renegades</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
     <loc>https://archive.thejerseydatabase.com/sport/cricket/bbl/team/melbourne-stars</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/bbl/team/perth-scorchers</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/bbl/team/sydney-sixers</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
@@ -622,6 +797,11 @@
   </url>
   <url>
     <loc>https://archive.thejerseydatabase.com/sport/cricket/canada-t20/team/vancouver-knights</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/dean-jones-cup/team/tasmania</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
@@ -647,6 +827,11 @@
   </url>
   <url>
     <loc>https://archive.thejerseydatabase.com/sport/cricket/international/team/australia</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/international/team/australia-women</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
@@ -686,7 +871,37 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/international/team/south-africa-women</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/cricket/international/team/vanuatu</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/ipl/team/chennai-super-kings</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/ipl/team/delhi-capitals</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/ipl/team/lucknow-super-giants</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/ipl/team/sunrises-hyderabad</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/mlc/team/seattle-orcas</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
@@ -716,7 +931,47 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/wbbl/team/adelaide-strikers</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/wbbl/team/brisbane-heat</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/wbbl/team/hobart-hurricanes</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/cricket/wbbl/team/melbourne-renegades</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/wbbl/team/melbourne-stars</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/wbbl/team/perth-scorchers</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/wbbl/team/sydney-sixers</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/wbbl/team/sydney-thunder</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/cricket/wpl/team/delhi-capitals-women</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
@@ -841,6 +1096,11 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/football/bundesliga-2/team/hertha-bsc</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/football/bundesliga/team/fc-augsburg</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
@@ -871,6 +1131,11 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/football/international-men/team/germany</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/football/international-men/team/hong-kong</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
@@ -891,12 +1156,22 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/football/international-men/team/wales</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/football/j1-league/team/fc-tokyo</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
     <loc>https://archive.thejerseydatabase.com/sport/football/league-one/team/leicester-city</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/football/league-one/team/wrexham-afc</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
@@ -926,6 +1201,11 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/football/premier-league/team/newcastle-united</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/football/scottish-premiership/team/aberdeen</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
@@ -941,7 +1221,27 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/football/usl-championship/team/phoenix-rising-fc</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/football/usl-league-one/team/forward-madison-fc</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/football/usl-league-one/team/portland-hearts-of-pine</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/football/usl-league-one/team/union-omaha</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/football/usl-w-league/team/oakland-soul-sc</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
@@ -956,12 +1256,22 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/ice-hockey/aihl/team/brisbane-lightning</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/ice-hockey/aihl/team/newcastle-north-stars</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
     <loc>https://archive.thejerseydatabase.com/sport/ice-hockey/aihl/team/sydney-bears</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/ice-hockey/awihl/team/brisbane-lightning</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
@@ -981,7 +1291,112 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/ice-hockey/echl/team/wichita-thunder</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/ice-hockey/nhl/team/colorado-avalanche</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/ice-hockey/nhl/team/minnesota-wild</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/ice-hockey/nhl/team/montreal-canadiens</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/ice-hockey/nhl/team/seattle-kraken</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/ice-hockey/nhl/team/st-louis-blues</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/ice-hockey/nhl/team/utah-mammoth</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/ice-hockey/nhl/team/washington-capitals</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/ice-hockey/pwhl/team/boston-fleet</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/ice-hockey/pwhl/team/detroit-clutch</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/ice-hockey/pwhl/team/hamilton-havoc</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/ice-hockey/pwhl/team/minnesota-frost</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/ice-hockey/pwhl/team/montreal-victoire</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/ice-hockey/pwhl/team/new-york-sirens</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/ice-hockey/pwhl/team/ottawa-charge</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/ice-hockey/pwhl/team/san-jose-sea-lions</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/ice-hockey/pwhl/team/seattle-torrent</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/ice-hockey/pwhl/team/toronto-sceptres</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/ice-hockey/pwhl/team/vancouver-goldeneyes</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/ice-hockey/pwhl/team/vegas-vanguards</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/lacrosse/ncaa-division-i-lacrosse/team/notre-dame</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/lacrosse/nll/team/las-vegas-desert-dogs</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
@@ -1006,6 +1421,11 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/championship/team/dewsbury-rams</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/rugby-league/championship/team/hunslet-rlfc</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
@@ -1016,7 +1436,42 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/championship/team/oldham</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/rugby-league/championship/team/salford-rlfc</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/crl/team/moss-vale</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/crl/team/mudgee-dragons</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/international-rugby-league-men/team/australia</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/international-rugby-league-men/team/australia-women</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/international-rugby-league-men/team/cook-islands</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/international-rugby-league-men/team/england</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
@@ -1031,7 +1486,22 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/international-rugby-league-men/team/lebanon</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/rugby-league/international-rugby-league-men/team/new-zealand</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/international-rugby-league-men/team/papua-new-guinea</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/international-rugby-league-men/team/poland</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
@@ -1051,7 +1521,42 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/international-rugby-league-men/team/wales</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/rugby-league/international-rugby-league-men/team/wales-women</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/irl-ipswich-rugby-league/team/brothers-ipswich</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/irl-ipswich-rugby-league/team/fassifern-bombers</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/irl-ipswich-rugby-league/team/goodna-eagles</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/irl-ipswich-rugby-league/team/north-ipswich-tigers</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/irl-ipswich-rugby-league/team/redbank-bears</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/irl-ipswich-rugby-league/team/rosewood-roosters</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
@@ -1181,12 +1686,37 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/qld-cup/team/central-queensland-capras</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/rugby-league/qld-cup/team/ipswich-jets</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/qld-cup/team/western-clydesdales</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/representative/team/great-britain</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/rugby-league/state-of-origin/team/new-south-wales-blues</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/state-of-origin/team/queensland-maroons</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/state-of-origin/team/queensland-maroons-women</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
@@ -1206,6 +1736,11 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/super-league/team/huddersfield-giants</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/rugby-league/super-league/team/hull-fc</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
@@ -1217,6 +1752,11 @@
   </url>
   <url>
     <loc>https://archive.thejerseydatabase.com/sport/rugby-league/super-league/team/leeds-rhinos</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/super-league/team/salford-red-devils</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
@@ -1241,7 +1781,17 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-league/world-club-challenge/team/south-sydney-rabbitohs</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/rugby-union/celtic-league/team/cardiff-blues</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/celtic-league/team/edinburgh</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
@@ -1251,12 +1801,87 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/celtic-league/team/ospreys</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/celtic-league/team/ulster</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/currie-cup/team/cheetahs</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/currie-cup/team/lions</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/international-rugby-union-men/team/argentina</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/rugby-union/international-rugby-union-men/team/australia</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/international-rugby-union-men/team/british-and-irish-lions</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/international-rugby-union-men/team/england</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/international-rugby-union-men/team/germany</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/rugby-union/international-rugby-union-men/team/ireland</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/international-rugby-union-men/team/italy</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/international-rugby-union-men/team/new-zealand</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/international-rugby-union-men/team/scotland</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/international-rugby-union-men/team/south-africa</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/international-rugby-union-men/team/wales</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/leinster-senior-league/team/lansdowne</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/national-division-5/team/london-welsh</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
@@ -1271,12 +1896,47 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/premiership-rugby/team/harlequins</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/rugby-union/premiership-rugby/team/london-irish</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/premiership-rugby/team/newcastle-falcons</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/premiership-rugby/team/northampton-saints</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/premiership-rugby/team/sale-sharks</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/rugby-union/premiership-rugby/team/saracens</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/premiership-rugby/team/wasps</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/rfu-championship/team/london-welsh</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/rfu-championship/team/worcester</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
@@ -1291,6 +1951,11 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/super-rugby-pacific-women/team/melbourne-rebels</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/rugby-union/super-rugby-pacific-women/team/western-force</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
@@ -1301,7 +1966,32 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/super-rugby-pacific/team/bulls</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/super-rugby-pacific/team/crusaders</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://archive.thejerseydatabase.com/sport/rugby-union/super-rugby-pacific/team/fijian-drua</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/super-rugby-pacific/team/melbourne-rebels</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/super-rugby-pacific/team/new-south-wales-waratahs</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/super-rugby-pacific/team/queensland-reds</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
@@ -1312,6 +2002,16 @@
   </url>
   <url>
     <loc>https://archive.thejerseydatabase.com/sport/rugby-union/super-rugby/team/stormers</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/super-rugby/team/waikato</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://archive.thejerseydatabase.com/sport/rugby-union/urc/team/lions</loc>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
